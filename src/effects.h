@@ -20,6 +20,10 @@ struct Ctx {
     const CRGB* lutWrap;  // palette as a loop
     const CRGB* lutLin;   // palette as a ramp, first colour -> last colour
     CRGB* out;            // [row * nx + led]
+    // Beat sync (Ableton Link). dt is already scaled by the tempo when the preset follows it.
+    double beat;          // beats since the session origin (bar = 4 beats)
+    float bpm;
+    bool lock;            // lock cyclic motion to the beat grid
 };
 
 struct EffectDef {

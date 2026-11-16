@@ -107,6 +107,16 @@ function draw() {
     v => { p.params[j] = v; throttle('p', () => post('/api/preset', {index: S.current, params: p.params})); })));
   if (ef.sparkle) card.append(slider('Sparkle overlay', 0, 1, 0.01, p.sparkle, v => v.toFixed(2),
     v => { p.sparkle = v; throttle('s', () => post('/api/preset', {index: S.current, sparkle: v})); }));
+  // Beat sync: tempo and beat come from Ableton Link (or the board's own clock when disabled)
+  const check = (label, val, key) => {
+    const c = h('input', {type: 'checkbox', checked: val});
+    c.onchange = () => { p[key] = c.checked; post('/api/preset', {index: S.current, [key]: c.checked}); };
+    return field(label, c);
+  };
+  card.append(check('Follow tempo', p.syncTempo, 'syncTempo'));
+  card.append(check('Lock to beat', p.syncLock, 'syncLock'));
+  card.append(slider('Beat pulse', 0, 1, 0.01, p.pulse, v => v.toFixed(2),
+    v => { p.pulse = v; throttle('pu', () => post('/api/preset', {index: S.current, pulse: v})); }));
   const reset = h('button', {textContent: 'Reset parameters'});
   reset.onclick = () => { p.params = ef.params.map(d => d.def); post('/api/preset', {index: S.current, params: p.params}); draw(); };
   card.append(h('div', {className: 'row'}, reset));
@@ -120,11 +130,12 @@ function draw() {
   app.append(h('h2', {textContent: 'Output'}));
   const tgt = h('input', {type: 'text', value: S.target});
   tgt.onchange = () => post('/api/set', {target: tgt.value.trim()}).then(() => { S.target = tgt.value.trim(); });
-  const quick = (t, ip) => { const b = h('button', {textContent: t}); b.onclick = () => { tgt.value = ip; tgt.onchange(); }; return b; };
   app.append(h('div', {className: 'card'},
     field('Art-Net to', tgt),
-    h('div', {className: 'row'}, h('label'), quick('PixLite', '192.168.0.50'), quick('Beam (LAN)', '192.168.1.2'), quick('Beam', '192.168.0.20')),
     slider('Gamma', 1, 3, 0.1, S.gamma, v => v.toFixed(1), v => { S.gamma = v; throttle('g', () => post('/api/set', {gamma: v})); })));
+
+  app.append(h('h2', {textContent: 'Tempo'}));
+  app.append(linkCard());
 
   app.append(h('h2', {textContent: 'Layout'}));
   app.append(layoutCard());
@@ -244,9 +255,36 @@ function networkCard() {
     h('p', {className: 'hint', textContent: 'DHCP first; with no answer after 10 s the fallback IP is used (keep it in the PixLite subnet, 192.168.0.x). On the fallback IP, or with the cable unplugged and no backup WiFi, the board opens a hotspot named after it: http://192.168.4.1.'}));
 }
 
+// Ableton's guidelines: name it "Ableton Link" in full, its state as Enabled / Disabled
+function linkCard() {
+  const L = S.link;
+  const btn = h('button', {textContent: L.enabled ? 'Enabled' : 'Disabled', className: L.enabled ? 'on' : ''});
+  btn.onclick = () => { L.enabled = !L.enabled; post('/api/link', {enabled: L.enabled}).then(st => { Object.assign(S, st); draw(); }); };
+  const bpm = h('input', {type: 'number', min: 20, max: 999, step: 0.1, value: L.bpm, id: 'bpm'});
+  bpm.onchange = () => post('/api/link', {bpm: +bpm.value});
+  return h('div', {className: 'card'},
+    h('div', {className: 'row'}, h('label', {textContent: 'Ableton Link'}), btn, h('span', {className: 'hint', id: 'peers'})),
+    h('div', {className: 'row'}, h('label', {textContent: 'BPM'}), bpm,
+      h('span', {className: 'hint', textContent: 'with Ableton Link enabled, this sets everyone\u2019s tempo'})),
+    slider('Latency (ms)', 0, 200, 1, S.linkLatency, v => v.toFixed(0),
+      v => { S.linkLatency = v; throttle('lat', () => post('/api/link', {latency: v})); }),
+    h('p', {className: 'hint', textContent: 'Presets that follow the tempo run at their set speed at 120 BPM. ' +
+      'Locked to the beat, cycles (bands, rings, sweeps, beams, drops) take 1, 2, 4, 8\u2026 beats and land on the bar. ' +
+      'Latency: how much later the LEDs show a frame; frames are rendered that far ahead.'}),
+    h('p', {className: 'hint', textContent: 'Ableton and Ableton Link are trademarks of Ableton AG.'}));
+}
+
 function showStatus() {
   const el = document.getElementById('status');
-  if (el) el.textContent = S.fps + ' fps, render ' + S.renderMs + ' ms \u00b7 ' + S.net + ' \u00b7 WiFi: ' + S.wifi;
+  const L = S.link || {};
+  const link = !L.enabled ? 'Ableton Link disabled'
+    : 'Ableton Link \u00b7 ' + (L.peers > 0 ? L.peers + ' peer' + (L.peers == 1 ? '' : 's') : 'no peers');
+  if (el) el.textContent = S.fps + ' fps, render ' + S.renderMs + ' ms \u00b7 ' + S.net + ' \u00b7 WiFi: ' + S.wifi +
+    ' \u00b7 ' + link + ' \u00b7 ' + (L.bpm || 120) + ' BPM';
+  const pe = document.getElementById('peers');
+  if (pe) pe.textContent = L.enabled ? (L.peers > 0 ? L.peers + ' peer' + (L.peers == 1 ? '' : 's') : 'no peers') : '';
+  const b = document.getElementById('bpm');
+  if (b && document.activeElement != b) b.value = L.bpm;
 }
 
 // Follow button presses on the board without disturbing a slider being dragged

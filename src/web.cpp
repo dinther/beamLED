@@ -4,6 +4,7 @@
 #include <WebServer.h>
 
 #include "engine.h"
+#include "link_clock.h"
 #include "net.h"
 #include "config.h"
 #include "store.h"
@@ -38,8 +39,12 @@ static bool readBody(JsonDocument& d) {
     return true;
 }
 
-static void presetJson(JsonObject o, const Preset& p) {
+static void presetJson(JsonObject o, int i) {
+    const Preset& p = presets[i];
     o["name"] = p.name;
+    o["syncTempo"] = presetSync[i].tempo != 0;
+    o["syncLock"] = presetSync[i].lock != 0;
+    o["pulse"] = presetSync[i].pulse;
     o["effect"] = p.effect;
     o["palette"] = p.palette;
     o["sparkle"] = p.sparkle;
@@ -61,6 +66,11 @@ static void statusJson(JsonObject o) {
     o["net"] = netModeText();
     o["wifi"] = netWifiText();
     o["heap"] = ESP.getFreeHeap();
+    const BeatTime& b = engineBeat();
+    JsonObject l = o["link"].to<JsonObject>();
+    l["enabled"] = linkSettings.enabled != 0;
+    l["bpm"] = round(b.bpm * 10) / 10;
+    l["peers"] = b.peers;
 }
 
 static void handleState() {
@@ -98,7 +108,8 @@ static void handleState() {
     JsonArray pl = d["palettes"].to<JsonArray>();
     for (const Palette& p : palettes) paletteJson(pl.add<JsonObject>(), p);
     JsonArray pr = d["presets"].to<JsonArray>();
-    for (const Preset& p : presets) presetJson(pr.add<JsonObject>(), p);
+    for (int i = 0; i < NUM_PRESETS; i++) presetJson(pr.add<JsonObject>(), i);
+    d["linkLatency"] = linkSettings.latencyMs;
     sendJson(d);
 }
 
@@ -145,9 +156,12 @@ static void handlePreset() {
         for (int j = 0; j < e.n && j < (int)a.size(); j++)
             p.p[j] = constrain(a[j].as<float>(), e.params[j].min, e.params[j].max);
     }
+    if (d["syncTempo"].is<bool>()) presetSync[i].tempo = d["syncTempo"].as<bool>();
+    if (d["syncLock"].is<bool>()) presetSync[i].lock = d["syncLock"].as<bool>();
+    if (d["pulse"].is<float>()) presetSync[i].pulse = constrain(d["pulse"].as<float>(), 0.f, 1.f);
     storeMarkDirty();
     JsonDocument r;
-    presetJson(r.to<JsonObject>(), p);
+    presetJson(r.to<JsonObject>(), i);
     sendJson(r);
 }
 
@@ -195,6 +209,17 @@ static void handleLayout() {
     layout = l;
     engineLayoutChanged();
     handleState();
+}
+
+// Ableton Link: enabled, tempo (with Link enabled it changes everyone's), output latency
+static void handleLink() {
+    JsonDocument d;
+    if (!readBody(d)) return;
+    if (d["enabled"].is<bool>()) linkSettings.enabled = d["enabled"].as<bool>();
+    if (d["bpm"].is<float>()) engineSetTempo(d["bpm"].as<float>());
+    if (d["latency"].is<float>()) linkSettings.latencyMs = constrain(d["latency"].as<float>(), 0.f, 500.f);
+    storeMarkDirty();
+    handleStatus();
 }
 
 static void handleNetGet() {
@@ -258,6 +283,7 @@ void webBegin() {
     server.on("/api/preset", HTTP_POST, handlePreset);
     server.on("/api/palette", HTTP_POST, handlePalette);
     server.on("/api/layout", HTTP_POST, handleLayout);
+    server.on("/api/link", HTTP_POST, handleLink);
     server.on("/api/net", HTTP_GET, handleNetGet);
     server.on("/api/net", HTTP_POST, handleNetSet);
     server.on("/api/scan", handleScan);

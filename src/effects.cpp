@@ -50,6 +50,35 @@ static inline float wrap256(float a) {
 
 static inline float frand() { return random16() / 65535.f; }
 
+// Nearest power of two, for beat counts: 1/4, 1/2, 1, 2, 4 (a bar), 8, ... 64 beats
+static double snapBeats(double beats) {
+    if (!(beats > 0)) return 4;
+    const double p = exp2(round(log2(beats)));
+    return p < 0.25 ? 0.25 : (p > 64 ? 64 : p);
+}
+
+// Moves an effect's main cycle: `acc` advances `rate` per second, one cycle = `units`.
+// Locked to the beat, the rate is rounded so a cycle takes a power-of-two number of beats, and
+// the cycle starts ease onto the beat grid (onto bars for cycles of 4+ beats) within a few
+// seconds, without jumps. Uses state slots 5 and 6.
+static void advance(Ctx& c, float& acc, float rate, float units) {
+    if (!c.lock || rate == 0 || !(units > 0)) {
+        acc += rate * c.dt;
+        c.s[6] = 0;
+        return;
+    }
+    const float dir = rate > 0 ? 1.f : -1.f;
+    const double bpc = snapBeats(units / fabsf(rate) * c.bpm / 60.0);
+    const double base = dir * c.beat / bpc * units;
+    if (c.s[6] != (float)(bpc * dir)) {  // (re)locking or a new speed: carry on from here
+        c.s[5] = (float)(acc - base);
+        c.s[6] = (float)(bpc * dir);
+    }
+    const float aligned = roundf(c.s[5] / units) * units;
+    c.s[5] += (aligned - c.s[5]) * fminf(1.f, c.dt * 0.5f);
+    acc = (float)(base + c.s[5]);
+}
+
 // Soft bands. u in band units (band n centred on u = n, borders at n + 0.5); k = width of the
 // colour transition as a fraction of a band; step = palette advance per band; gap = how dark
 // the borders get.
@@ -132,7 +161,7 @@ static void rolling(Ctx& c) {
     const float speed = c.p[0], width = c.p[1], soft = c.p[2], gap = c.p[3], turn = c.p[4],
                 step = c.p[5];
     c.s[0] += c.dt * turn * DEG;
-    c.s[1] += c.dt * speed / width;
+    advance(c, c.s[1], speed / width, 1.f);  // locked: one band per 2^n beats
     const float ca = cosf(c.s[0]), sa = sinf(c.s[0]);
     for (int b = 0; b < NY; b++) {
         // Transition at least the row's footprint projected onto the roll direction
@@ -163,12 +192,14 @@ static void sweeps(Ctx& c) {
         }
     }
     const float L = hypotf(W, H) + 2 * width + 2 * trail + 1.f;  // full travel
-    c.s[0] += c.dt * speed;
+    advance(c, c.s[0], speed, L / n);  // locked: a new bar every 2^n beats
     float pos[4], ca[4], sa[4];
     CRGB col[4];
     for (int k = 0; k < n; k++) {
-        const float p = fmodf(c.s[0] + k * L / n, L);
-        if (p < sweepPrev[k] && sweepPrev[k] < 1e8f) {  // wrapped: next pass, new angle
+        float p = fmodf(c.s[0] + k * L / n, L);
+        if (p < 0) p += L;
+        // wrapped (not just eased back a little by the beat lock): next pass, new angle
+        if (p < sweepPrev[k] - L * 0.5f && sweepPrev[k] < 1e8f) {
             sweepAng[k] = rnd >= 0.5f ? frand() * TAU : sweepAng[k] + change * DEG;
             sweepCol[k] += 51;
         }
@@ -213,7 +244,7 @@ static void plaid(Ctx& c) {
     const float period = c.p[0], speed = c.p[1], turn = c.p[2], cross = c.p[3], contrast = c.p[4],
                 drift = c.p[5];
     c.s[0] += c.dt * turn * DEG;
-    c.s[1] += c.dt * speed / period;
+    advance(c, c.s[1], speed / period, 1.f);
     c.s[2] += c.dt * drift * 0.02f;
     const float a1 = c.s[0], a2 = c.s[0] + cross * DEG;
     const float c1 = cosf(a1), s1 = sinf(a1), c2 = cosf(a2), s2 = sinf(a2);
@@ -276,8 +307,8 @@ static void lighthouse(Ctx& c) {
     const float rpm = c.p[0], wdeg = c.p[1];
     const int arms = clampi((int)(c.p[2] + 0.5f), 1, 4);
     const float ox = c.p[3] * W, oy = Y[0] + c.p[4] * H, bg = c.p[5], spread = c.p[6];
-    c.s[0] += c.dt * rpm * (TAU / 60.f);
     const float P = TAU / arms, half = wdeg * DEG * 0.5f;
+    advance(c, c.s[0], rpm * (TAU / 60.f), P);  // locked: a beam passes every 2^n beats
     float maxR = 0;
     for (float cx : {0.f, W})
         for (float cy : {Y[0], Y[0] + H}) maxR = fmaxf(maxR, hypotf(cx - ox, cy - oy));
@@ -305,7 +336,7 @@ static void lighthouse(Ctx& c) {
 static void rings(Ctx& c) {
     const float spacing = c.p[0], speed = c.p[1], soft = c.p[2], gap = c.p[3], wander = c.p[4],
                 wspeed = c.p[5], step = c.p[6];
-    c.s[0] += c.dt * speed / spacing;
+    advance(c, c.s[0], speed / spacing, 1.f);  // locked: a ring every 2^n beats
     c.s[1] += c.dt * wspeed;
     const float cx = CX + wander * W * 0.5f * sinf(c.s[1] * 0.37f);
     const float cy = CY + wander * H * 0.5f * sinf(c.s[1] * 0.29f + 1.3f);
@@ -335,9 +366,27 @@ static void dropsFx(Ctx& c) {
         for (Drop& d : drops) d.live = false;
         c.s[0] = 0.99f;  // first drop right away
     }
-    c.s[0] += c.dt * rate / 60.f;
-    while (c.s[0] >= 1.f) {
-        c.s[0] -= 1.f;
+    int spawn = 0;
+    if (c.lock) {
+        // A drop every 2^n beats, on the beat
+        const double every = snapBeats(60.0 / rate * c.bpm / 60.0);
+        const float idx = (float)floor(c.beat / every);
+        if (c.s[6] != (float)every) {
+            c.s[6] = (float)every;
+            c.s[5] = idx;
+        } else if (idx != c.s[5]) {
+            c.s[5] = idx;
+            spawn = 1;
+        }
+    } else {
+        c.s[6] = 0;
+        c.s[0] += c.dt * rate / 60.f;
+        while (c.s[0] >= 1.f) {
+            c.s[0] -= 1.f;
+            spawn++;
+        }
+    }
+    for (; spawn > 0; spawn--) {
         for (Drop& d : drops) {
             if (d.live) continue;
             d = {frand() * W, Y[0] + frand() * H, 0, random8(), true};
@@ -382,7 +431,7 @@ static void dropsFx(Ctx& c) {
 static void interference(Ctx& c) {
     const float lambda = c.p[0], speed = c.p[1], sep = c.p[2], rot = c.p[3], contrast = c.p[4],
                 drift = c.p[5];
-    c.s[0] += c.dt * speed / lambda;
+    advance(c, c.s[0], speed / lambda, 1.f);
     c.s[1] += c.dt * rot * DEG;
     c.s[2] += c.dt * drift * 0.02f;
     const float half = sep * 0.5f * fmaxf(W, H) * 0.5f;

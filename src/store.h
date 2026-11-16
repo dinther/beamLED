@@ -24,9 +24,24 @@ struct Settings {
     uint32_t target;     // Art-Net destination (IPAddress as uint32)
 };
 
+// Beat sync per preset (stored apart from Preset so adding it kept existing presets)
+struct PresetSync {
+    uint8_t tempo;  // speeds follow the tempo (the set speed applies at 120 BPM)
+    uint8_t lock;   // cyclic motion locked to the beat grid
+    float pulse;    // brightness accent on each beat, 0..1
+};
+
+struct LinkSettings {
+    uint8_t enabled;  // Ableton Link
+    float bpm;        // own tempo when no peers (and the last tempo seen)
+    float latencyMs;  // frames are rendered this much ahead, to land on the beat at the LEDs
+};
+
 extern Palette palettes[NUM_PALETTES];
 extern Preset presets[NUM_PRESETS];
+extern PresetSync presetSync[NUM_PRESETS];
 extern Settings settings;
+extern LinkSettings linkSettings;
 
 void storeLoad();
 void storeMarkDirty();

@@ -8,6 +8,8 @@ Palette palettes[NUM_PALETTES];
 Preset presets[NUM_PRESETS];
 Settings settings;
 Layout layout;
+PresetSync presetSync[NUM_PRESETS];
+LinkSettings linkSettings;
 
 static const uint32_t SCHEMA = 1;  // bump when a struct above changes
 static const uint32_t SAVE_DELAY_MS = 3000;
@@ -113,6 +115,8 @@ static void save() {
     prefs.putBytes("pal", palettes, sizeof(palettes));
     prefs.putBytes("pre", presets, sizeof(presets));
     prefs.putBytes("set", &settings, sizeof(settings));
+    prefs.putBytes("sync", presetSync, sizeof(presetSync));
+    prefs.putBytes("link", &linkSettings, sizeof(linkSettings));
     prefs.end();
     Serial.println("Settings saved");
 }
@@ -144,12 +148,27 @@ void storeLoad() {
     if (!(settings.gamma >= 1 && settings.gamma <= 3)) settings.gamma = 2.2f;
     if (!ok) save();
 
+    // Kept under their own keys: a missing or older one falls back to defaults on its own
     layoutDefaults();
+    for (PresetSync& y : presetSync) y = {0, 0, 0};
+    linkSettings = {0, 120, 20};
     prefs.begin("beamled", true);
     if (prefs.isKey("lay") && prefs.getBytesLength("lay") == sizeof(layout))
         prefs.getBytes("lay", &layout, sizeof(layout));
+    if (prefs.isKey("sync") && prefs.getBytesLength("sync") == sizeof(presetSync))
+        prefs.getBytes("sync", presetSync, sizeof(presetSync));
+    if (prefs.isKey("link") && prefs.getBytesLength("link") == sizeof(linkSettings))
+        prefs.getBytes("link", &linkSettings, sizeof(linkSettings));
     prefs.end();
     layoutSanitize(layout);
+    for (PresetSync& y : presetSync) {
+        y.tempo = y.tempo ? 1 : 0;
+        y.lock = y.lock ? 1 : 0;
+        if (!(y.pulse >= 0 && y.pulse <= 1)) y.pulse = 0;
+    }
+    linkSettings.enabled = linkSettings.enabled ? 1 : 0;
+    if (!(linkSettings.bpm >= 20 && linkSettings.bpm <= 999)) linkSettings.bpm = 120;
+    if (!(linkSettings.latencyMs >= 0 && linkSettings.latencyMs <= 500)) linkSettings.latencyMs = 20;
 }
 
 void storeMarkDirty() {

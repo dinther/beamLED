@@ -9,3 +9,7 @@ float engineFps();
 float engineRenderMs();
 int engineCurrent();              // preset playing, or being faded to
 void engineLayoutChanged();      // after editing `layout`: re-init positions, save
+
+struct BeatTime;
+const BeatTime& engineBeat();    // Ableton Link: tempo, beat, peers
+void engineSetTempo(double bpm); // own tempo; with Ableton Link enabled, everyone's
