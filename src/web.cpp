@@ -2,6 +2,8 @@
 
 #include <ArduinoJson.h>
 #include <esp_http_server.h>
+#include <esp_system.h>
+#include <esp_timer.h>
 #include <lwip/sockets.h>
 #include <nvs.h>
 
@@ -14,6 +16,22 @@
 #include "web_page.h"
 
 static bool restartRequested = false;
+
+// Why the board last started: power-on is normal; brown-out, watchdog or crash means trouble
+static const char* resetReasonText() {
+    switch (esp_reset_reason()) {
+        case ESP_RST_POWERON: return "power-on";
+        case ESP_RST_SW: return "restart";  // OTA update, network settings, Restart button
+        case ESP_RST_PANIC: return "crash";
+        case ESP_RST_INT_WDT:
+        case ESP_RST_TASK_WDT:
+        case ESP_RST_WDT: return "watchdog";
+        case ESP_RST_BROWNOUT: return "brown-out";
+        case ESP_RST_DEEPSLEEP: return "wake";
+        case ESP_RST_EXT: return "reset pin";
+        default: return "unknown";
+    }
+}
 // Counts changes the page shows but OSC doesn't carry (names, the preset list, layout, ...):
 // open pages reload when it moves. Values (brightness, sliders, colours) reach them as OSC.
 static volatile uint32_t revision = 0;
@@ -149,6 +167,8 @@ static void statusJson(JsonObject o) {
     o["rev"] = revision;
     o["autoLeft"] = roundf(engineAutoLeft() * 10) / 10;  // Auto: until the next change (s or bars), -1 = not running
     o["tempC"] = roundf(temperatureRead() * 10) / 10;  // the chip's own sensor: uncalibrated, may not work at all
+    o["uptime"] = (uint32_t)(esp_timer_get_time() / 1000000);  // seconds since start
+    o["resetReason"] = resetReasonText();
     uint32_t changed = 0;  // presets with unsaved edits, one bit each
     for (int i = 0; i < presetCount; i++)
         if (presetChanged(i)) changed |= 1u << i;

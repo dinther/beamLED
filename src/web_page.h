@@ -150,7 +150,7 @@ addEventListener('scroll', () => { if (!touch) hideTip(); }, true);
 const H = {
   on: 'Switches the ceiling on or off with a one-second fade, the same as a long press of the button on the board. Off keeps the board running, so it comes back where it was.',
   brightness: 'Master brightness for every preset. It works after the gamma curve, so 50% looks about half as bright. Saved, and kept after a power cut.',
-  status: 'Frames per second (the target is 40) and the time one frame takes to draw (25 ms is the budget). Temperature: the chip’s own sensor, uncalibrated, so watch it change rather than trust the exact number; 60-70 °C is normal. Then the network connection, WiFi, Ableton Link and the free memory.',
+  status: 'Frames per second (the target is 40) and the time one frame takes to draw (25 ms is the budget). Temperature: the chip’s own sensor, uncalibrated, so watch it change rather than trust the exact number; 60-70 °C is normal. Running: time since the board started, and why it started: power-on and restart (an update or a settings change) are normal; brown-out (the power supply dipped), watchdog or crash mean something went wrong. Then the network connection, WiFi, Ableton Link and the free memory.',
   auto: 'Auto: the presets change by themselves, every so many seconds, or every so many bars with Ableton Link (always on the bar line). Only the presets with In Auto ticked take part; the others are dimmed. Picking a preset by hand, here, with the button or over OSC, starts the count again from there. While the ceiling is off Auto waits. A double press of the button on the board turns Auto on, a short press turns it off.',
   autoEvery: 'How often Auto changes preset: a number of seconds, or a number of bars (4 beats each) on the beat grid of Ableton Link or the board\u2019s own tempo.',
   autoOrder: 'In order: the next preset in the list that is in Auto, round and round. Shuffle: a random one each time, never the same twice in a row.',
@@ -397,7 +397,7 @@ function draw() {
 
   app.append(heading('Status', H.status));
   const stats = h('dl', {className: 'stats'});
-  for (const [k, label] of [['frames', 'Frames'], ['temp', 'Temperature'], ['net', 'Network'], ['wifi', 'WiFi'], ['link', 'Ableton Link'], ['heap', 'Free memory']])
+  for (const [k, label] of [['frames', 'Frames'], ['temp', 'Temperature'], ['up', 'Running'], ['net', 'Network'], ['wifi', 'WiFi'], ['link', 'Ableton Link'], ['heap', 'Free memory']])
     stats.append(h('dt', {textContent: label}), h('dd', {id: 'st-' + k}));
   app.append(h('div', {className: 'card'}, stats));
   showStatus();
@@ -702,6 +702,10 @@ function showStatus() {
   st('net', S.net || '');
   st('wifi', S.wifi || '');
   st('link', !L.enabled ? 'Disabled' : (L.peers > 0 ? L.peers + ' peer' + (L.peers == 1 ? '' : 's') : 'no peers') + ' · ' + (L.bpm || 120) + ' BPM');
+  if (S.uptime != null) {
+    const u = S.uptime, d = Math.floor(u / 86400), hr = Math.floor(u / 3600) % 24, mi = Math.floor(u / 60) % 60;
+    st('up', (d ? d + ' d ' : '') + (d || hr ? hr + ' h ' : '') + mi + ' min · started by ' + (S.resetReason || '?'));
+  }
   st('heap', S.heap != null ? Math.round(S.heap / 1024) + ' KB' : '');
   const pe = document.getElementById('peers');
   if (pe) pe.textContent = L.enabled ? (L.peers > 0 ? L.peers + ' peer' + (L.peers == 1 ? '' : 's') : 'no peers') : '';
