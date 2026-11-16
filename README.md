@@ -83,7 +83,8 @@ shows ↔ and follows it on screen.
 ![A Motion](docs/images/ui_motion.png)
 
 A **Motion** moves one slider between From and To. Shapes: Sine, Linear, Ease in-out, Hold at
-ends, Overshoot and Bounce; the drawing shows one there-and-back. The period is in seconds or in
+ends, Overshoot, Bounce, Random (a new random value each half period, glided to) and Min max (From,
+then To, with no transition); the drawing shows one there-and-back. The period is in seconds or in
 beats; in beats it keeps to the bar. Phase sets where in its cycle it starts, so two motions can
 run out of step. Motions run on the board, not in the browser: the page only shows them.
 

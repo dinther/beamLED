@@ -27,4 +27,4 @@ void engineLayoutChanged();      // after editing `layout`: re-init positions, s
 struct BeatTime;
 const BeatTime& engineBeat();    // Ableton Link: tempo, beat, peers
 void engineSetTempo(double bpm); // own tempo; with Ableton Link enabled, everyone's
-void engineMotion(int m, float& phase, float& rate);  // the playing preset's motion m now
+void engineMotion(int m, float& phase, float& rate, uint32_t& cycle);  // the playing preset's motion m now

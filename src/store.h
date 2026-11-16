@@ -41,7 +41,8 @@ struct PresetSync {
 // A Motion moves one of the preset's sliders back and forth by itself, between From and To,
 // along a shape. Its period is one full there-and-back, in seconds or in beats (then it is on the
 // beat grid: From on the bar at phase 0). It doesn't change the slider's own value.
-enum MotionShape : uint8_t { SHAPE_SINE, SHAPE_LINEAR, SHAPE_EASE, SHAPE_HOLD, SHAPE_OVERSHOOT, SHAPE_BOUNCE, NUM_SHAPES };
+enum MotionShape : uint8_t { SHAPE_SINE, SHAPE_LINEAR, SHAPE_EASE, SHAPE_HOLD, SHAPE_OVERSHOOT, SHAPE_BOUNCE,
+                             SHAPE_RANDOM, SHAPE_MINMAX, NUM_SHAPES };
 struct Motion {
     uint8_t target;    // 0 = off, else the effect's parameter + 1
     uint8_t shape;     // MotionShape
@@ -52,7 +53,9 @@ struct Motion {
     float phase;       // 0..1: where in the cycle it starts
 };
 constexpr int MOTIONS = 2;
-float motionShape(uint8_t shape, float phase);  // 0..1 (Overshoot goes a little beyond)
+// 0..1 (Overshoot goes a little beyond). cycle: how many whole cycles have gone by (Random's values
+// come from it, so they are the same on every run and on the page); m: which motion (its own values).
+float motionShape(uint8_t shape, float phase, uint32_t cycle = 0, int m = 0);
 
 struct LinkSettings {
     uint8_t enabled;  // Ableton Link

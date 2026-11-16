@@ -99,7 +99,7 @@ static bool nodeInfo(int id, NodeInfo& n, char* path, size_t len) {
             if (mo.target && mo.target <= ef.n) lo = ef.params[mo.target - 1].min, hi = ef.params[mo.target - 1].max;
             switch (k) {
                 case M_TARGET: n = {'i', 3, true, 0, (float)ef.n, "Motion: the slider it moves back and forth, by its place in the list on the web page: 0 = off, 1 = the first slider, 2 = the second, and so on."}; break;
-                case M_SHAPE: n = {'i', 3, true, 0, NUM_SHAPES - 1, "Motion: how it moves between the ends. 0 = sine (smooth, like a pendulum), 1 = linear (steady, turning sharply), 2 = ease in-out (slow at the ends), 3 = hold (rests at each end), 4 = overshoot (a little past each end), 5 = bounce."}; break;
+                case M_SHAPE: n = {'i', 3, true, 0, NUM_SHAPES - 1, "Motion: how it moves between the ends. 0 = sine (smooth, like a pendulum), 1 = linear (steady, turning sharply), 2 = ease in-out (slow at the ends), 3 = hold (rests at each end), 4 = overshoot (a little past each end), 5 = bounce, 6 = random (a new random value between the ends each half period, eased), 7 = min max (From for the first half, To for the second, with no transition)."}; break;
                 case M_FROM: n = {'f', 3, true, lo, hi, "Motion: one end, in the slider's own units."}; break;
                 case M_TO: n = {'f', 3, true, lo, hi, "Motion: the other end, in the slider's own units."}; break;
                 case M_SECONDS: n = {'f', 3, true, 0.25f, 120, "Motion: one full there-and-back, in seconds (when beats is 0). Following the tempo when the preset does."}; break;

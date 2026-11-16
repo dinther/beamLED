@@ -407,8 +407,21 @@ static float bounceOut(float t) {
 
 static float easeInOut(float x) { return x < 0.5f ? 4 * x * x * x : 1 - powf(-2 * x + 2, 3) * 0.5f; }
 
-float motionShape(uint8_t shape, float ph) {
+// Random: a value 0..1 for half-cycle n, the same everywhere (the page has this hash too)
+static float randomAt(uint32_t n, int m) {
+    uint32_t x = n * 2654435761u + (uint32_t)m * 40503u + 12345u;
+    x ^= x >> 16; x *= 0x7feb352du; x ^= x >> 15; x *= 0x846ca68bu; x ^= x >> 16;
+    return (x >> 8) / 16777216.f;
+}
+
+float motionShape(uint8_t shape, float ph, uint32_t cycle, int m) {
     ph -= floorf(ph);
+    if (shape == SHAPE_MINMAX) return ph < 0.5f ? 0.f : 1.f;  // From, then To: no transition
+    if (shape == SHAPE_RANDOM) {  // to a new random value each half cycle, eased
+        const uint32_t n = cycle * 2 + (ph < 0.5f ? 0 : 1);
+        const float a = randomAt(n - 1, m), b = randomAt(n, m), u = ph < 0.5f ? ph * 2 : ph * 2 - 1;
+        return a + (b - a) * easeInOut(u);
+    }
     if (shape == SHAPE_SINE) return 0.5f - 0.5f * cosf(6.2831853f * ph);
     if (shape == SHAPE_BOUNCE) return ph < 0.5f ? bounceOut(2 * ph) : 1 - bounceOut(2 * ph - 1);
     const float x = ph < 0.5f ? 2 * ph : 2 - 2 * ph;  // there, then back

@@ -153,10 +153,12 @@ static void statusJson(JsonObject o) {
     JsonArray mo = o["motion"].to<JsonArray>();
     for (int m = 0; m < MOTIONS; m++) {
         float ph, rate;
-        engineMotion(m, ph, rate);
+        uint32_t cycle;
+        engineMotion(m, ph, rate, cycle);
         JsonArray a = mo.add<JsonArray>();
         a.add(ph);
         a.add(rate);
+        a.add(cycle);
     }
     o["fps"] = roundf(engineFps() * 10) / 10;
     o["renderMs"] = roundf(engineRenderMs() * 10) / 10;

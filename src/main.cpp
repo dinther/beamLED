@@ -19,6 +19,7 @@ static uint8_t outLut[256];
 static float effState[MAXP];
 static float motionAcc[MOTIONS];                    // time-based motions: cycles so far
 static float motionNow[MOTIONS], motionRate[MOTIONS];  // for the page: phase now, cycles per second
+static uint32_t motionCycles[MOTIONS], motionCycle[MOTIONS];  // whole cycles so far (time-based); the cycle now
 static ArtNetOut artnet;
 
 static bool isOn = true;
@@ -45,6 +46,7 @@ static void activate(int i) {
     settings.current = i;
     memset(effState, 0, sizeof(effState));
     memset(motionAcc, 0, sizeof(motionAcc));
+    memset(motionCycles, 0, sizeof(motionCycles));
     storeMarkDirty();
     Serial.printf("Preset %d: %s\n", i + 1, presets[i].name);
 }
@@ -90,9 +92,11 @@ float engineRenderMs() { return renderMs; }
 float engineSendMs() { return artnet.sendMs(); }
 int engineCurrent() { return pending >= 0 ? pending : settings.current; }
 const BeatTime& engineBeat() { return beat; }
-void engineMotion(int m, float& phase, float& rate) {
-    phase = m >= 0 && m < MOTIONS ? motionNow[m] : 0;
-    rate = m >= 0 && m < MOTIONS ? motionRate[m] : 0;
+void engineMotion(int m, float& phase, float& rate, uint32_t& cycle) {
+    const bool ok = m >= 0 && m < MOTIONS;
+    phase = ok ? motionNow[m] : 0;
+    rate = ok ? motionRate[m] : 0;
+    cycle = ok ? motionCycle[m] : 0;
 }
 
 void engineSetTempo(double bpm) {
@@ -192,20 +196,26 @@ static void renderFrame(float dt) {
         motionRate[m] = 0;
         if (!mo.target || mo.target > e.n) continue;
         float ph;
+        uint32_t cycle;
         if (mo.inBeats) {  // on the beat grid
             const double per = 1 << mo.beatsExp, x = beat.beat / per + mo.phase;
             ph = (float)(x - floor(x));
+            cycle = (uint32_t)(int64_t)floor(x);
             motionRate[m] = (float)(beat.bpm / 60.0 / per);
         } else {  // in time (following the tempo when the preset does)
             motionAcc[m] += edt / mo.seconds;
-            motionAcc[m] -= floorf(motionAcc[m]);
+            const float whole = floorf(motionAcc[m]);
+            motionCycles[m] += (uint32_t)whole;
+            motionAcc[m] -= whole;
             ph = motionAcc[m] + mo.phase;
+            cycle = motionCycles[m] + (uint32_t)floorf(ph);
             ph -= floorf(ph);
             motionRate[m] = (dt > 0 ? edt / dt : 1.f) / mo.seconds;
         }
         motionNow[m] = ph;
+        motionCycle[m] = cycle;
         const ParamDef& d = e.params[mo.target - 1];
-        float v = mo.from + (mo.to - mo.from) * motionShape(mo.shape, ph);
+        float v = mo.from + (mo.to - mo.from) * motionShape(mo.shape, ph, cycle, m);
         v = constrain(v, d.min, d.max);
         if (d.step >= 1) v = roundf(v);
         pp[mo.target - 1] = v;
