@@ -148,6 +148,7 @@ static void statusJson(JsonObject o) {
     o["brightness"] = settings.brightness;
     o["rev"] = revision;
     o["autoLeft"] = roundf(engineAutoLeft() * 10) / 10;  // Auto: until the next change (s or bars), -1 = not running
+    o["tempC"] = roundf(temperatureRead() * 10) / 10;  // the chip's own sensor: uncalibrated, may not work at all
     uint32_t changed = 0;  // presets with unsaved edits, one bit each
     for (int i = 0; i < presetCount; i++)
         if (presetChanged(i)) changed |= 1u << i;

@@ -44,7 +44,11 @@ select,input[type=text],input[type=password],input[type=number]{flex:1;min-width
 .pal .del{margin-left:auto}
 .pal-add{margin-top:8px}
 .pal button{padding:4px 10px}
-.status{color:var(--dim);font-size:13px;margin-top:6px}
+.conn{color:var(--warn);font-size:13px;margin:4px 0}
+.conn:empty{display:none}
+.stats{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:14px}
+.stats dt{color:var(--dim)}
+.stats dd{margin:0;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
 .nets button{display:block;width:100%;text-align:left;margin:3px 0}
 .hint{color:var(--dim);font-size:13px}
 .unis{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px 12px;margin:6px 0 10px}
@@ -146,7 +150,7 @@ addEventListener('scroll', () => { if (!touch) hideTip(); }, true);
 const H = {
   on: 'Switches the ceiling on or off with a one-second fade, the same as a long press of the button on the board. Off keeps the board running, so it comes back where it was.',
   brightness: 'Master brightness for every preset. It works after the gamma curve, so 50% looks about half as bright. Saved, and kept after a power cut.',
-  status: 'Frames per second (the target is 40) and the time one frame takes to draw (25 ms is the budget), the network connection, WiFi, Ableton Link and OSC.',
+  status: 'Frames per second (the target is 40) and the time one frame takes to draw (25 ms is the budget). Temperature: the chip’s own sensor, uncalibrated, so watch it change rather than trust the exact number; 60-70 °C is normal. Then the network connection, WiFi, Ableton Link and the free memory.',
   auto: 'Auto: the presets change by themselves, every so many seconds, or every so many bars with Ableton Link (always on the bar line). Only the presets with In Auto ticked take part; the others are dimmed. Picking a preset by hand, here, with the button or over OSC, starts the count again from there. While the ceiling is off Auto waits. A double press of the button on the board turns Auto on, a short press turns it off.',
   autoEvery: 'How often Auto changes preset: a number of seconds, or a number of bars (4 beats each) on the beat grid of Ableton Link or the board\u2019s own tempo.',
   autoOrder: 'In order: the next preset in the list that is in Auto, round and round. Shuffle: a random one each time, never the same twice in a row.',
@@ -264,10 +268,10 @@ function draw() {
   const onb = button(S.on ? 'On' : 'Off', H.on, {className: S.on ? 'on' : ''});
   onb.onclick = () => { S.on = !S.on; post('/api/set', {on: S.on}); draw(); };
   app.append(h('div', {className: 'top'}, h('h1', {textContent: 'beamLED'}), onb));
+  app.append(h('div', {className: 'conn', id: 'status'}));  // only when the board can't be reached
   app.append(h('div', {className: 'card'},
     slider('Brightness', 0, 255, 1, S.brightness, v => Math.round(v / 2.55) + '%',
-      v => { S.brightness = v; liveSend('/beamled/brightness', v / 255, () => post('/api/set', {brightness: v}), true); }, H.brightness, 'brightness'),
-    tip(h('div', {className: 'status', id: 'status'}), H.status)));
+      v => { S.brightness = v; liveSend('/beamled/brightness', v / 255, () => post('/api/set', {brightness: v}), true); }, H.brightness, 'brightness')));
 
   app.append(heading('Presets', H.presets));
   const g = h('div', {className: 'presets'});
@@ -390,6 +394,12 @@ function draw() {
 
   app.append(h('h2', {textContent: 'Network'}));
   app.append(networkCard());
+
+  app.append(heading('Status', H.status));
+  const stats = h('dl', {className: 'stats'});
+  for (const [k, label] of [['frames', 'Frames'], ['temp', 'Temperature'], ['net', 'Network'], ['wifi', 'WiFi'], ['link', 'Ableton Link'], ['heap', 'Free memory']])
+    stats.append(h('dt', {textContent: label}), h('dd', {id: 'st-' + k}));
+  app.append(h('div', {className: 'card'}, stats));
   showStatus();
 }
 
@@ -685,12 +695,14 @@ function linkCard() {
 }
 
 function showStatus() {
-  const el = document.getElementById('status');
   const L = S.link || {};
-  const link = !L.enabled ? 'Ableton Link disabled'
-    : 'Ableton Link · ' + (L.peers > 0 ? L.peers + ' peer' + (L.peers == 1 ? '' : 's') : 'no peers');
-  if (el) el.textContent = S.fps + ' fps, render ' + S.renderMs + ' ms · ' + S.net + ' · WiFi: ' + S.wifi +
-    ' · ' + link + ' · ' + (L.bpm || 120) + ' BPM';
+  const st = (k, t) => { const e = document.getElementById('st-' + k); if (e) e.textContent = t; };
+  st('frames', S.fps + ' fps · render ' + S.renderMs + ' ms');
+  st('temp', S.tempC != null ? Math.round(S.tempC) + ' °C (chip)' : '');
+  st('net', S.net || '');
+  st('wifi', S.wifi || '');
+  st('link', !L.enabled ? 'Disabled' : (L.peers > 0 ? L.peers + ' peer' + (L.peers == 1 ? '' : 's') : 'no peers') + ' · ' + (L.bpm || 120) + ' BPM');
+  st('heap', S.heap != null ? Math.round(S.heap / 1024) + ' KB' : '');
   const pe = document.getElementById('peers');
   if (pe) pe.textContent = L.enabled ? (L.peers > 0 ? L.peers + ' peer' + (L.peers == 1 ? '' : 's') : 'no peers') : '';
   const b = document.getElementById('bpm');
