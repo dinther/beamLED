@@ -25,7 +25,11 @@ static const char* const GLOBAL_NAME[NUM_GLOBALS] = {"preset", "next", "prev", "
 
 enum PSlot : uint8_t { P_PLAY, P_EFFECT, P_PALETTE, P_SPARKLE, P_TIMING, P_BEATS, P_REVERSE, P_PULSE, P_FIXED };
 static const char* const PSLOT_NAME[P_FIXED] = {"play", "effect", "palette", "sparkle", "timing", "beats", "reverse", "pulse"};
-static const int PSLOTS = P_FIXED + MAXP;
+// After a preset's parameters: its motions' settings
+enum MSlot : uint8_t { M_TARGET, M_SHAPE, M_FROM, M_TO, M_SECONDS, M_BEATS, M_PHASE, MSLOTS };
+static const char* const MSLOT_NAME[MSLOTS] = {"target", "shape", "from", "to", "seconds", "beats", "phase"};
+static const int M_BASE = P_FIXED + MAXP;
+static const int PSLOTS = M_BASE + MOTIONS * MSLOTS;
 static const int CSLOTS = 1 + PAL_MAX;  // the colour count, then the colours
 
 static const int PRESET_BASE = NUM_GLOBALS;
@@ -86,6 +90,24 @@ static bool nodeInfo(int id, NodeInfo& n, char* path, size_t len) {
         const int i = (id - PRESET_BASE) / PSLOTS, slot = (id - PRESET_BASE) % PSLOTS;
         if (i >= presetCount) return false;
         const Preset& p = presets[i];
+        if (slot >= M_BASE) {
+            const int m = (slot - M_BASE) / MSLOTS, k = (slot - M_BASE) % MSLOTS;
+            const Motion& mo = presetMotion[i][m];
+            const EffectDef& ef = EFFECTS[p.effect];
+            snprintf(path, len, "/beamled/presets/%d/motion%d_%s", i + 1, m + 1, MSLOT_NAME[k]);
+            float lo = 0, hi = 1;
+            if (mo.target && mo.target <= ef.n) lo = ef.params[mo.target - 1].min, hi = ef.params[mo.target - 1].max;
+            switch (k) {
+                case M_TARGET: n = {'i', 3, true, 0, (float)ef.n, "Motion: the slider it moves back and forth, by its place in the list on the web page: 0 = off, 1 = the first slider, 2 = the second, and so on."}; break;
+                case M_SHAPE: n = {'i', 3, true, 0, NUM_SHAPES - 1, "Motion: how it moves between the ends. 0 = sine (smooth, like a pendulum), 1 = linear (steady, turning sharply), 2 = ease in-out (slow at the ends), 3 = hold (rests at each end), 4 = overshoot (a little past each end), 5 = bounce."}; break;
+                case M_FROM: n = {'f', 3, true, lo, hi, "Motion: one end, in the slider's own units."}; break;
+                case M_TO: n = {'f', 3, true, lo, hi, "Motion: the other end, in the slider's own units."}; break;
+                case M_SECONDS: n = {'f', 3, true, 0.25f, 120, "Motion: one full there-and-back, in seconds (when beats is 0). Following the tempo when the preset does."}; break;
+                case M_BEATS: n = {'i', 3, true, 0, 64, "Motion: 0 = its period is in seconds; 1, 2, 4 ... 64 = one there-and-back takes that many beats, on the beat grid (at phase 0 it is at From on the bar)."}; break;
+                case M_PHASE: n = {'f', 3, true, 0, 1, "Motion: where in its cycle it is, 0..1: 0 = at From, 0.5 = at To. Two motions out of step, say."}; break;
+            }
+            return true;
+        }
         if (slot >= P_FIXED) {
             const int j = slot - P_FIXED;
             if (!paramPath(i, p.effect, j, path, len)) return false;
@@ -136,6 +158,19 @@ static bool nodeValue(int id, char type, uint32_t& v) {
         const int k = (id - PRESET_BASE) / PSLOTS, slot = (id - PRESET_BASE) % PSLOTS;
         const Preset& p = presets[k];
         const PresetSync& y = presetSync[k];
+        if (slot >= M_BASE) {
+            const Motion& mo = presetMotion[k][(slot - M_BASE) / MSLOTS];
+            switch ((slot - M_BASE) % MSLOTS) {
+                case M_TARGET: return i(mo.target);
+                case M_SHAPE: return i(mo.shape);
+                case M_FROM: return f(mo.from);
+                case M_TO: return f(mo.to);
+                case M_SECONDS: return f(mo.seconds);
+                case M_BEATS: return i(mo.inBeats ? 1 << mo.beatsExp : 0);
+                case M_PHASE: return f(mo.phase);
+            }
+            return false;
+        }
         if (slot >= P_FIXED) return type == 'i' ? i((int)lroundf(p.p[slot - P_FIXED])) : f(p.p[slot - P_FIXED]);
         switch (slot) {
             case P_PLAY: return i(engineCurrent() == k);
@@ -171,6 +206,9 @@ static int findNode(const char* path) {
         const int base = PRESET_BASE + i * PSLOTS;
         for (int s = 0; s < P_FIXED; s++)
             if (!strcmp(name, PSLOT_NAME[s])) return base + s;
+        if (!strncmp(name, "motion", 6) && name[6] >= '1' && name[6] < '1' + MOTIONS && name[7] == '_')
+            for (int k = 0; k < MSLOTS; k++)
+                if (!strcmp(name + 8, MSLOT_NAME[k])) return base + M_BASE + (name[6] - '1') * MSLOTS + k;
         const EffectDef& ef = EFFECTS[presets[i].effect];
         for (int j = 0; j < ef.n; j++) {
             char s[32];
@@ -288,6 +326,32 @@ static void apply(const char* path, const Arg* a, int n) {
         const int i = (id - PRESET_BASE) / PSLOTS, slot = (id - PRESET_BASE) % PSLOTS;
         Preset& p = presets[i];
         PresetSync& y = presetSync[i];
+        if (slot >= M_BASE) {
+            Motion& mo = presetMotion[i][(slot - M_BASE) / MSLOTS];
+            const EffectDef& ef = EFFECTS[p.effect];
+            switch ((slot - M_BASE) % MSLOTS) {
+                case M_TARGET:
+                    if ((int)v != mo.target) {
+                        mo.target = (int)v;
+                        if (mo.target) {  // a new slider: its whole range to start with
+                            mo.from = ef.params[mo.target - 1].min;
+                            mo.to = ef.params[mo.target - 1].max;
+                        }
+                        webChanged();  // the page shows the motion's settings
+                    }
+                    break;
+                case M_SHAPE: mo.shape = (int)v; break;
+                case M_FROM: mo.from = v; break;
+                case M_TO: mo.to = v; break;
+                case M_SECONDS: mo.seconds = v; break;
+                case M_BEATS:
+                    mo.inBeats = v >= 0.5f;
+                    if (mo.inBeats) mo.beatsExp = constrain((int)lroundf(log2f(v)), 0, 6);
+                    break;
+                case M_PHASE: mo.phase = v; break;
+            }
+            return;
+        }
         if (slot >= P_FIXED) {
             p.p[slot - P_FIXED] = v;
             return;
@@ -299,7 +363,7 @@ static void apply(const char* path, const Arg* a, int n) {
             case P_EFFECT:
                 if ((int)v - 1 != p.effect) {
                     webChanged();  // the page shows the new effect's sliders
-                    presetSetEffect(p, (int)v - 1);
+                    presetChangeEffect(i, (int)v - 1);
                     if (i == settings.current) engineResetEffect();
                 }
                 break;
@@ -574,6 +638,13 @@ static void writeTree(Out& o, const char* path) {
     }
 }
 
+// A browser (rather than an OSCQuery client) asking: it accepts HTML
+static bool wantsHtml(httpd_req_t* req) {
+    char a[160] = "";
+    httpd_req_get_hdr_value_str(req, "Accept", a, sizeof(a));
+    return strstr(a, "text/html") != nullptr;
+}
+
 static esp_err_t serveHttp(httpd_req_t* req) {
     httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
     char path[96];
@@ -624,6 +695,7 @@ static esp_err_t serveHttp(httpd_req_t* req) {
         httpd_resp_set_type(req, "application/json");
         writeTree(o, path);  // attributes of a container: the container itself
     } else {
+        if (wantsHtml(req)) return webRedirect(req);  // a browser: to the page
         httpd_resp_set_status(req, "404 Not Found");
         return httpd_resp_send(req, "no such address", HTTPD_RESP_USE_STRLEN);
     }
@@ -646,7 +718,7 @@ static Listener listeners[MAX_LISTENERS];
 static volatile int listenerCount = 0;
 static volatile bool pushQueued = false;
 
-static uint32_t lastValue[NUM_NODES];
+static uint32_t* lastValue = nullptr;  // NUM_NODES, from the heap (static DRAM is full)
 static uint32_t known[WORDS];  // lastValue holds what listeners were last sent
 static uint8_t treeEffect[MAX_PRESETS];
 static int treeCount = -1;     // the presets listeners know about (-1: none yet)
@@ -723,7 +795,7 @@ static void updateTree() {
                 if (paramPath(i, treeEffect[i], j, p, sizeof(p))) notifyPath("PATH_REMOVED", p);
             for (int j = 0; j < MAXP; j++)
                 if (paramPath(i, presets[i].effect, j, p, sizeof(p))) notifyPath("PATH_ADDED", p);
-            forget(base + P_FIXED, base + PSLOTS);
+            forget(base + P_FIXED, base + M_BASE);
         }
         if (is) treeEffect[i] = presets[i].effect;
     }
@@ -876,6 +948,10 @@ static esp_err_t onRequest(httpd_req_t* req) {
             }
             return ESP_OK;
         }
+        // The web page and its API share this server (port 80) with OSCQuery
+        esp_err_t r;
+        if (!strncmp(req->uri, "/api/", 5) && webApi(req, r)) return r;
+        if ((!strcmp(req->uri, "/") || !strcmp(req->uri, "/index.html")) && wantsHtml(req)) return webPage(req);
         return serveHttp(req);
     }
     httpd_ws_frame_t f = {};
@@ -904,6 +980,13 @@ static esp_err_t onOpen(httpd_handle_t, int fd) {
     const int one = 1;
     setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
     return ESP_OK;
+}
+
+static esp_err_t onPost(httpd_req_t* req) {
+    esp_err_t r;
+    if (!strncmp(req->uri, "/api/", 5) && webApi(req, r)) return r;
+    httpd_resp_set_status(req, "404 Not Found");
+    return httpd_resp_send(req, "no such address", HTTPD_RESP_USE_STRLEN);
 }
 
 static void onClose(httpd_handle_t, int fd) {
@@ -941,24 +1024,33 @@ static void start() {
     }
 
     chunkBuf = (char*)malloc(CHUNK);
+    lastValue = (uint32_t*)calloc(NUM_NODES, sizeof(uint32_t));
     bundle = (uint8_t (*)[BUNDLE_MAX])malloc(MAX_LISTENERS * BUNDLE_MAX);
     httpd_config_t c = HTTPD_DEFAULT_CONFIG();
     c.server_port = cfg::OSCQUERY_PORT;
     c.ctrl_port = 32770;
-    c.max_open_sockets = MAX_LISTENERS + 1;  // the listeners and one plain request at a time
+    // Below what lwIP has left (16 sockets in all: Link 3, this server's own 2, OSC/Art-Net 1, OTA 1,
+    // the hotspot's DNS or the DHCP probe 1): with 5, a new connection closes the one idle longest
+    // (a browser's unused spare), instead of lwIP refusing it
+    c.max_open_sockets = 5;
     c.lru_purge_enable = true;
     c.uri_match_fn = httpd_uri_match_wildcard;
     c.open_fn = onOpen;
     c.close_fn = onClose;
     c.core_id = 0;  // with the network stack; the render loop has core 1
-    c.stack_size = 6144;
-    if (chunkBuf && bundle && httpd_start(&server, &c) == ESP_OK) {
+    c.stack_size = 8192;  // the web API's JSON too
+    if (chunkBuf && bundle && lastValue && httpd_start(&server, &c) == ESP_OK) {
         httpd_uri_t u = {};
         u.uri = "/*";
         u.method = HTTP_GET;
         u.handler = onRequest;
         u.is_websocket = true;
         httpd_register_uri_handler(server, &u);
+        httpd_uri_t post = {};
+        post.uri = "/*";
+        post.method = HTTP_POST;
+        post.handler = onPost;
+        httpd_register_uri_handler(server, &post);
         MDNS.addService("oscjson", "tcp", cfg::OSCQUERY_PORT);
     } else {
         server = nullptr;
@@ -974,6 +1066,7 @@ void oscLoop() {
         if (!netCanSend()) return;
         start();
     }
+    EngineLock lock;  // the web API changes the same things from the HTTP server's task
     // OSC that came over the WebSocket (the page's sliders)
     if (wsIn) {
         static WsPacket pk;
@@ -999,6 +1092,8 @@ void oscLoop() {
         if (httpd_queue_work(server, push, nullptr) != ESP_OK) pushQueued = false;
     }
 }
+
+int oscUdpSocket() { return udpSocket; }
 
 String oscStatusText() {
     if (!started) return "OSC: waiting for the network";

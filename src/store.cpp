@@ -14,6 +14,9 @@ PresetSync presetSync[MAX_PRESETS];
 // stores and Revert goes back to. From the heap: static DRAM is full.
 static Preset* savedPresets = nullptr;
 static PresetSync* savedSync = nullptr;
+Motion (*presetMotion)[MOTIONS] = nullptr;      // what plays
+static Motion (*savedMotion)[MOTIONS] = nullptr;  // as saved
+static const Motion MOTION_OFF = {0, SHAPE_SINE, 0, 3, 0, 1, 8, 0};
 LinkSettings linkSettings;
 
 static const uint32_t SCHEMA = 1;  // bump when a struct above changes
@@ -127,6 +130,7 @@ static void save() {
     prefs.putBytes("set", &settings, sizeof(settings));
     prefs.putBytes("syncs", savedSync, presetCount * sizeof(PresetSync));
     prefs.putBytes("link", &linkSettings, sizeof(linkSettings));
+    prefs.putBytes("mots", savedMotion, presetCount * sizeof(Motion) * MOTIONS);
     if (prefs.isKey("pre")) prefs.remove("pre");
     if (prefs.isKey("sync")) prefs.remove("sync");
     prefs.end();
@@ -192,9 +196,28 @@ void storeLoad() {
     if (!(linkSettings.latencyMs >= 0 && linkSettings.latencyMs <= 500)) linkSettings.latencyMs = 20;
     if (!savedPresets) savedPresets = (Preset*)calloc(MAX_PRESETS, sizeof(Preset));
     if (!savedSync) savedSync = (PresetSync*)calloc(MAX_PRESETS, sizeof(PresetSync));
+    if (!presetMotion) presetMotion = (Motion (*)[MOTIONS])calloc(MAX_PRESETS, sizeof(Motion) * MOTIONS);
+    if (!savedMotion) savedMotion = (Motion (*)[MOTIONS])calloc(MAX_PRESETS, sizeof(Motion) * MOTIONS);
+    // Motions have their own key: presets saved before there were motions get none
+    for (int i = 0; i < MAX_PRESETS; i++)
+        for (int m = 0; m < MOTIONS; m++) presetMotion[i][m] = MOTION_OFF;
+    prefs.begin("beamled", true);
+    if (ok && prefs.isKey("mots") && prefs.getBytesLength("mots") == presetCount * sizeof(Motion) * MOTIONS)
+        prefs.getBytes("mots", presetMotion, presetCount * sizeof(Motion) * MOTIONS);
+    prefs.end();
+    for (int i = 0; i < presetCount; i++)
+        for (Motion& mo : presetMotion[i]) {
+            if (mo.target > EFFECTS[presets[i].effect].n || mo.shape >= NUM_SHAPES) mo = MOTION_OFF;
+            mo.inBeats = mo.inBeats ? 1 : 0;
+            if (mo.beatsExp > 6) mo.beatsExp = 3;
+            if (!(mo.seconds >= 0.25f && mo.seconds <= 600)) mo.seconds = 8;
+            if (!(mo.phase >= 0 && mo.phase <= 1)) mo.phase = 0;
+            if (!isfinite(mo.from) || !isfinite(mo.to)) mo = MOTION_OFF;
+        }
     for (int i = 0; i < MAX_PRESETS; i++) {
         savedPresets[i] = presets[i];
         savedSync[i] = presetSync[i];
+        for (int m = 0; m < MOTIONS; m++) savedMotion[i][m] = presetMotion[i][m];
     }
     if (!ok || old) save();
 }
@@ -208,18 +231,28 @@ static bool samePreset(const Preset& a, const Preset& b) {
     return true;  // the name is saved at once, so it never differs
 }
 
+static bool sameMotion(const Motion& a, const Motion& b) {
+    return a.target == b.target && (!a.target || (a.shape == b.shape && a.inBeats == b.inBeats && a.beatsExp == b.beatsExp &&
+           a.from == b.from && a.to == b.to && a.seconds == b.seconds && a.phase == b.phase));
+}
+
 static bool sameSync(const PresetSync& a, const PresetSync& b) {
     return a.timing == b.timing && a.beatsExp == b.beatsExp && a.reverse == b.reverse && a.pulse == b.pulse;
 }
 
 bool presetChanged(int i) {
-    return i >= 0 && i < presetCount && (!samePreset(presets[i], savedPresets[i]) || !sameSync(presetSync[i], savedSync[i]));
+    if (i < 0 || i >= presetCount) return false;
+    if (!samePreset(presets[i], savedPresets[i]) || !sameSync(presetSync[i], savedSync[i])) return true;
+    for (int m = 0; m < MOTIONS; m++)
+        if (!sameMotion(presetMotion[i][m], savedMotion[i][m])) return true;
+    return false;
 }
 
 void presetSave(int i) {
     if (i < 0 || i >= presetCount) return;
     savedPresets[i] = presets[i];
     savedSync[i] = presetSync[i];
+    for (int m = 0; m < MOTIONS; m++) savedMotion[i][m] = presetMotion[i][m];
     storeMarkDirty();
 }
 
@@ -231,6 +264,13 @@ void presetRevert(int i) {
     if (i < 0 || i >= presetCount) return;
     presets[i] = savedPresets[i];
     presetSync[i] = savedSync[i];
+    for (int m = 0; m < MOTIONS; m++) presetMotion[i][m] = savedMotion[i][m];
+}
+
+void presetChangeEffect(int i, uint8_t effect) {
+    if (i < 0 || i >= presetCount) return;
+    presetSetEffect(presets[i], effect);
+    for (int m = 0; m < MOTIONS; m++) presetMotion[i][m] = MOTION_OFF;  // their sliders are gone
 }
 
 void presetRename(int i, const char* name) {
@@ -250,8 +290,10 @@ int presetAdd(int from) {
     char name[sizeof(presets[i].name)];
     snprintf(name, sizeof(name), "%.14s copy", presets[from].name);
     strlcpy(presets[i].name, name, sizeof(presets[i].name));
+    for (int m = 0; m < MOTIONS; m++) presetMotion[i][m] = presetMotion[from][m];
     savedPresets[i] = presets[i];  // a new preset is saved as it is
     savedSync[i] = presetSync[i];
+    for (int m = 0; m < MOTIONS; m++) savedMotion[i][m] = presetMotion[i][m];
     storeMarkDirty();
     return i;
 }
@@ -264,6 +306,10 @@ bool presetDelete(int i) {
         presetSync[k] = presetSync[k + 1];
         savedPresets[k] = savedPresets[k + 1];
         savedSync[k] = savedSync[k + 1];
+        for (int m = 0; m < MOTIONS; m++) {
+            presetMotion[k][m] = presetMotion[k + 1][m];
+            savedMotion[k][m] = savedMotion[k + 1][m];
+        }
     }
     presetCount--;
     presetSync[presetCount] = savedSync[presetCount] = SYNC_DEFAULT;
@@ -274,6 +320,8 @@ bool presetDelete(int i) {
 // Moves preset `from` to position `to`, shifting the ones between.
 bool presetMove(int from, int to) {
     if (from < 0 || from >= presetCount || to < 0 || to >= presetCount || from == to) return false;
+    Motion mo[MOTIONS], smo[MOTIONS];
+    for (int m = 0; m < MOTIONS; m++) { mo[m] = presetMotion[from][m]; smo[m] = savedMotion[from][m]; }
     const Preset p = presets[from], sp = savedPresets[from];
     const PresetSync y = presetSync[from], sy = savedSync[from];
     const int d = to > from ? 1 : -1;
@@ -282,13 +330,49 @@ bool presetMove(int from, int to) {
         presetSync[k] = presetSync[k + d];
         savedPresets[k] = savedPresets[k + d];
         savedSync[k] = savedSync[k + d];
+        for (int m = 0; m < MOTIONS; m++) {
+            presetMotion[k][m] = presetMotion[k + d][m];
+            savedMotion[k][m] = savedMotion[k + d][m];
+        }
     }
     presets[to] = p;
     presetSync[to] = y;
     savedPresets[to] = sp;
     savedSync[to] = sy;
+    for (int m = 0; m < MOTIONS; m++) { presetMotion[to][m] = mo[m]; savedMotion[to][m] = smo[m]; }
     storeMarkDirty();
     return true;
+}
+
+// ---- Motion shapes: phase 0..1 is one there-and-back; 0 at From, 1 at To
+
+static float bounceOut(float t) {
+    const float n = 7.5625f, d = 2.75f;
+    if (t < 1 / d) return n * t * t;
+    if (t < 2 / d) { t -= 1.5f / d; return n * t * t + 0.75f; }
+    if (t < 2.5f / d) { t -= 2.25f / d; return n * t * t + 0.9375f; }
+    t -= 2.625f / d;
+    return n * t * t + 0.984375f;
+}
+
+static float easeInOut(float x) { return x < 0.5f ? 4 * x * x * x : 1 - powf(-2 * x + 2, 3) * 0.5f; }
+
+float motionShape(uint8_t shape, float ph) {
+    ph -= floorf(ph);
+    if (shape == SHAPE_SINE) return 0.5f - 0.5f * cosf(6.2831853f * ph);
+    if (shape == SHAPE_BOUNCE) return ph < 0.5f ? bounceOut(2 * ph) : 1 - bounceOut(2 * ph - 1);
+    const float x = ph < 0.5f ? 2 * ph : 2 - 2 * ph;  // there, then back
+    switch (shape) {
+        case SHAPE_LINEAR: return x;
+        case SHAPE_EASE: return easeInOut(x);
+        case SHAPE_HOLD: return easeInOut(constrain((x - 0.15f) / 0.7f, 0.f, 1.f));  // rests at both ends
+        case SHAPE_OVERSHOOT: {  // a little past each end before settling
+            const float c = 1.70158f * 1.525f;
+            return x < 0.5f ? (4 * x * x * ((c + 1) * 2 * x - c)) * 0.5f
+                            : ((2 * x - 2) * (2 * x - 2) * ((c + 1) * (2 * x - 2) + c) + 2) * 0.5f;
+        }
+    }
+    return x;
 }
 
 void storeMarkDirty() {

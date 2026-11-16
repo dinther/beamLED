@@ -1,7 +1,8 @@
 #include "web.h"
 
 #include <ArduinoJson.h>
-#include <WebServer.h>
+#include <esp_http_server.h>
+#include <lwip/sockets.h>
 
 #include "engine.h"
 #include "link_clock.h"
@@ -11,7 +12,6 @@
 #include "store.h"
 #include "web_page.h"
 
-static WebServer server(80);
 static bool restartRequested = false;
 // Counts changes the page shows but OSC doesn't carry (names, the preset list, layout, ...):
 // open pages reload when it moves. Values (brightness, sliders, colours) reach them as OSC.
@@ -30,15 +30,43 @@ static CRGB parseColour(const char* s) {
     return CRGB((uint32_t)strtoul(s + 1, nullptr, 16));
 }
 
+// The web page and its API are served by the ESP-IDF HTTP server (osc.cpp runs it, on port 80,
+// with OSCQuery), on its own task on core 0: several connections at once, so a browser's idle
+// spare connection never holds up a request, and nothing here ever holds up a frame. Each API
+// handler runs under the engine lock and only records its reply, which goes out after the lock
+// is released.
+static httpd_req_t* rq = nullptr;  // the request being handled
+static String rqBody, rqQuery;
+static int replyCode = 0;
+static const char* replyType = "text/plain";
+static String replyBody;
+static bool replyCache = false;  // the same for this firmware build: may be cached for good
+
+static void reply(int code, const char* type, const String& body) {
+    replyCode = code;
+    replyType = type;
+    replyBody = body;
+}
+
+static bool hasArg(const char* key) {
+    char v[48];
+    return httpd_query_key_value(rqQuery.c_str(), key, v, sizeof(v)) == ESP_OK;
+}
+
+static String arg(const char* key) {
+    char v[48];
+    return httpd_query_key_value(rqQuery.c_str(), key, v, sizeof(v)) == ESP_OK ? String(v) : String();
+}
+
 static void sendJson(const JsonDocument& d) {
     String out;
     serializeJson(d, out);
-    server.send(200, "application/json", out);
+    reply(200, "application/json", out);
 }
 
 static bool readBody(JsonDocument& d) {
-    if (deserializeJson(d, server.arg("plain"))) {
-        server.send(400, "text/plain", "bad JSON");
+    if (deserializeJson(d, rqBody)) {
+        reply(400, "text/plain", "bad JSON");
         return false;
     }
     return true;
@@ -57,6 +85,18 @@ static void presetJson(JsonObject o, int i) {
     o["sparkle"] = p.sparkle;
     JsonArray a = o["params"].to<JsonArray>();
     for (int j = 0; j < EFFECTS[p.effect].n; j++) a.add(p.p[j]);
+    JsonArray ms = o["motions"].to<JsonArray>();
+    for (const Motion& mo : presetMotion[i]) {
+        JsonObject m = ms.add<JsonObject>();
+        m["target"] = mo.target;
+        m["shape"] = mo.shape;
+        m["inBeats"] = mo.inBeats != 0;
+        m["beatsExp"] = mo.beatsExp;
+        m["from"] = mo.from;
+        m["to"] = mo.to;
+        m["seconds"] = mo.seconds;
+        m["phase"] = mo.phase;
+    }
 }
 
 static void paletteJson(JsonObject o, const Palette& p) {
@@ -75,6 +115,15 @@ static void statusJson(JsonObject o) {
     for (int i = 0; i < presetCount; i++)
         if (presetChanged(i)) changed |= 1u << i;
     o["changed"] = changed;
+    // The playing preset's motions: phase now and cycles per second, so the page can animate them
+    JsonArray mo = o["motion"].to<JsonArray>();
+    for (int m = 0; m < MOTIONS; m++) {
+        float ph, rate;
+        engineMotion(m, ph, rate);
+        JsonArray a = mo.add<JsonArray>();
+        a.add(ph);
+        a.add(rate);
+    }
     o["fps"] = roundf(engineFps() * 10) / 10;
     o["renderMs"] = roundf(engineRenderMs() * 10) / 10;
     o["sendMs"] = roundf(engineSendMs() * 10) / 10;
@@ -97,23 +146,11 @@ String webStatusJson() {
     return s;
 }
 
-static void handleState() {
+static const char BUILD[] = __DATE__ " " __TIME__;
+
+static void handleEffects() {
     JsonDocument d;
-    statusJson(d.to<JsonObject>());
-    d["brightness"] = settings.brightness;
-    d["gamma"] = settings.gamma;
-    d["target"] = IPAddress(settings.target).toString();
-    JsonObject lay = d["layout"].to<JsonObject>();
-    lay["nx"] = layout.nx;
-    lay["ny"] = layout.ny;
-    lay["length"] = layout.length;
-    lay["aspect"] = layout.aspect;
-    lay["measured"] = layout.measured != 0;
-    JsonArray ru = lay["rowUni"].to<JsonArray>();
-    for (int b = 0; b < layout.ny; b++) ru.add(layout.rowUni[b]);
-    lay["maxLeds"] = MAX_LEDS;
-    lay["measuredRows"] = cfg::CEILING_ROWS;
-    JsonArray ef = d["effects"].to<JsonArray>();
+    JsonArray ef = d.to<JsonArray>();
     for (int i = 0; i < NUM_EFFECTS; i++) {
         JsonObject o = ef.add<JsonObject>();
         o["name"] = EFFECTS[i].name;
@@ -133,6 +170,27 @@ static void handleState() {
             q["def"] = pd.def;
         }
     }
+    sendJson(d);
+    replyCache = true;
+}
+
+static void handleState() {
+    JsonDocument d;
+    statusJson(d.to<JsonObject>());
+    d["brightness"] = settings.brightness;
+    d["gamma"] = settings.gamma;
+    d["target"] = IPAddress(settings.target).toString();
+    JsonObject lay = d["layout"].to<JsonObject>();
+    lay["nx"] = layout.nx;
+    lay["ny"] = layout.ny;
+    lay["length"] = layout.length;
+    lay["aspect"] = layout.aspect;
+    lay["measured"] = layout.measured != 0;
+    JsonArray ru = lay["rowUni"].to<JsonArray>();
+    for (int b = 0; b < layout.ny; b++) ru.add(layout.rowUni[b]);
+    lay["maxLeds"] = MAX_LEDS;
+    lay["measuredRows"] = cfg::CEILING_ROWS;
+    d["build"] = BUILD;  // the page gets the effects from /api/effects?v=<build>, cached
     JsonArray pl = d["palettes"].to<JsonArray>();
     for (const Palette& p : palettes) paletteJson(pl.add<JsonObject>(), p);
     JsonArray pr = d["presets"].to<JsonArray>();
@@ -171,7 +229,7 @@ static void handlePreset() {
     JsonDocument d;
     if (!readBody(d)) return;
     const int i = d["index"] | -1;
-    if (i < 0 || i >= presetCount) { server.send(400, "text/plain", "bad index"); return; }
+    if (i < 0 || i >= presetCount) { reply(400, "text/plain", "bad index"); return; }
     Preset& p = presets[i];
     if (d["name"].is<const char*>()) {
         presetRename(i, d["name"].as<const char*>());  // a name is saved at once
@@ -188,7 +246,7 @@ static void handlePreset() {
     if (d["effect"].is<int>()) {
         const int e = d["effect"].as<int>();
         if (e >= 0 && e < NUM_EFFECTS && e != p.effect) {
-            presetSetEffect(p, e);
+            presetChangeEffect(i, e);  // its motions go off: their sliders are gone
             webChanged();
             if (i == settings.current) engineResetEffect();
         }
@@ -205,7 +263,27 @@ static void handlePreset() {
     if (d["beatsExp"].is<int>()) presetSync[i].beatsExp = constrain(d["beatsExp"].as<int>(), 0, 6);
     if (d["reverse"].is<bool>()) presetSync[i].reverse = d["reverse"].as<bool>();
     if (d["pulse"].is<float>()) presetSync[i].pulse = constrain(d["pulse"].as<float>(), 0.f, 1.f);
-    // Edits play at once and stay unsaved until Save: nothing to write to flash here
+    // {"motion": m, ...fields}: one motion's settings
+    if (d["motion"].is<int>()) {
+        const int m = d["motion"].as<int>();
+        if (m >= 0 && m < MOTIONS) {
+            Motion& mo = presetMotion[i][m];
+            const EffectDef& e = EFFECTS[p.effect];
+            if (d["target"].is<int>()) mo.target = constrain(d["target"].as<int>(), 0, (int)e.n);
+            if (d["shape"].is<int>()) mo.shape = constrain(d["shape"].as<int>(), 0, NUM_SHAPES - 1);
+            if (d["inBeats"].is<bool>()) mo.inBeats = d["inBeats"].as<bool>();
+            if (d["beatsExp"].is<int>()) mo.beatsExp = constrain(d["beatsExp"].as<int>(), 0, 6);
+            if (d["seconds"].is<float>()) mo.seconds = constrain(d["seconds"].as<float>(), 0.25f, 600.f);
+            if (d["phase"].is<float>()) mo.phase = constrain(d["phase"].as<float>(), 0.f, 1.f);
+            if (d["from"].is<float>()) mo.from = d["from"].as<float>();
+            if (d["to"].is<float>()) mo.to = d["to"].as<float>();
+            if (mo.target) {  // the ends within the slider's range
+                const ParamDef& pd = e.params[mo.target - 1];
+                mo.from = constrain(mo.from, pd.min, pd.max);
+                mo.to = constrain(mo.to, pd.min, pd.max);
+            }
+        }
+    }    // Edits play at once and stay unsaved until Save: nothing to write to flash here
     JsonDocument r;
     presetJson(r.to<JsonObject>(), i);
     sendJson(r);
@@ -226,7 +304,7 @@ static void handlePresetList() {
     } else if (d["move"].is<int>() && d["to"].is<int>()) {
         ok = engineMovePreset(d["move"].as<int>(), d["to"].as<int>());
     }
-    if (!ok) { server.send(400, "text/plain", "not possible"); return; }
+    if (!ok) { reply(400, "text/plain", "not possible"); return; }
     webChanged();
     handleState();
 }
@@ -235,7 +313,7 @@ static void handlePalette() {
     JsonDocument d;
     if (!readBody(d)) return;
     const int i = d["index"] | -1;
-    if (i < 0 || i >= NUM_PALETTES) { server.send(400, "text/plain", "bad index"); return; }
+    if (i < 0 || i >= NUM_PALETTES) { reply(400, "text/plain", "bad index"); return; }
     Palette& p = palettes[i];
     if (d["name"].is<const char*>()) {
         strlcpy(p.name, d["name"].as<const char*>(), sizeof(p.name));
@@ -273,7 +351,7 @@ static void handleLayout() {
         layoutFillUniverses(l, n, n ? l.rowUni[0] : 0);
     }
     if (l.nx * l.ny > MAX_LEDS) {
-        server.send(400, "text/plain", "at most " + String(MAX_LEDS) + " LEDs");
+        reply(400, "text/plain", "at most " + String(MAX_LEDS) + " LEDs");
         return;
     }
     layout = l;
@@ -319,7 +397,7 @@ static void handleNetSet() {
         s.trim();
         if (!s.length()) netSettings.fallbackIp = IPAddress(0, 0, 0, 0);
         else if (ip.fromString(s)) netSettings.fallbackIp = ip;
-        else { server.send(400, "text/plain", "bad fallback IP"); return; }
+        else { reply(400, "text/plain", "bad fallback IP"); return; }
     }
     if (d["ssid"].is<const char*>()) {
         netSettings.wifiSsid = d["ssid"].as<const char*>();
@@ -334,19 +412,19 @@ static void handleNetSet() {
     pass(d["wifiPass"], netSettings.wifiPass);
     pass(d["apPass"], netSettings.apPass);
     if (netSettings.apPass.length() && netSettings.apPass.length() < 8) {
-        server.send(400, "text/plain", "hotspot password needs 8 or more characters");
+        reply(400, "text/plain", "hotspot password needs 8 or more characters");
         return;
     }
     netSave();
-    server.send(200, "application/json", "{\"restarting\":true}");
+    reply(200, "application/json", "{\"restarting\":true}");
     restartRequested = true;
     restartAt = millis();
 }
 
 static void handleScan() {
-    if (server.method() == HTTP_POST) netRequestScan();
+    if (rq->method == HTTP_POST) netRequestScan();
     String out = "{\"state\":" + String(netScanState()) + ",\"nets\":" + netScanResults() + "}";
-    server.send(200, "application/json", out);
+    reply(200, "application/json", out);
 }
 
 // /api/bench?e=<effect>&frames=<n>: ms per frame to render it (palette 1, default parameters).
@@ -355,37 +433,113 @@ static void handleBench() {
     static CRGB lw[256], ll[256];
     buildLut(palettes[0], lw, true);
     buildLut(palettes[0], ll, false);
-    const int e = server.hasArg("e") ? server.arg("e").toInt() : 0;
-    const int frames = constrain(server.hasArg("frames") ? server.arg("frames").toInt() : 5, 1, 40);
+    const int e = hasArg("e") ? arg("e").toInt() : 0;
+    const int frames = constrain(hasArg("frames") ? arg("frames").toInt() : 5, 1, 40);
     JsonDocument d;
+    // How many network connections (lwIP sockets, 16 in all) are free right now
+    int fds[16], n = 0;
+    while (n < 16 && (fds[n] = socket(AF_INET, SOCK_DGRAM, 0)) >= 0) n++;
+    for (int k = 0; k < n; k++) close(fds[k]);
+    d["socketsFree"] = n;
     d["effect"] = e < NUM_EFFECTS && e >= 0 ? EFFECTS[e].name : "?";
     d["ms"] = effectsBenchmark(e, lw, ll, frames);
     sendJson(d);
 }
 
-void webBegin() {
-    server.on("/api/bench", HTTP_GET, handleBench);
-    server.on("/", HTTP_GET, []() { server.send_P(200, "text/html", WEB_PAGE); });
-    server.on("/api/state", HTTP_GET, handleState);
-    server.on("/api/status", HTTP_GET, handleStatus);
-    server.on("/api/set", HTTP_POST, handleSet);
-    server.on("/api/preset", HTTP_POST, handlePreset);
-    server.on("/api/presets", HTTP_POST, handlePresetList);
-    server.on("/api/palette", HTTP_POST, handlePalette);
-    server.on("/api/layout", HTTP_POST, handleLayout);
-    server.on("/api/link", HTTP_POST, handleLink);
-    server.on("/api/net", HTTP_GET, handleNetGet);
-    server.on("/api/net", HTTP_POST, handleNetSet);
-    server.on("/api/scan", handleScan);
-    // Hotspot: phones probe random URLs to detect a captive portal; send them to the page
-    server.onNotFound([]() {
-        server.sendHeader("Location", "http://" + netCurrentIp().toString() + "/");
-        server.send(302, "text/plain", "");
-    });
-    server.begin();
+struct Route {
+    const char* path;
+    int method;  // HTTP_GET, HTTP_POST, or -1 for both
+    void (*handler)();
+};
+static const Route ROUTES[] = {
+    {"/api/state", HTTP_GET, handleState},       {"/api/effects", HTTP_GET, handleEffects},
+    {"/api/status", HTTP_GET, handleStatus},     {"/api/set", HTTP_POST, handleSet},
+    {"/api/preset", HTTP_POST, handlePreset},    {"/api/presets", HTTP_POST, handlePresetList},
+    {"/api/palette", HTTP_POST, handlePalette},  {"/api/layout", HTTP_POST, handleLayout},
+    {"/api/link", HTTP_POST, handleLink},        {"/api/net", HTTP_GET, handleNetGet},
+    {"/api/net", HTTP_POST, handleNetSet},       {"/api/scan", -1, handleScan},
+    {"/api/bench", HTTP_GET, handleBench},
+};
+
+static const char* statusLine(int code) {
+    switch (code) {
+        case 200: return "200 OK";
+        case 302: return "302 Found";
+        case 400: return "400 Bad Request";
+        case 404: return "404 Not Found";
+        default: return "500 Internal Server Error";
+    }
 }
 
+// The page itself, for a browser asking for /
+esp_err_t webPage(httpd_req_t* req) {
+    httpd_resp_set_type(req, "text/html");
+    return httpd_resp_send(req, WEB_PAGE, strlen_P(WEB_PAGE));
+}
+
+// Anything a browser asks for that isn't there: the page (phones probe random addresses on the
+// hotspot to find a captive portal)
+esp_err_t webRedirect(httpd_req_t* req) {
+    const String to = "http://" + netCurrentIp().toString() + "/";
+    httpd_resp_set_status(req, "302 Found");
+    httpd_resp_set_hdr(req, "Location", to.c_str());
+    return httpd_resp_send(req, nullptr, 0);
+}
+
+// /api/...: false when there is no such address (the caller answers)
+bool webApi(httpd_req_t* req, esp_err_t& result) {
+    char path[48];
+    strlcpy(path, req->uri, sizeof(path));
+    if (char* q = strchr(path, '?')) *q = 0;
+    const Route* route = nullptr;
+    for (const Route& r : ROUTES)
+        if (!strcmp(path, r.path) && (r.method < 0 || r.method == (int)req->method)) route = &r;
+    if (!route) return false;
+
+    rqQuery = "";
+    const size_t ql = httpd_req_get_url_query_len(req);
+    if (ql) {
+        char* q = (char*)malloc(ql + 1);
+        if (q && httpd_req_get_url_query_str(req, q, ql + 1) == ESP_OK) rqQuery = q;
+        free(q);
+    }
+    rqBody = "";
+    if (req->content_len > 0 && req->content_len <= 8192) {
+        char* b = (char*)malloc(req->content_len + 1);
+        size_t got = 0;
+        while (b && got < req->content_len) {
+            const int n = httpd_req_recv(req, b + got, req->content_len - got);
+            if (n == HTTPD_SOCK_ERR_TIMEOUT) continue;
+            if (n <= 0) break;
+            got += n;
+        }
+        if (b) {
+            b[got] = 0;
+            rqBody = b;
+        }
+        free(b);
+    }
+
+    rq = req;
+    replyCode = 0;
+    replyCache = false;
+    {
+        EngineLock lock;
+        route->handler();
+    }
+    rq = nullptr;
+    rqBody = String();
+    if (!replyCode) reply(500, "text/plain", "no reply");
+    httpd_resp_set_status(req, statusLine(replyCode));
+    httpd_resp_set_type(req, replyType);
+    if (replyCache) httpd_resp_set_hdr(req, "Cache-Control", "public, max-age=31536000, immutable");
+    result = httpd_resp_send(req, replyBody.c_str(), replyBody.length());
+    replyBody = String();
+    return true;
+}
+
+void webBegin() {}  // the HTTP server is started with OSCQuery, once the network is up
+
 void webHandle() {
-    server.handleClient();
     if (restartRequested && millis() - restartAt > 500) ESP.restart();
 }

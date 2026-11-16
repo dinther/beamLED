@@ -17,7 +17,9 @@ constexpr uint8_t DEFAULT_TARGET[4] = {192, 168, 0, 20};  // Beam; PixLite is 19
 
 constexpr int BUTTON_PIN = 4;          // to GND; short press next preset, long press on/off
 
-// OSC in (UDP) and OSCQuery (HTTP + WebSocket, for MIMa and other OSCQuery clients)
+// OSC in (UDP), and one HTTP server for the web page, its API and OSCQuery (with WebSocket):
+// one server, because the ESP32 has room for only 16 network connections in all
 constexpr uint16_t OSC_PORT = 8000;
-constexpr uint16_t OSCQUERY_PORT = 8010;
+constexpr uint16_t HTTP_PORT = 80;
+constexpr uint16_t OSCQUERY_PORT = HTTP_PORT;
 }  // namespace cfg

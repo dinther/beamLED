@@ -1,5 +1,9 @@
 #include "artnet.h"
 
+#include <lwip/sockets.h>
+
+#include "osc.h"
+
 void ArtNetOut::begin() {
     if (!frame) frame = (uint8_t*)malloc(MAX_LEDS * 3);
     if (frame && !handle) xTaskCreatePinnedToCore(task, "artnet", 4096, this, 3, &handle, 0);
@@ -44,9 +48,14 @@ void ArtNetOut::sendUniverse(uint16_t universe, const uint8_t* data, uint16_t le
     buf[17] = len & 0xFF;
     memcpy(buf + 18, data, len);
     if (len & 1) buf[18 + len++] = 0;   // Art-Net wants an even length
-    udp.beginPacket(target, 6454);
-    udp.write(buf, 18 + len);
-    udp.endPacket();
+    // From the OSC socket: one UDP socket fewer (the ESP32 has 16 in all)
+    const int s = oscUdpSocket();
+    if (s < 0) return;
+    sockaddr_in to = {};
+    to.sin_family = AF_INET;
+    to.sin_port = htons(6454);
+    to.sin_addr.s_addr = (uint32_t)target;
+    sendto(s, buf, 18 + len, 0, (sockaddr*)&to, sizeof(to));
 }
 
 // Each row starts at its own universe (layout.rowUni) and fills 170 RGB pixels per universe. The

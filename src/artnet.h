@@ -4,7 +4,6 @@
 #pragma once
 #include <FastLED.h>
 #include <IPAddress.h>
-#include <WiFiUdp.h>
 
 #include "layout.h"
 
@@ -22,7 +21,6 @@ private:
     void sendAll();
     void sendUniverse(uint16_t universe, const uint8_t* data, uint16_t len);
 
-    WiFiUDP udp;
     TaskHandle_t handle = nullptr;
     volatile bool busy = false;
     volatile float ms = 0;

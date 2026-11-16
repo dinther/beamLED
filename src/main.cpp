@@ -17,6 +17,8 @@ static CRGB leds[MAX_LEDS];
 static CRGB lutWrap[256], lutLin[256];
 static uint8_t outLut[256];
 static float effState[MAXP];
+static float motionAcc[MOTIONS];                    // time-based motions: cycles so far
+static float motionNow[MOTIONS], motionRate[MOTIONS];  // for the page: phase now, cycles per second
 static ArtNetOut artnet;
 
 static bool isOn = true;
@@ -35,9 +37,14 @@ static const uint32_t LONG_PRESS_MS = 700;
 
 // ---------------------------------------------------------------- engine
 
+static SemaphoreHandle_t engineMutex = nullptr;  // created first thing in setup()
+void engineLock() { xSemaphoreTakeRecursive(engineMutex, portMAX_DELAY); }
+void engineUnlock() { xSemaphoreGiveRecursive(engineMutex); }
+
 static void activate(int i) {
     settings.current = i;
     memset(effState, 0, sizeof(effState));
+    memset(motionAcc, 0, sizeof(motionAcc));
     storeMarkDirty();
     Serial.printf("Preset %d: %s\n", i + 1, presets[i].name);
 }
@@ -83,6 +90,10 @@ float engineRenderMs() { return renderMs; }
 float engineSendMs() { return artnet.sendMs(); }
 int engineCurrent() { return pending >= 0 ? pending : settings.current; }
 const BeatTime& engineBeat() { return beat; }
+void engineMotion(int m, float& phase, float& rate) {
+    phase = m >= 0 && m < MOTIONS ? motionNow[m] : 0;
+    rate = m >= 0 && m < MOTIONS ? motionRate[m] : 0;
+}
 
 void engineSetTempo(double bpm) {
     linkSettings.bpm = bpm < 20 ? 20 : (bpm > 999 ? 999 : bpm);
@@ -173,7 +184,33 @@ static void renderFrame(float dt) {
     // Following the tempo (or in beats), the other motion runs at bpm/120 times the set speed
     const float edt = y.timing != TIMING_TIME ? dt * (float)beat.bpm / 120.f : dt;
     const float cycleBeats = y.timing == TIMING_BEATS && e.cycle ? (float)(1 << y.beatsExp) : 0.f;
-    Ctx c{p.p, edt, effState, lutWrap, lutLin, leds, beat.beat, (float)beat.bpm, cycleBeats, y.reverse != 0};
+    // Motions move sliders back and forth: the effect gets the moved values, the preset keeps its own
+    float pp[MAXP];
+    memcpy(pp, p.p, sizeof(pp));
+    for (int m = 0; m < MOTIONS; m++) {
+        const Motion& mo = presetMotion[settings.current][m];
+        motionRate[m] = 0;
+        if (!mo.target || mo.target > e.n) continue;
+        float ph;
+        if (mo.inBeats) {  // on the beat grid
+            const double per = 1 << mo.beatsExp, x = beat.beat / per + mo.phase;
+            ph = (float)(x - floor(x));
+            motionRate[m] = (float)(beat.bpm / 60.0 / per);
+        } else {  // in time (following the tempo when the preset does)
+            motionAcc[m] += edt / mo.seconds;
+            motionAcc[m] -= floorf(motionAcc[m]);
+            ph = motionAcc[m] + mo.phase;
+            ph -= floorf(ph);
+            motionRate[m] = (dt > 0 ? edt / dt : 1.f) / mo.seconds;
+        }
+        motionNow[m] = ph;
+        const ParamDef& d = e.params[mo.target - 1];
+        float v = mo.from + (mo.to - mo.from) * motionShape(mo.shape, ph);
+        v = constrain(v, d.min, d.max);
+        if (d.step >= 1) v = roundf(v);
+        pp[mo.target - 1] = v;
+    }
+    Ctx c{pp, edt, effState, lutWrap, lutLin, leds, beat.beat, (float)beat.bpm, cycleBeats, y.reverse != 0};
     e.render(c);
     if (!e.ownSparkle && p.sparkle > 0) sparkleOverlay(leds, p.sparkle, dt);
 }
@@ -217,6 +254,7 @@ static void pollButton() {
 // ---------------------------------------------------------------- main
 
 void setup() {
+    engineMutex = xSemaphoreCreateRecursiveMutex();
     Serial.begin(115200);
     Serial.println("\nbeamLED starting");
     pinMode(cfg::BUTTON_PIN, INPUT_PULLUP);
@@ -235,9 +273,12 @@ void setup() {
 void loop() {
     netLoop();
     webHandle();
-    pollButton();
-    storePoll();
-    oscLoop();
+    {
+        EngineLock lock;
+        pollButton();
+        storePoll();
+    }
+    oscLoop();  // takes the lock itself
 
     // Between frames the core already idles: webHandle() sleeps 1 ms while no browser is
     // connected (WebServer's null delay). Frames keep to a steady 1/FPS grid, so that sleep
@@ -250,15 +291,19 @@ void loop() {
     const float dt = fminf((now - prev) / 1e6f, 0.1f);
     prev = now;
 
-    updateLink();
-    updateFade(dt);
-    const uint32_t t0 = micros();
-    if (netOtaActive()) return;  // keep the network free for the update
-    if (level > 0) renderFrame(dt);
-    else memset(leds, 0, layoutLeds() * sizeof(CRGB));
-    buildOutLut();
-    const uint32_t t1 = micros();
-    if (netCanSend()) artnet.send(IPAddress(settings.target), leds, outLut);  // handed to its task
+    uint32_t t0, t1;
+    {
+        EngineLock lock;  // the web API waits for the frame, not the other way round
+        updateLink();
+        updateFade(dt);
+        t0 = micros();
+        if (netOtaActive()) return;  // keep the network free for the update
+        if (level > 0) renderFrame(dt);
+        else memset(leds, 0, layoutLeds() * sizeof(CRGB));
+        buildOutLut();
+        t1 = micros();
+        if (netCanSend()) artnet.send(IPAddress(settings.target), leds, outLut);  // handed to its task
+    }
 
     // Stats, smoothed
     renderMs += ((t1 - t0) / 1000.f - renderMs) * 0.05f;

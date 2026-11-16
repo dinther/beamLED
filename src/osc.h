@@ -15,6 +15,8 @@
 //   time, which would reach every listener as a stream of changes; set it on the web page or in Live)
 //   /beamled/presets/<n>/play T | effect i | palette i | sparkle f | timing i | beats i |
 //                        reverse T | pulse f | <parameter> (named after it: speed, bars, ...)
+//                        motion1_target i | motion1_shape i | motion1_from f | motion1_to f |
+//                        motion1_seconds f | motion1_beats i | motion1_phase f (and motion2_...)
 //   /beamled/palettes/<k>/colours i 2..5 | colour1 .. colour5 r
 // Values are in real units, as the web page shows them. Preset changes from OSC play at once but,
 // as edits on the web page, aren't saved until Save on the page or /beamled/save (all presets).
@@ -23,3 +25,4 @@
 
 void oscLoop();          // from loop(): starts once the network is up, then takes OSC in
 String oscStatusText();  // for the web page
+int oscUdpSocket();      // the OSC socket (UDP 8000), which Art-Net sends from too; -1 before the network

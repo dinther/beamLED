@@ -38,6 +38,22 @@ struct PresetSync {
     float pulse;       // brightness accent on each beat, 0..1
 };
 
+// A Motion moves one of the preset's sliders back and forth by itself, between From and To,
+// along a shape. Its period is one full there-and-back, in seconds or in beats (then it is on the
+// beat grid: From on the bar at phase 0). It doesn't change the slider's own value.
+enum MotionShape : uint8_t { SHAPE_SINE, SHAPE_LINEAR, SHAPE_EASE, SHAPE_HOLD, SHAPE_OVERSHOOT, SHAPE_BOUNCE, NUM_SHAPES };
+struct Motion {
+    uint8_t target;    // 0 = off, else the effect's parameter + 1
+    uint8_t shape;     // MotionShape
+    uint8_t inBeats;   // the period in beats (2^beatsExp) instead of seconds
+    uint8_t beatsExp;  // 0..6 = 1, 2, 4 ... 64 beats
+    float from, to;    // the two ends, in the parameter's units
+    float seconds;     // the period in seconds
+    float phase;       // 0..1: where in the cycle it starts
+};
+constexpr int MOTIONS = 2;
+float motionShape(uint8_t shape, float phase);  // 0..1 (Overshoot goes a little beyond)
+
 struct LinkSettings {
     uint8_t enabled;  // Ableton Link
     float bpm;        // own tempo when no peers (and the last tempo seen)
@@ -48,6 +64,7 @@ extern Palette palettes[NUM_PALETTES];
 extern Preset presets[MAX_PRESETS];
 extern PresetSync presetSync[MAX_PRESETS];
 extern int presetCount;  // 1..MAX_PRESETS
+extern Motion (*presetMotion)[MOTIONS];  // [MAX_PRESETS][MOTIONS], from the heap
 extern Settings settings;
 extern LinkSettings linkSettings;
 
@@ -67,3 +84,5 @@ void presetSave(int i);
 void presetSaveAll();
 void presetRevert(int i);
 void presetRename(int i, const char* name);
+// Another effect for preset i: its parameters to that effect's defaults, its motions off
+void presetChangeEffect(int i, uint8_t effect);

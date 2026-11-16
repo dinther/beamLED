@@ -44,6 +44,11 @@ select,input[type=text],input[type=password],input[type=number]{flex:1;min-width
 .unis input{flex:0 0 72px;width:72px}
 .row input[type=number]{flex:0 0 90px}
 [data-tip] label,label[data-tip],h2[data-tip]{cursor:help;text-decoration:underline dotted #555;text-underline-offset:3px}
+.motion{border-top:1px solid var(--line);margin-top:10px;padding-top:4px}
+.curve{display:block;width:100%;height:44px}
+.curve path{fill:none;stroke:var(--acc);stroke-width:2}
+.curve line{stroke:#444;stroke-width:1}
+.moving label::after{content:" ↔";color:var(--acc)}
 #elsewhere{position:fixed;inset:0;z-index:20;display:none;align-items:center;justify-content:center;background:#121212e8;padding:16px}
 #elsewhere .card{max-width:360px;text-align:center}
 #elsewhere p{margin:6px 0 14px}
@@ -150,6 +155,14 @@ const H = {
   reset: 'Sets this preset’s effect parameters back to the effect’s defaults (not saved until you click Save). Name, palette, timing, sparkle and pulse stay as they are.',
   save: 'Stores this preset as it plays now: effect, palette, sliders, timing, sparkle and pulse. Until you save, changes (here or from OSC) play on the ceiling but the preset keeps its saved settings, so you can tinker freely. Unsaved changes are kept while you switch presets, and lost on a power cut.',
   revert: 'Goes back to this preset’s saved settings, dropping the changes since the last Save.',
+  motion: 'A Motion moves one of this effect’s sliders back and forth by itself, between From and To: a beam swinging (Lighthouse Angle), bands scrolling to and fro (Offset), a width breathing. Off: no motion. The slider it moves shows ↔ and follows it. Two motions can move two sliders, or run out of step with Phase.',
+  shape: 'How it travels between the ends. Sine: smooth, like a pendulum. Linear: a steady speed, turning sharply at the ends. Ease in-out: slow at the ends, quick through the middle. Hold at ends: rests at each end before turning back. Overshoot: goes a little past each end and settles. Bounce: bounces as it arrives at each end. The drawing below shows one there-and-back.',
+  periodIn: 'Seconds: one there-and-back takes a set time (scaled with the tempo when the preset follows it). Beats: it takes a number of beats and keeps to the beat grid with Ableton Link, at From on the bar.',
+  periodBeats: 'How many beats one full there-and-back takes; 4 beats = one bar. With 8 beats it is at From on one bar, at To on the next bar, and back at From on the bar after that.',
+  periodSec: 'How many seconds one full there-and-back takes.',
+  from: 'One end of the motion, in the slider’s own units.',
+  to: 'The other end of the motion, in the slider’s own units. To below From is fine: it simply runs the other way.',
+  phase: 'Where in its cycle the motion is: 0 = at From at the start (or on the bar), 0.5 = at To. Give a second motion 0.25 or 0.5 to run it out of step with the first.',
   palettes: 'Palettes are shared: each preset picks one. Effects blend smoothly between the colours in order; looping effects wrap from the last colour back to the first.',
   palName: 'The palette’s name, as listed in each preset’s Palette choice. Up to 15 characters.',
   palColour: 'A colour of this palette. Effects blend between the colours in this order. Click to change it; the ceiling follows as you pick.',
@@ -160,7 +173,7 @@ const H = {
   link: 'Ableton Link. Enabled: tempo and beat are shared with Ableton Live and other Link apps on the same network (the Live laptop joins the board’s network or its hotspot). Disabled: the board keeps its own tempo.',
   bpm: 'The tempo in beats per minute. With Ableton Link enabled and peers connected this changes everyone’s tempo; without peers it sets the board’s own.',
   latency: 'How much later the LEDs show a frame than the board draws it (network and PixLite). Frames are drawn this far ahead so beats land on time. Raise it if the lights trail the music.',
-  osc: 'OSC control, for MIMa and other OSC or OSCQuery apps. In MIMa, add beamLED as an OSCQuery application at http://beamled.local:8010 (or this board’s IP address, port 8010): it lists every preset, parameter and palette colour with its range and help, and its knobs and lights follow changes made here or with the button. OSC changes are saved with the next save from this page or a preset change.',
+  osc: 'OSC control, for MIMa and other OSC or OSCQuery apps. In MIMa, add beamLED as an OSCQuery application at beamled.local:80 (or this board’s IP address, port 80), and send OSC to port 8000: it lists every preset, parameter, motion and palette colour with its range and help, and its knobs and lights follow changes made here or with the button. Preset changes from OSC play at once and are kept with Save, like changes made here.',
   nx: 'How many LEDs each row (bar) has. The ceiling: 180.',
   ny: 'How many rows (bars) there are. The ceiling: 15.',
   len: 'The length of a row in metres; the LED spacing is this divided by LEDs per row. The ceiling: 5 m.',
@@ -200,6 +213,8 @@ const heading = (text, help) => tip(h('h2', {textContent: text}), help);
 
 async function load() {
   S = await (await fetch('/api/state')).json();
+  // The effects (names, ranges, help) are fixed per firmware build: cached by the browser
+  S.effects = await (await fetch('/api/effects?v=' + encodeURIComponent(S.build))).json();
   N = await (await fetch('/api/net')).json();
   draw();
 }
@@ -275,17 +290,23 @@ function draw() {
     rev.onchange = () => { p.reverse = rev.checked; post('/api/preset', {index: S.current, reverse: rev.checked}); };
     card.append(field('Reverse', rev, H.reverse));
   }
+  const motions = p.motions || [];
   ef.params.forEach((d, j) => {
     if (inBeats && j == ef.speedParam) return;
-    card.append(slider(d.name, d.min, d.max, d.step, p.params[j],
+    const by = motions.findIndex(mo => mo.target == j + 1);
+    const row = slider(d.name, d.min, d.max, d.step, p.params[j],
       v => v.toFixed(decimals(d.step)),
       v => { p.params[j] = v; markChanged(S.current); liveSend(presetAddr(slug(d.name)), v, () => post('/api/preset', {index: S.current, params: p.params})); },
-      d.help + ' (' + d.min + ' to ' + d.max + ', default ' + d.def + ')', 'p' + j));
+      d.help + ' (' + d.min + ' to ' + d.max + ', default ' + d.def + ')' +
+        (by >= 0 ? ' Now moved by Motion ' + (by + 1) + ' (below): set its From and To there.' : ''), 'p' + j);
+    if (by >= 0) { row.classList.add('moving'); row.querySelector('input').disabled = true; }
+    card.append(row);
   });
   if (ef.sparkle) card.append(slider('Sparkle overlay', 0, 1, 0.01, p.sparkle, v => v.toFixed(2),
     v => { p.sparkle = v; markChanged(S.current); liveSend(presetAddr('sparkle'), v, () => post('/api/preset', {index: S.current, sparkle: v})); }, H.sparkle, 'sparkle'));
   card.append(slider('Beat pulse', 0, 1, 0.01, p.pulse, v => v.toFixed(2),
     v => { p.pulse = v; markChanged(S.current); liveSend(presetAddr('pulse'), v, () => post('/api/preset', {index: S.current, pulse: v})); }, H.pulse, 'pulse'));
+  motions.forEach((mo, m) => card.append(motionEditor(p, ef, mo, m)));
   const reset = button('Reset parameters', H.reset);
   reset.onclick = () => { p.params = ef.params.map(d => d.def); p.changed = true; post('/api/preset', {index: S.current, params: p.params}); draw(); };
   const save = button(p.changed ? 'Save •' : 'Saved', H.save, {className: p.changed ? 'on' : '', disabled: !p.changed});
@@ -321,6 +342,83 @@ function draw() {
   app.append(networkCard());
   showStatus();
 }
+
+// ---- Motions: the same shapes as the board (store.cpp, motionShape)
+const SHAPES = ['Sine', 'Linear', 'Ease in-out', 'Hold at ends', 'Overshoot', 'Bounce'];
+function motionShape(s, ph) {
+  ph -= Math.floor(ph);
+  const bounceOut = t => { const n = 7.5625, d = 2.75;
+    if (t < 1 / d) return n * t * t;
+    if (t < 2 / d) { t -= 1.5 / d; return n * t * t + 0.75; }
+    if (t < 2.5 / d) { t -= 2.25 / d; return n * t * t + 0.9375; }
+    t -= 2.625 / d; return n * t * t + 0.984375; };
+  const ease = x => x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+  if (s == 0) return 0.5 - 0.5 * Math.cos(2 * Math.PI * ph);
+  if (s == 5) return ph < 0.5 ? bounceOut(2 * ph) : 1 - bounceOut(2 * ph - 1);
+  const x = ph < 0.5 ? 2 * ph : 2 - 2 * ph;
+  if (s == 1) return x;
+  if (s == 2) return ease(x);
+  if (s == 3) return ease(Math.min(1, Math.max(0, (x - 0.15) / 0.7)));
+  const c = 1.70158 * 1.525;
+  return x < 0.5 ? (4 * x * x * ((c + 1) * 2 * x - c)) / 2 : ((2 * x - 2) * (2 * x - 2) * ((c + 1) * (2 * x - 2) + c) + 2) / 2;
+}
+// One there-and-back as a drawing: left = start, top = To, bottom = From
+function curve(mo) {
+  const ns = 'http://www.w3.org/2000/svg', svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', '0 0 200 44'); svg.setAttribute('preserveAspectRatio', 'none'); svg.classList.add('curve');
+  let d = '';
+  for (let k = 0; k <= 100; k++) { const y = motionShape(mo.shape, k / 100 + mo.phase); d += (k ? 'L' : 'M') + (k * 2) + ' ' + (36 - y * 28).toFixed(1); }
+  for (const y of [8, 36]) { const l = document.createElementNS(ns, 'line'); l.setAttribute('x1', 0); l.setAttribute('x2', 200); l.setAttribute('y1', y); l.setAttribute('y2', y); svg.append(l); }
+  const path = document.createElementNS(ns, 'path'); path.setAttribute('d', d); svg.append(path);
+  return svg;
+}
+function motionEditor(p, ef, mo, m) {
+  const send = o => post('/api/preset', Object.assign({index: S.current, motion: m}, o));
+  const box = h('div', {className: 'motion'});
+  box.append(select('Motion ' + (m + 1), ['Off'].concat(ef.params.map(d => d.name)), mo.target, v => {
+    mo.target = v;
+    if (v) { const d = ef.params[v - 1]; mo.from = d.min; mo.to = d.max; }
+    send({target: v, from: mo.from, to: mo.to}); draw();
+  }, H.motion));
+  if (!mo.target || mo.target > ef.params.length) return box;
+  const d = ef.params[mo.target - 1], fmt = v => v.toFixed(decimals(d.step));
+  const pic = h('div');
+  const repaint = () => pic.replaceChildren(curve(mo));
+  box.append(select('Shape', SHAPES, mo.shape, v => { mo.shape = v; send({shape: v}); repaint(); }, H.shape));
+  box.append(select('Period in', ['Seconds', 'Beats'], mo.inBeats ? 1 : 0, v => { mo.inBeats = v == 1; send({inBeats: mo.inBeats}); draw(); }, H.periodIn));
+  if (mo.inBeats) {
+    const beats = [1, 2, 4, 8, 16, 32, 64].map(b => b + ' beat' + (b > 1 ? 's' : '') + (b >= 4 ? ' (' + b / 4 + ' bar' + (b > 4 ? 's' : '') + ')' : ''));
+    box.append(select('Period', beats, mo.beatsExp, v => { mo.beatsExp = v; send({beatsExp: v}); }, H.periodBeats));
+  } else {
+    box.append(slider('Period (s)', 0.5, 120, 0.5, mo.seconds, v => v.toFixed(1), v => { mo.seconds = v; throttle('ms' + m, () => send({seconds: v})); }, H.periodSec));
+  }
+  box.append(slider('From', d.min, d.max, d.step, mo.from, fmt, v => { mo.from = v; throttle('mf' + m, () => send({from: v})); }, H.from));
+  box.append(slider('To', d.min, d.max, d.step, mo.to, fmt, v => { mo.to = v; throttle('mt' + m, () => send({to: v})); }, H.to));
+  box.append(slider('Phase', 0, 1, 0.01, mo.phase, v => v.toFixed(2), v => { mo.phase = v; repaint(); throttle('mp' + m, () => send({phase: v})); }, H.phase));
+  repaint();
+  box.append(tip(pic, H.shape));
+  return box;
+}
+// The moved sliders follow their motions on screen: the board pushes each motion's phase and rate
+// once a second with the status, and the page carries it on between pushes
+let motionClock = {t: 0, m: []};
+function animateMotions() {
+  requestAnimationFrame(animateMotions);
+  const p = S && S.presets[S.current];
+  if (!p || !p.motions) return;
+  const ef = S.effects[p.effect];
+  p.motions.forEach((mo, m) => {
+    if (!mo.target || mo.target > ef.params.length) return;
+    const s = sliders['p' + (mo.target - 1)], clock = motionClock.m[m];
+    if (!s || !clock) return;
+    const d = ef.params[mo.target - 1];
+    const ph = clock[0] + (performance.now() - motionClock.t) / 1000 * clock[1];
+    let v = Math.min(d.max, Math.max(d.min, mo.from + (mo.to - mo.from) * motionShape(mo.shape, ph)));
+    if (d.step >= 1) v = Math.round(v);
+    s.r.value = v; s.o.textContent = s.fmt(v);
+  });
+}
+requestAnimationFrame(animateMotions);
 
 function paletteEditor(q, i) {
   const box = h('div', {className: 'pal'});
@@ -466,7 +564,7 @@ function showStatus() {
   if (o) o.textContent = S.osc || '';
 }
 
-// ---- live: no polling. The board pushes over a WebSocket on its OSCQuery port (8010): every
+// ---- live: no polling. The board pushes over a WebSocket on its HTTP server (OSCQuery's too): every
 // change of a value as OSC (whoever made it: MIMa, the button, another browser), and as text
 // its status once a second, a change counter for what OSC doesn't carry (names, the preset
 // list, layout: the page reloads), and WiFi scan results.
@@ -528,6 +626,15 @@ function oscValue(addr, v) {
     const p = S.presets[n];
     if (!p || key == 'play') return;
     const mine = n == S.current;
+    const mm = /^motion(\d)_(\w+)$/.exec(key);
+    if (mm) {  // a motion's setting
+      const mo = p.motions && p.motions[+mm[1] - 1];
+      if (!mo) return;
+      if (mm[2] == 'beats') { mo.inBeats = v > 0; if (v > 0) mo.beatsExp = Math.round(Math.log2(v)); }
+      else mo[mm[2]] = v;
+      if (mine) redraw();
+      return;
+    }
     if (key == 'effect') { if (p.effect != v - 1) reload(); return; }
     if (key == 'palette') p.palette = v - 1;
     else if (key == 'sparkle') { p.sparkle = v; if (mine) return moveSlider('sparkle', v); }
@@ -570,7 +677,7 @@ document.getElementById('elsewhere-go').onclick = () => {
 };
 
 function live(take = false) {
-  const ws = sock = new WebSocket('ws://' + location.hostname + ':8010/');
+  const ws = sock = new WebSocket('ws://' + location.host + '/');
   ws.binaryType = 'arraybuffer';
   ws.onopen = () => ws.send(JSON.stringify({COMMAND: 'PAGE', ID: pageId, TAKE: take}));
   ws.onmessage = e => {
@@ -590,6 +697,7 @@ function live(take = false) {
       let changed = st.current != S.current || st.on != S.on;
       // Unsaved edits per preset (one bit each): the • marks and the Save button follow
       S.presets.forEach((q, i) => { const c = !!(st.changed >>> i & 1); if (q.changed != c) { q.changed = c; changed = true; } });
+      motionClock = {t: performance.now(), m: st.motion || []};
       Object.assign(S, st);
       if (changed) redraw(); else showStatus();
     } else if (m.COMMAND == 'SCAN') {
