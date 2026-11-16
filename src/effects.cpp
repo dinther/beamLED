@@ -614,6 +614,45 @@ static void sparkle(Ctx& c) {
     }
 }
 
+// ---------------------------------------------------------------- Gradient
+// A steady gradient through the palette: straight in any direction, or round from a centre. The
+// palette is used as a ramp there and back (first -> last -> first), so a drift or a wide spread
+// never jumps from the last colour to the first.
+
+static void gradient(Ctx& c) {
+    const float ang = c.p[0] * DEG, spread = c.p[1], offset = c.p[2], drift = c.p[3];
+    const bool radial = c.p[4] >= 0.5f;
+    const float cx = c.p[5] * W, cy = Y[0] + c.p[6] * H;
+    c.s[0] += c.dt * drift * 0.02f;
+    c.s[0] -= floorf(c.s[0] * 0.5f) * 2.f;  // bounded: the ramp repeats every 2
+    const float base = offset + c.s[0];
+    float k, k0;  // t = k * (distance along the gradient) + k0
+    const float ca = cosf(ang), sa = sinf(ang);
+    if (radial) {
+        float maxR = 0;
+        for (float x : {0.f, W})
+            for (float y : {Y[0], Y[0] + H}) maxR = fmaxf(maxR, hypotf(x - cx, y - cy));
+        k = spread / fmaxf(maxR, 0.01f);
+        k0 = base;
+    } else {
+        // The ceiling's extent in that direction: the gradient runs from one side to the other
+        const float span = fmaxf(fabsf(W * ca) + fabsf(H * sa), 0.01f);
+        k = spread / span;
+        k0 = base + 0.5f * spread;  // centred on the ceiling's middle
+    }
+    for (int b = 0; b < NY; b++) {
+        CRGB* o = c.out + b * NX;
+        const float dy = Y[b] - (radial ? cy : CY);
+        for (int i = 0; i < NX; i++) {
+            const float dx = X[i] - (radial ? cx : CX);
+            const float d = radial ? sqrtf(dx * dx + dy * dy) : dx * ca + dy * sa;
+            float t = d * k + k0;
+            t -= floorI(t * 0.5f) * 2.f;  // 0..2: there and back along the palette
+            o[i] = lutL(c.lutLin, t <= 1.f ? t : 2.f - t);
+        }
+    }
+}
+
 // ---------------------------------------------------------------- table
 // New effects go at the end: presets store the index.
 
@@ -722,6 +761,16 @@ const EffectDef EFFECTS[] = {
       {"Offset (m)", -10, 10, 0, 0.01f, "Shifts the pattern by this many metres, the way Speed moves the waves (positive outward). With Speed at 0 it stays put, so a Motion on Offset moves it back and forth (with easing). 0 = no shift."}},
      interference, false, "wave", 1,
      "Two sets of ring waves around centres that slowly circle each other. Where the waves meet they reinforce or cancel, forming large moving patterns."},
+    {"Gradient", 7,
+     {{"Angle (deg)", -180, 180, 0, 1, "The direction of a straight gradient, in degrees: 0 = along the bars, 90 = across them (from the first bar to the last), 45 = diagonally. Not used when Radial is 1."},
+      {"Spread", 0.1f, 4, 1, 0.01f, "How much of the palette spans the ceiling. 1 = from the palette's first colour at one side to its last colour at the other; 2 = there and back; 0.5 = only the first half of the palette. Bigger means more colour changes across the ceiling."},
+      {"Offset", -2, 2, 0, 0.01f, "Shifts the colours along the gradient: 1 moves them by a whole palette (first colour to last). A Motion on Offset makes the colours flow back and forth."},
+      {"Drift", 0, 1, 0, 0.01f, "Lets the colours flow slowly along the gradient by themselves. 0 = a steady gradient that never changes."},
+      {"Radial", 0, 1, 0, 1, "0 = a straight gradient in the direction of Angle; 1 = a round gradient, from the centre (Centre X, Centre Y) outwards."},
+      {"Centre X", -0.2f, 1.2f, 0.5f, 0.01f, "Radial: where the centre sits along the bars: 0 = one end, 0.5 = the middle, 1 = the other end. Beyond 0 or 1 puts it outside the ceiling."},
+      {"Centre Y", -0.2f, 1.2f, 0.5f, 0.01f, "Radial: where the centre sits across the bars: 0 = the first bar, 0.5 = the middle, 1 = the last bar."}},
+     gradient, false, nullptr, -1,
+     "A steady gradient through the palette: straight in any direction, or round from a centre. The palette is used as a ramp, first colour to last and back. Calm light that doesn't move unless Drift or a Motion moves it."},
 };const int NUM_EFFECTS = sizeof(EFFECTS) / sizeof(EFFECTS[0]);
 
 void effectsInit() {
