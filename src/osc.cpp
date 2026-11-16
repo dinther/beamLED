@@ -335,7 +335,7 @@ static void apply(const char* path, const Arg* a, int n) {
             case G_BRIGHTNESS: settings.brightness = (uint8_t)lroundf(constrain(v, 0.f, 1.f) * 255.f); break;
             case G_LINK: linkSettings.enabled = on; break;
             case G_SAVE: presetSaveAll(); storeMarkDirty(); break;
-            case G_AUTO: autoSettings.enabled = on; storeMarkDirty(); break;
+            case G_AUTO: autoSettings.enabled = on; storeMarkDirty(); webChanged(); break;
         }
         return;
     }

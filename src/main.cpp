@@ -35,6 +35,7 @@ static int linkPeers = 0;
 static const float FADE_SWITCH_S = 0.4f;  // each way when changing preset
 static const float FADE_ONOFF_S = 1.0f;
 static const uint32_t LONG_PRESS_MS = 700;
+static const uint32_t DOUBLE_MS = 400;  // a second press within this of the first: double press
 
 // ---------------------------------------------------------------- engine
 
@@ -298,9 +299,12 @@ static void buildOutLut() {
 
 // ---------------------------------------------------------------- button
 
+// Short press: next preset (or on). Double press: Auto on/off (on also switches the ceiling on).
+// Long press: on/off. A short press waits DOUBLE_MS to see whether a second one follows.
 static void pollButton() {
     static bool down = false, longDone = false;
-    static uint32_t changedAt = 0, downAt = 0;
+    static uint32_t changedAt = 0, downAt = 0, shortAt = 0;
+    static bool shortWaiting = false;
     const bool now = digitalRead(cfg::BUTTON_PIN) == LOW;
     const uint32_t t = millis();
     if (now != down && t - changedAt > 30) {  // debounce
@@ -309,13 +313,28 @@ static void pollButton() {
         if (down) {
             downAt = t;
             longDone = false;
-        } else if (!longDone) {  // short press
-            if (!isOn) engineSetOn(true);
-            else engineSelect(((pending >= 0 ? pending : settings.current) + 1) % presetCount);
+        } else if (!longDone) {  // a short press
+            if (shortWaiting && t - shortAt <= DOUBLE_MS) {  // the second one: double press
+                shortWaiting = false;
+                autoSettings.enabled = !autoSettings.enabled;
+                if (autoSettings.enabled) engineSetOn(true);
+                storeMarkDirty();
+                webChanged();
+                Serial.printf("Auto %s\n", autoSettings.enabled ? "on" : "off");
+            } else {
+                shortWaiting = true;
+                shortAt = t;
+            }
         }
+    }
+    if (shortWaiting && !down && t - shortAt > DOUBLE_MS) {  // no second press came: a single one
+        shortWaiting = false;
+        if (!isOn) engineSetOn(true);
+        else engineSelect(((pending >= 0 ? pending : settings.current) + 1) % presetCount);
     }
     if (down && !longDone && t - downAt >= LONG_PRESS_MS) {
         longDone = true;
+        shortWaiting = false;  // short then long: just the long press
         engineSetOn(!isOn);
     }
 }
