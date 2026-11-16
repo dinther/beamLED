@@ -134,9 +134,10 @@ static void renderFrame(float dt) {
     buildLut(pal, lutWrap, true);
     buildLut(pal, lutLin, false);
     const EffectDef& e = EFFECTS[p.effect < NUM_EFFECTS ? p.effect : 0];
-    // Following the tempo, all motion runs at bpm/120 times the set speed
-    const float edt = (y.tempo || y.lock) ? dt * (float)beat.bpm / 120.f : dt;
-    Ctx c{p.p, edt, effState, lutWrap, lutLin, leds, beat.beat, (float)beat.bpm, y.lock != 0};
+    // Following the tempo (or in beats), the other motion runs at bpm/120 times the set speed
+    const float edt = y.timing != TIMING_TIME ? dt * (float)beat.bpm / 120.f : dt;
+    const float cycleBeats = y.timing == TIMING_BEATS && e.cycle ? (float)(1 << y.beatsExp) : 0.f;
+    Ctx c{p.p, edt, effState, lutWrap, lutLin, leds, beat.beat, (float)beat.bpm, cycleBeats, y.reverse != 0};
     e.render(c);
     if (!e.ownSparkle && p.sparkle > 0) sparkleOverlay(leds, p.sparkle, dt);
 }

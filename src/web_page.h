@@ -102,19 +102,30 @@ function draw() {
     post('/api/preset', {index: S.current, effect: v}).then(np => { S.presets[S.current] = np; draw(); })));
   card.append(select('Palette', S.palettes.map(q => q.name), p.palette, v => {
     p.palette = v; post('/api/preset', {index: S.current, palette: v}); }));
-  ef.params.forEach((d, j) => card.append(slider(d.name, d.min, d.max, d.step, p.params[j],
-    v => v.toFixed(decimals(d.step)),
-    v => { p.params[j] = v; throttle('p', () => post('/api/preset', {index: S.current, params: p.params})); })));
+  // Timing: tempo and beat come from Ableton Link (or the board's own clock when it is disabled).
+  // In beats, the effect's cycle (a band, a revolution, ...) takes 1, 2, 4 ... 64 beats and the
+  // speed slider is replaced by that choice.
+  const modes = ['Time', 'Time, follow tempo'].concat(ef.cycle ? ['Beats'] : []);
+  const timing = Math.min(p.timing, modes.length - 1);
+  const inBeats = timing == 2;
+  card.append(select('Timing', modes, timing, v => {
+    p.timing = v; post('/api/preset', {index: S.current, timing: v}); draw(); }));
+  if (inBeats) {
+    const beats = [1, 2, 4, 8, 16, 32, 64].map(b => b + ' beat' + (b > 1 ? 's' : '') + (b >= 4 ? ' (' + b / 4 + ' bar' + (b > 4 ? 's' : '') + ')' : ''));
+    card.append(select('Beats per ' + ef.cycle, beats, p.beatsExp, v => {
+      p.beatsExp = v; post('/api/preset', {index: S.current, beatsExp: v}); }));
+    const rev = h('input', {type: 'checkbox', checked: p.reverse});
+    rev.onchange = () => { p.reverse = rev.checked; post('/api/preset', {index: S.current, reverse: rev.checked}); };
+    card.append(field('Reverse', rev));
+  }
+  ef.params.forEach((d, j) => {
+    if (inBeats && j == ef.speedParam) return;
+    card.append(slider(d.name, d.min, d.max, d.step, p.params[j],
+      v => v.toFixed(decimals(d.step)),
+      v => { p.params[j] = v; throttle('p', () => post('/api/preset', {index: S.current, params: p.params})); }));
+  });
   if (ef.sparkle) card.append(slider('Sparkle overlay', 0, 1, 0.01, p.sparkle, v => v.toFixed(2),
     v => { p.sparkle = v; throttle('s', () => post('/api/preset', {index: S.current, sparkle: v})); }));
-  // Beat sync: tempo and beat come from Ableton Link (or the board's own clock when disabled)
-  const check = (label, val, key) => {
-    const c = h('input', {type: 'checkbox', checked: val});
-    c.onchange = () => { p[key] = c.checked; post('/api/preset', {index: S.current, [key]: c.checked}); };
-    return field(label, c);
-  };
-  card.append(check('Follow tempo', p.syncTempo, 'syncTempo'));
-  card.append(check('Lock to beat', p.syncLock, 'syncLock'));
   card.append(slider('Beat pulse', 0, 1, 0.01, p.pulse, v => v.toFixed(2),
     v => { p.pulse = v; throttle('pu', () => post('/api/preset', {index: S.current, pulse: v})); }));
   const reset = h('button', {textContent: 'Reset parameters'});
@@ -268,8 +279,9 @@ function linkCard() {
       h('span', {className: 'hint', textContent: 'with Ableton Link enabled, this sets everyone\u2019s tempo'})),
     slider('Latency (ms)', 0, 200, 1, S.linkLatency, v => v.toFixed(0),
       v => { S.linkLatency = v; throttle('lat', () => post('/api/link', {latency: v})); }),
-    h('p', {className: 'hint', textContent: 'Presets that follow the tempo run at their set speed at 120 BPM. ' +
-      'Locked to the beat, cycles (bands, rings, sweeps, beams, drops) take 1, 2, 4, 8\u2026 beats and land on the bar. ' +
+    h('p', {className: 'hint', textContent: 'Timing per preset: in time, speeds are in their own units; following the tempo ' +
+      'they run at their set speed at 120 BPM; in beats, the effect\u2019s cycle (a band, ring, sweep, revolution, drop) ' +
+      'takes 1, 2, 4 \u2026 64 beats and lands on the bar. ' +
       'Latency: how much later the LEDs show a frame; frames are rendered that far ahead.'}),
     h('p', {className: 'hint', textContent: 'Ableton and Ableton Link are trademarks of Ableton AG.'}));
 }

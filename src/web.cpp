@@ -42,8 +42,9 @@ static bool readBody(JsonDocument& d) {
 static void presetJson(JsonObject o, int i) {
     const Preset& p = presets[i];
     o["name"] = p.name;
-    o["syncTempo"] = presetSync[i].tempo != 0;
-    o["syncLock"] = presetSync[i].lock != 0;
+    o["timing"] = presetSync[i].timing;
+    o["beatsExp"] = presetSync[i].beatsExp;
+    o["reverse"] = presetSync[i].reverse != 0;
     o["pulse"] = presetSync[i].pulse;
     o["effect"] = p.effect;
     o["palette"] = p.palette;
@@ -94,6 +95,8 @@ static void handleState() {
         JsonObject o = ef.add<JsonObject>();
         o["name"] = EFFECTS[i].name;
         o["sparkle"] = !EFFECTS[i].ownSparkle;
+        if (EFFECTS[i].cycle) o["cycle"] = EFFECTS[i].cycle;
+        o["speedParam"] = EFFECTS[i].speedParam;
         JsonArray ps = o["params"].to<JsonArray>();
         for (int j = 0; j < EFFECTS[i].n; j++) {
             const ParamDef& pd = EFFECTS[i].params[j];
@@ -156,8 +159,9 @@ static void handlePreset() {
         for (int j = 0; j < e.n && j < (int)a.size(); j++)
             p.p[j] = constrain(a[j].as<float>(), e.params[j].min, e.params[j].max);
     }
-    if (d["syncTempo"].is<bool>()) presetSync[i].tempo = d["syncTempo"].as<bool>();
-    if (d["syncLock"].is<bool>()) presetSync[i].lock = d["syncLock"].as<bool>();
+    if (d["timing"].is<int>()) presetSync[i].timing = constrain(d["timing"].as<int>(), 0, (int)TIMING_BEATS);
+    if (d["beatsExp"].is<int>()) presetSync[i].beatsExp = constrain(d["beatsExp"].as<int>(), 0, 6);
+    if (d["reverse"].is<bool>()) presetSync[i].reverse = d["reverse"].as<bool>();
     if (d["pulse"].is<float>()) presetSync[i].pulse = constrain(d["pulse"].as<float>(), 0.f, 1.f);
     storeMarkDirty();
     JsonDocument r;

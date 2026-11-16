@@ -23,7 +23,8 @@ struct Ctx {
     // Beat sync (Ableton Link). dt is already scaled by the tempo when the preset follows it.
     double beat;          // beats since the session origin (bar = 4 beats)
     float bpm;
-    bool lock;            // lock cyclic motion to the beat grid
+    float cycleBeats;     // > 0: timing in beats, the effect's cycle takes this many beats
+    bool reverse;         // timing in beats: run the cycle backwards
 };
 
 struct EffectDef {
@@ -32,6 +33,10 @@ struct EffectDef {
     ParamDef params[MAXP];
     void (*render)(Ctx&);
     bool ownSparkle;      // the effect is sparkle itself; no overlay on top
+    // Timing in beats: what one cycle is ("band", "revolution", ...) and which parameter it
+    // replaces (the speed). nullptr / -1: the effect has no cycle, time timing only.
+    const char* cycle;
+    int8_t speedParam;
 };
 
 extern const EffectDef EFFECTS[];

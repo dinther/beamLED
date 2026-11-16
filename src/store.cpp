@@ -150,7 +150,7 @@ void storeLoad() {
 
     // Kept under their own keys: a missing or older one falls back to defaults on its own
     layoutDefaults();
-    for (PresetSync& y : presetSync) y = {0, 0, 0};
+    for (PresetSync& y : presetSync) y = {TIMING_TIME, 2, 0, 0};
     linkSettings = {0, 120, 20};
     prefs.begin("beamled", true);
     if (prefs.isKey("lay") && prefs.getBytesLength("lay") == sizeof(layout))
@@ -162,8 +162,9 @@ void storeLoad() {
     prefs.end();
     layoutSanitize(layout);
     for (PresetSync& y : presetSync) {
-        y.tempo = y.tempo ? 1 : 0;
-        y.lock = y.lock ? 1 : 0;
+        if (y.timing > TIMING_BEATS) y.timing = TIMING_TIME;
+        if (y.beatsExp > 6) y.beatsExp = 2;
+        y.reverse = y.reverse ? 1 : 0;
         if (!(y.pulse >= 0 && y.pulse <= 1)) y.pulse = 0;
     }
     linkSettings.enabled = linkSettings.enabled ? 1 : 0;

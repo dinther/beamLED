@@ -25,10 +25,17 @@ struct Settings {
 };
 
 // Beat sync per preset (stored apart from Preset so adding it kept existing presets)
+enum Timing : uint8_t {
+    TIMING_TIME,    // speeds in their own units (m/s, rpm, ...)
+    TIMING_TEMPO,   // the same, scaled by bpm / 120
+    TIMING_BEATS,   // the effect's cycle takes 2^beatsExp beats, locked to the beat grid
+};
+
 struct PresetSync {
-    uint8_t tempo;  // speeds follow the tempo (the set speed applies at 120 BPM)
-    uint8_t lock;   // cyclic motion locked to the beat grid
-    float pulse;    // brightness accent on each beat, 0..1
+    uint8_t timing;    // Timing
+    uint8_t beatsExp;  // timing in beats: 0..6 = 1, 2, 4, ... 64 beats per cycle
+    uint8_t reverse;   // timing in beats: cycle runs backwards
+    float pulse;       // brightness accent on each beat, 0..1
 };
 
 struct LinkSettings {

@@ -50,25 +50,18 @@ static inline float wrap256(float a) {
 
 static inline float frand() { return random16() / 65535.f; }
 
-// Nearest power of two, for beat counts: 1/4, 1/2, 1, 2, 4 (a bar), 8, ... 64 beats
-static double snapBeats(double beats) {
-    if (!(beats > 0)) return 4;
-    const double p = exp2(round(log2(beats)));
-    return p < 0.25 ? 0.25 : (p > 64 ? 64 : p);
-}
-
 // Moves an effect's main cycle: `acc` advances `rate` per second, one cycle = `units`.
-// Locked to the beat, the rate is rounded so a cycle takes a power-of-two number of beats, and
-// the cycle starts ease onto the beat grid (onto bars for cycles of 4+ beats) within a few
-// seconds, without jumps. Uses state slots 5 and 6.
+// Timing in beats: a cycle takes c.cycleBeats beats instead, and the cycle starts ease onto the
+// beat grid (onto bars for cycles of 4+ beats) within a few seconds, without jumps.
+// Uses state slots 5 and 6.
 static void advance(Ctx& c, float& acc, float rate, float units) {
-    if (!c.lock || rate == 0 || !(units > 0)) {
+    if (!(c.cycleBeats > 0) || !(units > 0)) {
         acc += rate * c.dt;
         c.s[6] = 0;
         return;
     }
-    const float dir = rate > 0 ? 1.f : -1.f;
-    const double bpc = snapBeats(units / fabsf(rate) * c.bpm / 60.0);
+    const float dir = c.reverse ? -1.f : 1.f;
+    const double bpc = c.cycleBeats;
     const double base = dir * c.beat / bpc * units;
     if (c.s[6] != (float)(bpc * dir)) {  // (re)locking or a new speed: carry on from here
         c.s[5] = (float)(acc - base);
@@ -161,7 +154,7 @@ static void rolling(Ctx& c) {
     const float speed = c.p[0], width = c.p[1], soft = c.p[2], gap = c.p[3], turn = c.p[4],
                 step = c.p[5];
     c.s[0] += c.dt * turn * DEG;
-    advance(c, c.s[1], speed / width, 1.f);  // locked: one band per 2^n beats
+    advance(c, c.s[1], speed / width, 1.f);  // in beats: one band per cycle
     const float ca = cosf(c.s[0]), sa = sinf(c.s[0]);
     for (int b = 0; b < NY; b++) {
         // Transition at least the row's footprint projected onto the roll direction
@@ -192,7 +185,7 @@ static void sweeps(Ctx& c) {
         }
     }
     const float L = hypotf(W, H) + 2 * width + 2 * trail + 1.f;  // full travel
-    advance(c, c.s[0], speed, L / n);  // locked: a new bar every 2^n beats
+    advance(c, c.s[0], speed, L / n);  // in beats: a new bar per cycle
     float pos[4], ca[4], sa[4];
     CRGB col[4];
     for (int k = 0; k < n; k++) {
@@ -308,7 +301,7 @@ static void lighthouse(Ctx& c) {
     const int arms = clampi((int)(c.p[2] + 0.5f), 1, 4);
     const float ox = c.p[3] * W, oy = Y[0] + c.p[4] * H, bg = c.p[5], spread = c.p[6];
     const float P = TAU / arms, half = wdeg * DEG * 0.5f;
-    advance(c, c.s[0], rpm * (TAU / 60.f), P);  // locked: a beam passes every 2^n beats
+    advance(c, c.s[0], rpm * (TAU / 60.f), TAU);  // in beats: one revolution per cycle
     float maxR = 0;
     for (float cx : {0.f, W})
         for (float cy : {Y[0], Y[0] + H}) maxR = fmaxf(maxR, hypotf(cx - ox, cy - oy));
@@ -336,7 +329,7 @@ static void lighthouse(Ctx& c) {
 static void rings(Ctx& c) {
     const float spacing = c.p[0], speed = c.p[1], soft = c.p[2], gap = c.p[3], wander = c.p[4],
                 wspeed = c.p[5], step = c.p[6];
-    advance(c, c.s[0], speed / spacing, 1.f);  // locked: a ring every 2^n beats
+    advance(c, c.s[0], speed / spacing, 1.f);  // in beats: a ring per cycle
     c.s[1] += c.dt * wspeed;
     const float cx = CX + wander * W * 0.5f * sinf(c.s[1] * 0.37f);
     const float cy = CY + wander * H * 0.5f * sinf(c.s[1] * 0.29f + 1.3f);
@@ -367,9 +360,9 @@ static void dropsFx(Ctx& c) {
         c.s[0] = 0.99f;  // first drop right away
     }
     int spawn = 0;
-    if (c.lock) {
-        // A drop every 2^n beats, on the beat
-        const double every = snapBeats(60.0 / rate * c.bpm / 60.0);
+    if (c.cycleBeats > 0) {
+        // A drop every N beats, on the beat
+        const double every = c.cycleBeats;
         const float idx = (float)floor(c.beat / every);
         if (c.s[6] != (float)every) {
             c.s[6] = (float)every;
@@ -517,14 +510,14 @@ const EffectDef EFFECTS[] = {
       {"Dark gaps", 0, 1, 0.3f, 0.01f},
       {"Turn (deg/s)", -10, 10, 1.5f, 0.1f},
       {"Colour step", 0, 1, 0.2f, 0.01f}},
-     rolling, false},
+     rolling, false, "band", 0},
     {"Searchlights", 5,
      {{"Beams", 1, 5, 3, 1},
       {"Beam radius (m)", 0.5f, 3, 1.2f, 0.1f},
       {"Speed", 0, 1.5f, 0.3f, 0.01f},
       {"Background", 0, 0.3f, 0.02f, 0.01f},
       {"Softness", 0, 1, 0.6f, 0.01f}},
-     searchlights, false},
+     searchlights, false, nullptr, -1},
     {"Lighthouse", 7,
      {{"Speed (rpm)", -20, 20, 4, 0.1f},
       {"Beam width (deg)", 5, 120, 30, 1},
@@ -533,7 +526,7 @@ const EffectDef EFFECTS[] = {
       {"Origin Y", -0.2f, 1.2f, -0.05f, 0.01f},
       {"Background", 0, 0.3f, 0.02f, 0.01f},
       {"Colour spread", 0, 1, 0.6f, 0.01f}},
-     lighthouse, false},
+     lighthouse, false, "revolution", 0},
     {"Clouds", 6,
      {{"Coverage", 0, 1, 0.5f, 0.01f},
       {"Cloud size (m)", 1, 8, 3, 0.1f},
@@ -541,13 +534,13 @@ const EffectDef EFFECTS[] = {
       {"Wind turn (deg/s)", -5, 5, 0.5f, 0.1f},
       {"Evolve", 0, 1, 0.2f, 0.01f},
       {"Softness", 0, 1, 0.4f, 0.01f}},
-     clouds, false},
+     clouds, false, nullptr, -1},
     {"Sparkle", 4,
      {{"Density", 0, 1, 0.4f, 0.01f},
       {"Twinkle time (s)", 0.3f, 5, 1.5f, 0.1f},
       {"Background", 0, 0.5f, 0.05f, 0.01f},
       {"Drift", 0, 1, 0.2f, 0.01f}},
-     sparkle, true},
+     sparkle, true, nullptr, -1},
     {"Sweeps", 8,
      {{"Bars", 1, 4, 1, 1},
       {"Speed (m/s)", 0.05f, 2, 0.4f, 0.01f},
@@ -557,7 +550,7 @@ const EffectDef EFFECTS[] = {
       {"Random angle", 0, 1, 0, 1},
       {"Background", 0, 0.3f, 0.02f, 0.01f},
       {"Softness", 0, 1, 0.2f, 0.01f}},
-     sweeps, false},
+     sweeps, false, "sweep", 1},
     {"Plaid", 6,
      {{"Stripe period (m)", 1, 6, 2.5f, 0.1f},
       {"Speed (m/s)", 0, 1, 0.1f, 0.01f},
@@ -565,7 +558,7 @@ const EffectDef EFFECTS[] = {
       {"Cross angle (deg)", 0, 90, 60, 1},
       {"Contrast", 0, 1, 0.6f, 0.01f},
       {"Colour drift", 0, 1, 0.2f, 0.01f}},
-     plaid, false},
+     plaid, false, "stripe", 1},
     {"Rings", 7,
      {{"Ring spacing (m)", 0.8f, 4, 1.5f, 0.1f},
       {"Speed (m/s, - = inward)", -1, 1, 0.2f, 0.01f},
@@ -574,14 +567,14 @@ const EffectDef EFFECTS[] = {
       {"Centre wander", 0, 1, 0.4f, 0.01f},
       {"Wander speed", 0, 1, 0.2f, 0.01f},
       {"Colour step", 0, 1, 0.2f, 0.01f}},
-     rings, false},
+     rings, false, "ring", 1},
     {"Drops", 5,
      {{"Drops per minute", 1, 60, 10, 1},
       {"Speed (m/s)", 0.1f, 2, 0.5f, 0.01f},
       {"Ring width (m)", 0.4f, 2.5f, 1, 0.1f},
       {"Max radius (m)", 1, 12, 6, 0.1f},
       {"Background", 0, 0.3f, 0.03f, 0.01f}},
-     dropsFx, false},
+     dropsFx, false, "drop", 0},
     {"Interference", 6,
      {{"Wavelength (m)", 0.8f, 5, 1.8f, 0.1f},
       {"Speed (m/s)", -1, 1, 0.15f, 0.01f},
@@ -589,7 +582,7 @@ const EffectDef EFFECTS[] = {
       {"Rotate (deg/s)", -10, 10, 2, 0.1f},
       {"Contrast", 0, 1, 0.7f, 0.01f},
       {"Colour drift", 0, 1, 0.2f, 0.01f}},
-     interference, false},
+     interference, false, "wave", 1},
 };
 const int NUM_EFFECTS = sizeof(EFFECTS) / sizeof(EFFECTS[0]);
 
