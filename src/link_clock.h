@@ -28,8 +28,8 @@ public:
     // reach the LEDs lands on the beat
     BeatTime now(double aheadMs = 0) const;
     void setTempo(double bpm);  // also changes it for every peer
-    // Starts Link afresh at the current tempo and beat (a running Link sometimes stays alone
-    // while other apps see each other; only a fresh Link clears it)
+    // Starts Link's discovery afresh (a running Link sometimes stays alone while other apps
+    // see each other); tempo and beat carry on
     void rejoin();
 
 private:

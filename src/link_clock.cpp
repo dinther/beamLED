@@ -42,17 +42,12 @@ BeatTime LinkClock::now(double aheadMs) const {
 }
 
 void LinkClock::rejoin() {
+    // Off and on again: discovery starts afresh with new sockets for every interface. Never
+    // destroy a Link on the ESP32 to do this: its io task is killed (vTaskDelete) only after the
+    // objects it works on are gone, so a scan running at that moment uses freed memory (it
+    // crashed the board about once a minute while alone). Tempo and beat stay as they were.
     if (!impl_->link.isEnabled()) return;
-    const auto at = impl_->link.clock().micros();
-    const auto old = impl_->link.captureAppSessionState();
-    const double bpm = old.tempo();
-    const double beat = old.beatAtTime(at, kQuantum);
     impl_->link.enable(false);
-    impl_.reset(new Impl(bpm));
-    // A new Link starts its beat count at 0: carry the beat over so the bar doesn't jump
-    auto state = impl_->link.captureAppSessionState();
-    state.requestBeatAtTime(beat, at, kQuantum);
-    impl_->link.commitAppSessionState(state);
     impl_->link.enable(true);
 }
 
