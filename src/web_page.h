@@ -166,7 +166,7 @@ const H = {
   sparkle: 'White twinkles on top of this preset’s effect. 0 = none, 1 = about 8% of the LEDs lit at any moment.',
   pulse: 'A brightness accent on the beat: full on each beat and dipping in between, strongest on the bar’s first beat. 0 = steady. Follows Ableton Link, or the board’s own tempo.',
   reset: 'Sets this preset’s effect parameters back to the effect’s defaults (not saved until you click Save). Name, palette, timing, sparkle and pulse stay as they are.',
-  save: 'Stores this preset as it plays now: effect, palette, sliders, timing, sparkle and pulse. Until you save, changes (here or from OSC) play on the ceiling but the preset keeps its saved settings, so you can tinker freely. Unsaved changes are kept while you switch presets, and lost on a power cut.',
+  save: 'Stores this preset as it plays now: its name, effect, palette, sliders, motions, timing, sparkle and pulse. Until you save, changes (here or from OSC) play on the ceiling but the preset keeps its saved settings, so you can tinker freely. Unsaved changes are kept while you switch presets, and lost on a power cut.',
   revert: 'Goes back to this preset’s saved settings, dropping the changes since the last Save.',
   motion: 'A Motion moves one of this effect’s sliders back and forth by itself, between From and To: a beam swinging (Lighthouse Angle), bands scrolling to and fro (Offset), a width breathing. Off: no motion. The slider it moves shows ↔ and follows it. Two motions can move two sliders, or run out of step with Phase.',
   shape: 'How it travels between the ends. Sine: smooth, like a pendulum. Linear: a steady speed, turning sharply at the ends. Ease in-out: slow at the ends, quick through the middle. Hold at ends: rests at each end before turning back. Overshoot: goes a little past each end and settles. Bounce: bounces as it arrives at each end. Random: glides to a new random value between From and To every half period (the same values every time, on the beat grid in beats). Min max: From for the first half of the period, To for the second, switching at once with no transition. The drawing below shows one there-and-back (Random: three).',
@@ -205,7 +205,7 @@ const H = {
   wifiPass: 'The backup WiFi’s password. Leave it empty to keep the saved one.',
   scan: 'Lists the WiFi networks in range; click one to fill in its name.',
   apPass: 'A password for the board’s hotspot, 8 characters or more. Empty: an open hotspot. Type - to remove a saved password.',
-  save: 'Saves the network settings and restarts the board; the lights go out for a few seconds.',
+  netSave: 'Saves the network settings and restarts the board; the lights go out for a few seconds.',
 };
 
 const decimals = s => s >= 1 ? 0 : s >= 0.1 ? 1 : 2;
@@ -657,7 +657,7 @@ function networkCard() {
     msg.textContent = r.state == 2 ? '' : 'Scan failed';
     nets.replaceChildren(...r.nets.map(n => { const b = h('button', {textContent: n.s + '  (' + n.r + ' dBm' + (n.l ? ', locked' : '') + ')'}); b.onclick = () => { ssid.value = n.s; wp.focus(); }; return b; }));
   };
-  const save = button('Save and restart', H.save, {className: 'on'});
+  const save = button('Save and restart', H.netSave, {className: 'on'});
   save.onclick = () => post('/api/net', {name: name.value, fallback: fb.value, ssid: ssid.value, wifiPass: wp.value, apPass: ap.value})
     .then(() => { msg.textContent = 'Restarting... reconnect at http://' + name.value + '.local in a few seconds.'; })
     .catch(e => { msg.textContent = e.message; });
