@@ -666,7 +666,7 @@ static void gradient(Ctx& c) {
 const EffectDef EFFECTS[] = {
     {"Rolling bars", 7,
      {{"Speed (m/s)", 0, 1, 0.15f, 0.01f, "How fast the bands roll, in metres per second. 0 stops them; the direction still turns. Calm: 0.05 to 0.2."},
-      {"Band width (m)", 0.8f, 5, 2, 0.1f, "The width of one band, in metres. Bands narrower than about twice the gap between rows flicker as they cross them."},
+      {"Band width (m)", 0.8f, 5, 2, 0.1f, "The width of one band, in metres. Narrow bands flicker as they cross the rows: with rows half a metre apart, for example, about 0.8 m is the narrowest that stays smooth."},
       {"Softness", 0, 1, 0.6f, 0.01f, H_SOFT_BANDS},
       {"Dark gaps", 0, 1, 0.3f, 0.01f, H_GAPS},
       {"Turn (deg/s)", -10, 10, 1.5f, 0.1f, "How fast the rolling direction turns, in degrees per second; negative turns the other way. 1.5 = a full turn in 4 minutes, 0 = a fixed direction."},
