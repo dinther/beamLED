@@ -9,6 +9,7 @@ bool engineOn();
 void engineResetEffect();        // the current preset's effect changed
 float engineFps();
 float engineRenderMs();
+float engineSendMs();      // Art-Net out, per frame
 int engineCurrent();              // preset playing, or being faded to
 void engineLayoutChanged();      // after editing `layout`: re-init positions, save
 

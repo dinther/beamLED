@@ -405,7 +405,7 @@ static httpd_handle_t server = nullptr;
 // A JSON reply streamed out in chunks, so the whole tree never has to be in memory. Bigger chunks
 // make the tree come down much faster (each chunk is a TCP round trip).
 static const size_t CHUNK = 4096;
-static char chunkBuf[CHUNK];
+static char* chunkBuf = nullptr;  // CHUNK bytes from the heap (static DRAM is full)
 struct Out {
     httpd_req_t* req;
     char* buf;  // the shared chunk buffer: only the server's task writes replies
@@ -725,7 +725,7 @@ static void updateTree() {
 // since the last push (split when a bundle fills a packet): each frame costs a network round
 // trip on the board, each extra message in it almost nothing.
 static const size_t BUNDLE_MAX = 1400;
-static uint8_t bundle[MAX_LISTENERS][BUNDLE_MAX];
+static uint8_t (*bundle)[BUNDLE_MAX] = nullptr;  // one per listener, from the heap
 static size_t bundleLen[MAX_LISTENERS];
 
 static void bundleFlush(int k) {
@@ -872,6 +872,8 @@ static void start() {
         fcntl(udpSocket, F_SETFL, O_NONBLOCK);
     }
 
+    chunkBuf = (char*)malloc(CHUNK);
+    bundle = (uint8_t (*)[BUNDLE_MAX])malloc(MAX_LISTENERS * BUNDLE_MAX);
     httpd_config_t c = HTTPD_DEFAULT_CONFIG();
     c.server_port = cfg::OSCQUERY_PORT;
     c.ctrl_port = 32770;
@@ -882,7 +884,7 @@ static void start() {
     c.close_fn = onClose;
     c.core_id = 0;  // with the network stack; the render loop has core 1
     c.stack_size = 6144;
-    if (httpd_start(&server, &c) == ESP_OK) {
+    if (chunkBuf && bundle && httpd_start(&server, &c) == ESP_OK) {
         httpd_uri_t u = {};
         u.uri = "/*";
         u.method = HTTP_GET;

@@ -66,6 +66,7 @@ static void statusJson(JsonObject o) {
     o["presetCount"] = presetCount;
     o["fps"] = roundf(engineFps() * 10) / 10;
     o["renderMs"] = roundf(engineRenderMs() * 10) / 10;
+    o["sendMs"] = roundf(engineSendMs() * 10) / 10;
     o["net"] = netModeText();
     o["wifi"] = netWifiText();
     o["heap"] = ESP.getFreeHeap();
@@ -304,7 +305,22 @@ static void handleScan() {
     server.send(200, "application/json", out);
 }
 
+// /api/bench?e=<effect>&frames=<n>: ms per frame to render it (palette 1, default parameters).
+// Holds the render loop for that long, so ask for one effect at a time.
+static void handleBench() {
+    static CRGB lw[256], ll[256];
+    buildLut(palettes[0], lw, true);
+    buildLut(palettes[0], ll, false);
+    const int e = server.hasArg("e") ? server.arg("e").toInt() : 0;
+    const int frames = constrain(server.hasArg("frames") ? server.arg("frames").toInt() : 5, 1, 40);
+    JsonDocument d;
+    d["effect"] = e < NUM_EFFECTS && e >= 0 ? EFFECTS[e].name : "?";
+    d["ms"] = effectsBenchmark(e, lw, ll, frames);
+    sendJson(d);
+}
+
 void webBegin() {
+    server.on("/api/bench", HTTP_GET, handleBench);
     server.on("/", HTTP_GET, []() { server.send_P(200, "text/html", WEB_PAGE); });
     server.on("/api/state", HTTP_GET, handleState);
     server.on("/api/status", HTTP_GET, handleStatus);

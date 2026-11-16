@@ -1,5 +1,8 @@
 #include "effects.h"
 
+#ifdef ARDUINO
+#include <Arduino.h>  // micros, for the benchmark
+#endif
 #include <math.h>
 #include <string.h>
 
@@ -19,13 +22,18 @@ static float noiseScale = 1.f / 15000.f;
 
 static inline float clamp01(float x) { return x < 0 ? 0 : (x > 1 ? 1 : x); }
 static inline int clampi(int x, int lo, int hi) { return x < lo ? lo : (x > hi ? hi : x); }
+// floorf without the library call (exact for |x| < 2^31)
+static inline int floorI(float x) {
+    const int n = (int)x;
+    return x < n ? n - 1 : n;
+}
 
 static inline float sstep(float e0, float e1, float x) {
     float t = clamp01((x - e0) / (e1 - e0));
     return t * t * (3 - 2 * t);
 }
 
-static inline CRGB lutW(const CRGB* l, float pos) { return l[(int)floorf(pos * 256.f) & 255]; }
+static inline CRGB lutW(const CRGB* l, float pos) { return l[floorI(pos * 256.f) & 255]; }
 
 static inline CRGB lutL(const CRGB* l, float pos) {
     int i = (int)(pos * 255.f + 0.5f);
@@ -49,6 +57,52 @@ static inline float wrap256(float a) {
 }
 
 static inline float frand() { return random16() / 65535.f; }
+
+// Fast maths. The ESP32's FPU has no divide, square root, exp or trig in hardware, and the
+// effects run them for each of the 2700 LEDs. Tables with linear interpolation, accurate to
+// about 3e-5 (one step of 8-bit colour is 4e-3).
+static float cosTab[1025];  // cos(TAU * k / 1024)
+static constexpr float EXP_MIN = -8.f;
+static float expTab[513];   // exp(x), x from EXP_MIN to 0 in 512 steps
+static void fastInit() {
+    for (int k = 0; k <= 1024; k++) cosTab[k] = cosf(TAU * k / 1024.f);
+    for (int k = 0; k <= 512; k++) expTab[k] = expf(EXP_MIN * (1.f - k / 512.f));
+}
+// cos(TAU * u), u in cycles
+static inline float cosCyc(float u) {
+    float f = (u - floorI(u)) * 1024.f;
+    int k = (int)f;
+    if (k > 1023) k = 1023;
+    f -= k;
+    return cosTab[k] + (cosTab[k + 1] - cosTab[k]) * f;
+}
+// exp(x) for x <= 0; 0 below EXP_MIN (where exp is under 4e-4)
+static inline float expNeg(float x) {
+    if (x <= EXP_MIN) return 0;
+    if (x >= 0) return 1;
+    float f = (x - EXP_MIN) * (512.f / -EXP_MIN);
+    int k = (int)f;
+    if (k > 511) k = 511;
+    f -= k;
+    return expTab[k] + (expTab[k + 1] - expTab[k]) * f;
+}
+// atan2, max error about 1e-5 rad
+static inline float atan2Fast(float y, float x) {
+    const float ax = fabsf(x), ay = fabsf(y), mx = fmaxf(ax, ay);
+    if (mx == 0) return 0;
+    const float z = fminf(ax, ay) / mx, z2 = z * z;
+    float a = z * (0.99997726f + z2 * (-0.33262347f + z2 * (0.19354346f + z2 * (-0.11643287f +
+                   z2 * (0.05265332f + z2 * -0.01172120f)))));
+    if (ay > ax) a = 1.57079633f - a;
+    if (x < 0) a = 3.14159265f - a;
+    return y < 0 ? -a : a;
+}
+static inline float roundFast(float x) { return (float)(int)(x + (x < 0 ? -0.5f : 0.5f)); }
+// smoothstep of t already scaled to the edge: (x - e0) / (e1 - e0)
+static inline float sm(float t) {
+    t = clamp01(t);
+    return t * t * (3 - 2 * t);
+}
 
 // Moves an effect's main cycle: `acc` advances `rate` per second, one cycle = `units`.
 // Timing in beats: a cycle takes c.cycleBeats beats instead, and the cycle starts ease onto the
@@ -82,6 +136,24 @@ static inline CRGB bands(float u, float k, float step, float gap, const CRGB* lu
     const float w = 1.f - sstep(0.f, k * 0.5f + 0.001f, fabsf(f - 0.5f));
     return scaleF(lutW(lut, cpos), 1.f - gap * w);
 }
+
+// The same bands with k fixed (per row, say): the divisions are done once
+struct Bands {
+    float lo, rk, re, step, gap;
+    Bands(float k, float step_, float gap_) : step(step_), gap(gap_) {
+        k = fminf(1.f, fmaxf(0.03f, k));
+        lo = 0.5f - k * 0.5f;
+        rk = 1.f / k;
+        re = 1.f / (k * 0.5f + 0.001f);
+    }
+    CRGB at(float u, const CRGB* lut) const {
+        const int n = floorI(u);
+        const float f = u - n;
+        const float cpos = (n + sm((f - lo) * rk)) * step;
+        const float w = 1.f - sm(fabsf(f - 0.5f) * re);
+        return scaleF(lutW(lut, cpos), 1.f - gap * w);
+    }
+};
 
 // Contrast left of a cosine of the given period after averaging over a row's footprint, for
 // a pattern whose gradient makes sinAbs with the rows (box filter ~ Gaussian, sd = FY/sqrt(12))
@@ -155,14 +227,13 @@ static void rolling(Ctx& c) {
                 step = c.p[5];
     c.s[0] += c.dt * turn * DEG;
     advance(c, c.s[1], speed / width, 1.f);  // in beats: one band per cycle
-    const float ca = cosf(c.s[0]), sa = sinf(c.s[0]);
+    const float ca = cosf(c.s[0]), sa = sinf(c.s[0]), iw = 1.f / width;
     for (int b = 0; b < NY; b++) {
         // Transition at least the row's footprint projected onto the roll direction
-        const float k = fmaxf(soft, FY[b] * fabsf(sa) / width);
+        const Bands bd(fmaxf(soft, FY[b] * fabsf(sa) * iw), step, gap);
         const float dy = (Y[b] - CY) * sa;
         CRGB* o = c.out + b * NX;
-        for (int i = 0; i < NX; i++)
-            o[i] = bands(((X[i] - CX) * ca + dy) / width - c.s[1], k, step, gap, c.lutWrap);
+        for (int i = 0; i < NX; i++) o[i] = bd.at(((X[i] - CX) * ca + dy) * iw - c.s[1], c.lutWrap);
     }
 }
 
@@ -203,22 +274,22 @@ static void sweeps(Ctx& c) {
         col[k] = c.lutWrap[sweepCol[k]];
     }
     const CRGB back = c.lutLin[0];
-    const float hw = width * 0.5f;
+    const float hw = width * 0.5f, itrail = trail > 0.01f ? 1.f / trail : 0;
     for (int b = 0; b < NY; b++) {
         CRGB* o = c.out + b * NX;
-        float edge[4];
-        for (int k = 0; k < n; k++) edge[k] = fmaxf(fmaxf(soft * width, FY[b] * fabsf(sa[k])), 0.05f);
+        float ie[4];  // 1 / edge width
+        for (int k = 0; k < n; k++) ie[k] = 1.f / fmaxf(fmaxf(soft * width, FY[b] * fabsf(sa[k])), 0.05f);
         for (int i = 0; i < NX; i++) {
             float r = back.r * bg, g = back.g * bg, bl = back.b * bg;
             for (int k = 0; k < n; k++) {
                 // s > 0 ahead of the bar's centre, s < 0 behind it
                 const float s = (X[i] - CX) * ca[k] + (Y[b] - CY) * sa[k] - pos[k];
                 float I;
-                if (s > hw) I = 1.f - sstep(hw, hw + edge[k], s);
+                if (s > hw) I = 1.f - sm((s - hw) * ie[k]);
                 else if (s >= -hw) I = 1.f;
                 else {
-                    I = 1.f - sstep(-hw, -hw - edge[k], s);
-                    if (trail > 0.01f) I = fmaxf(I, expf((s + hw) / trail));
+                    I = 1.f - sm((-hw - s) * ie[k]);
+                    if (trail > 0.01f) I = fmaxf(I, expNeg((s + hw) * itrail));
                 }
                 if (I <= 0.002f) continue;
                 r += col[k].r * I;
@@ -240,15 +311,15 @@ static void plaid(Ctx& c) {
     advance(c, c.s[1], speed / period, 1.f);
     c.s[2] += c.dt * drift * 0.02f;
     const float a1 = c.s[0], a2 = c.s[0] + cross * DEG;
-    const float c1 = cosf(a1), s1 = sinf(a1), c2 = cosf(a2), s2 = sinf(a2);
+    const float c1 = cosf(a1), s1 = sinf(a1), c2 = cosf(a2), s2 = sinf(a2), ip = 1.f / period;
     for (int b = 0; b < NY; b++) {
         const float at1 = footAtten(b, fabsf(s1), period), at2 = footAtten(b, fabsf(s2), period);
         const float dy = Y[b] - CY;
         CRGB* o = c.out + b * NX;
         for (int i = 0; i < NX; i++) {
             const float dx = X[i] - CX;
-            const float v1 = cosf(TAU * ((dx * c1 + dy * s1) / period - c.s[1])) * at1;
-            const float v2 = cosf(TAU * ((dx * c2 + dy * s2) / period + c.s[1] * 0.7f)) * at2;
+            const float v1 = cosCyc((dx * c1 + dy * s1) * ip - c.s[1]) * at1;
+            const float v2 = cosCyc((dx * c2 + dy * s2) * ip + c.s[1] * 0.7f) * at2;
             const CRGB colour = lutW(c.lutWrap, c.s[2] + 0.5f * sstep(-0.5f, 0.5f, v1 - v2));
             const float lvl = 1.f - contrast * (1.f - (v1 + v2 + 2.f) * 0.25f);
             o[i] = scaleF(colour, lvl);
@@ -273,7 +344,7 @@ static void searchlights(Ctx& c) {
         col[k] = lutW(c.lutWrap, (float)k / n);
     }
     const float inner = fmaxf(0.f, fminf(size * (1.f - soft), size - 0.4f));  // edge >= 0.4 m
-    const float size2 = size * size;
+    const float size2 = size * size, iedge = 1.f / (size - inner);
     const CRGB back = c.lutWrap[0];
     for (int b = 0; b < NY; b++) {
         CRGB* o = c.out + b * NX;
@@ -283,7 +354,7 @@ static void searchlights(Ctx& c) {
                 const float dx = X[i] - bx[k], dy = Y[b] - by[k];
                 const float d2 = dx * dx + dy * dy;
                 if (d2 >= size2) continue;
-                const float I = 1.f - sstep(inner, size, sqrtf(d2));
+                const float I = 1.f - sm((sqrtf(d2) - inner) * iedge);
                 r += col[k].r * I;
                 g += col[k].g * I;
                 bl += col[k].b * I;
@@ -300,25 +371,33 @@ static void lighthouse(Ctx& c) {
     const float rpm = c.p[0], wdeg = c.p[1];
     const int arms = clampi((int)(c.p[2] + 0.5f), 1, 4);
     const float ox = c.p[3] * W, oy = Y[0] + c.p[4] * H, bg = c.p[5], spread = c.p[6];
-    const float P = TAU / arms, half = wdeg * DEG * 0.5f;
+    const float P = TAU / arms, iP = arms / TAU, half = wdeg * DEG * 0.5f;
     advance(c, c.s[0], rpm * (TAU / 60.f), TAU);  // in beats: one revolution per cycle
     float maxR = 0;
     for (float cx : {0.f, W})
         for (float cy : {Y[0], Y[0] + H}) maxR = fmaxf(maxR, hypotf(cx - ox, cy - oy));
-    const CRGB back = c.lutLin[0];
+    const CRGB back = scaleF(c.lutLin[0], bg);
+    const float sr = spread / maxR;
+    // The beam's edge is half * 0.6 wide, but near the origin (where that is narrow in metres)
+    // at least ~0.35 m: 0.35 / r. Where the first wins, its smoothstep is the same everywhere.
+    const float e0 = half * 0.6f, lo0 = fmaxf(half - e0, 0.f), r0 = 1.f / (half + e0 - lo0);
     for (int b = 0; b < NY; b++) {
         CRGB* o = c.out + b * NX;
         const float dy = Y[b] - oy;
         for (int i = 0; i < NX; i++) {
             const float dx = X[i] - ox;
             const float r = sqrtf(dx * dx + dy * dy);
-            float a = atan2f(dy, dx) - c.s[0];
-            a -= P * roundf(a / P);
-            // Near the origin the beam is narrow in metres: keep its edge >= ~0.35 m wide
-            const float edge = fmaxf(half * 0.6f, 0.35f / fmaxf(r, 0.2f));
-            const float I = 1.f - sstep(fmaxf(half - edge, 0.f), half + edge, fabsf(a));
-            const CRGB beam = lutL(c.lutLin, spread * r / maxR);
-            o[i] = mixF(scaleF(back, bg), beam, I);
+            float a = atan2Fast(dy, dx) - c.s[0];
+            a -= P * roundFast(a * iP);
+            const float rc = fmaxf(r, 0.2f);
+            float I;
+            if (0.35f <= e0 * rc) {
+                I = 1.f - sm((fabsf(a) - lo0) * r0);
+            } else {
+                const float edge = 0.35f / rc, lo = fmaxf(half - edge, 0.f);
+                I = 1.f - sm((fabsf(a) - lo) / (half + edge - lo));
+            }
+            o[i] = mixF(back, lutL(c.lutLin, r * sr), I);
         }
     }
 }
@@ -333,15 +412,19 @@ static void rings(Ctx& c) {
     c.s[1] += c.dt * wspeed;
     const float cx = CX + wander * W * 0.5f * sinf(c.s[1] * 0.37f);
     const float cy = CY + wander * H * 0.5f * sinf(c.s[1] * 0.29f + 1.3f);
+    const float is = 1.f / spacing;
+    const Bands base(soft, step, gap);  // where the softness is wider than the row's footprint
     for (int b = 0; b < NY; b++) {
         const float dy = Y[b] - cy;
+        // The ring crosses the rows at a slant |dy| / r: its edge spans FY * |dy| / r across
+        const float fy = FY[b] * fabsf(dy) * is;
         CRGB* o = c.out + b * NX;
         for (int i = 0; i < NX; i++) {
             const float dx = X[i] - cx;
             const float r = sqrtf(dx * dx + dy * dy);
-            const float sinAbs = r > 1e-3f ? fabsf(dy) / r : 1.f;  // ring crosses the rows at this slant
-            const float k = fmaxf(soft, FY[b] * sinAbs / spacing);
-            o[i] = bands(r / spacing - c.s[0], k, step, gap, c.lutWrap);
+            const float u = r * is - c.s[0];
+            if (r > 1e-3f ? fy <= soft * r : FY[b] * is <= soft) o[i] = base.at(u, c.lutWrap);
+            else o[i] = Bands(r > 1e-3f ? fy / r : FY[b] * is, step, gap).at(u, c.lutWrap);
         }
     }
 }
@@ -399,10 +482,14 @@ static void dropsFx(Ctx& c) {
             float r = back.r * bg, g = back.g * bg, bl = back.b * bg;
             for (const Drop& d : drops) {
                 if (!d.live) continue;
-                const float dx = X[i] - d.x, dy = Y[b] - d.y;
-                const float dist = sqrtf(dx * dx + dy * dy);
+                const float dx = X[i] - d.x, dy = Y[b] - d.y, d2 = dx * dx + dy * dy;
+                // Clearly outside the ring's band (with a margin, so the edge is still decided
+                // below exactly as before): no square root
+                const float lim = 3.f * sig + FY[b], outer = d.r + lim + 0.01f, inner = d.r - lim - 0.01f;
+                if (d2 > outer * outer || (inner > 0 && d2 < inner * inner)) continue;
+                const float dist = sqrtf(d2);
                 const float off = dist - d.r;
-                if (fabsf(off) > 3.f * sig + FY[b]) continue;
+                if (fabsf(off) > lim) continue;
                 // Widen by the row footprint along the ring's normal, keeping the light energy
                 const float fw = FY[b] * (dist > 1e-3f ? fabsf(dy) / dist : 1.f) * 0.29f;
                 const float se = sqrtf(sig * sig + fw * fw);
@@ -430,16 +517,19 @@ static void interference(Ctx& c) {
     const float half = sep * 0.5f * fmaxf(W, H) * 0.5f;
     const float x1 = CX + half * cosf(c.s[1]), y1 = CY + half * sinf(c.s[1]);
     const float x2 = CX - half * cosf(c.s[1]), y2 = CY - half * sinf(c.s[1]);
+    const float il = 1.f / lambda;
     for (int b = 0; b < NY; b++) {
         const float dy1 = Y[b] - y1, dy2 = Y[b] - y2;
+        // footAtten as exp(kb * sin^2), sin^2 = dy^2 / r^2 (1 at the centre)
+        const float kb = -1.645f * FY[b] * FY[b] * il * il;
+        const float q1 = dy1 * dy1, q2 = dy2 * dy2;
         CRGB* o = c.out + b * NX;
         for (int i = 0; i < NX; i++) {
             const float dx1 = X[i] - x1, dx2 = X[i] - x2;
-            const float r1 = sqrtf(dx1 * dx1 + dy1 * dy1), r2 = sqrtf(dx2 * dx2 + dy2 * dy2);
-            const float v1 = cosf(TAU * (r1 / lambda - c.s[0])) *
-                             footAtten(b, r1 > 1e-3f ? fabsf(dy1) / r1 : 1.f, lambda);
-            const float v2 = cosf(TAU * (r2 / lambda - c.s[0])) *
-                             footAtten(b, r2 > 1e-3f ? fabsf(dy2) / r2 : 1.f, lambda);
+            const float s1 = dx1 * dx1 + q1, s2 = dx2 * dx2 + q2;
+            const float r1 = sqrtf(s1), r2 = sqrtf(s2);
+            const float v1 = cosCyc(r1 * il - c.s[0]) * expNeg(kb * (s1 > 1e-6f ? q1 / s1 : 1.f));
+            const float v2 = cosCyc(r2 * il - c.s[0]) * expNeg(kb * (s2 > 1e-6f ? q2 / s2 : 1.f));
             const float v = (v1 + v2) * 0.25f + 0.5f;  // 0..1
             o[i] = scaleF(lutW(c.lutWrap, c.s[2] + v * 0.5f), 1.f - contrast * (1.f - v));
         }
@@ -449,6 +539,10 @@ static void interference(Ctx& c) {
 // ---------------------------------------------------------------- Clouds
 // Soft cloud shapes drifting on a wind that slowly turns; coverage from clear to overcast.
 // Palette as a ramp: first colour = sky, last = cloud.
+
+// wrap256(v) * 65536 as the noise takes it. v * 65536 is exact (a power of two), so its floor
+// modulo 256 cells is the same number as before, without fmodf.
+static inline uint32_t cell16(float v) { return (uint32_t)floorI(v * 65536.f) & 0xFFFFFFu; }
 
 static void clouds(Ctx& c) {
     const float cover = c.p[0], size = c.p[1], wind = c.p[2], turn = c.p[3], evolve = c.p[4],
@@ -462,21 +556,39 @@ static void clouds(Ctx& c) {
     c.s[0] = fmodf(c.s[0], period);
     c.s[1] = fmodf(c.s[1], period);
     const float thr = 1.f - 2.f * cover, sw = 0.03f + soft * 0.5f;
+    const float e0 = thr - sw, ie = 1.f / (2.f * sw);
+    // fbm, as fbm() does it: octaves finer than 0.8 m are left out. What doesn't change along a
+    // row is worked out once per frame (time) or per row (y).
+    int oct = 0;
+    float lam[4], wt[4], tw = 0;
+    uint32_t tz[4];
+    for (float l = size, w = 1; oct < 4 && (oct == 0 || l >= 0.8f); oct++, l *= 0.5f, w *= 0.5f) {
+        lam[oct] = l;
+        wt[oct] = w;
+        tw += w;
+        tz[oct] = (uint32_t)(wrap256(c.s[3] * (1 + oct * 0.7f) + oct * 47.1f) * 65536.f);
+    }
     // Clouds are smooth along a row: sample every ~8 cm and interpolate
     const int ns = clampi((int)(W / 0.08f) + 2, 2, NX);
     static float v[MAX_X];
+    const float istep = NX > 1 ? (float)(ns - 1) / (NX - 1) : 0;
     for (int b = 0; b < NY; b++) {
+        uint32_t ty[4];
+        for (int o = 0; o < oct; o++) ty[o] = cell16((Y[b] - c.s[1]) / lam[o] + o * 31.7f);
         for (int k = 0; k < ns; k++) {
-            const float x = X[0] + (X[NX - 1] - X[0]) * k / (ns - 1);
-            v[k] = fbm(x - c.s[0], Y[b] - c.s[1], c.s[3], size);
+            const float x = X[0] + (X[NX - 1] - X[0]) * k / (ns - 1) - c.s[0];
+            float sum = 0;
+            for (int o = 0; o < oct; o++)
+                sum += ((int)inoise16(cell16(x / lam[o] + o * 17.3f), ty[o], tz[o]) - 32768) * wt[o];
+            v[k] = sum / tw * noiseScale;
         }
-        CRGB* o = c.out + b * NX;
+        CRGB* out = c.out + b * NX;
         for (int i = 0; i < NX; i++) {
-            const float fk = NX > 1 ? i * (float)(ns - 1) / (NX - 1) : 0;
+            const float fk = i * istep;
             int k0 = (int)fk;
             if (k0 >= ns - 1) k0 = ns - 2;
             const float val = v[k0] + (v[k0 + 1] - v[k0]) * (fk - k0);
-            o[i] = lutL(c.lutLin, sstep(thr - sw, thr + sw, val));
+            out[i] = lutL(c.lutLin, sm((val - e0) * ie));
         }
     }
 }
@@ -603,6 +715,7 @@ const EffectDef EFFECTS[] = {
 };const int NUM_EFFECTS = sizeof(EFFECTS) / sizeof(EFFECTS[0]);
 
 void effectsInit() {
+    fastInit();
     NX = layout.nx;
     NY = layout.ny;
     NL = NX * NY;
@@ -636,4 +749,44 @@ void effectsInit() {
     }
     const double mean = sum / N, sd = sqrt(sum2 / N - mean * mean);
     if (sd > 100) noiseScale = (float)(0.45 / sd);
+}
+
+// ---------------------------------------------------------------- benchmark
+// Time to render effect e with its default parameters, in ms per frame, into a scratch buffer.
+// The effects' shared state is saved and put back, so the effect playing carries on as it was.
+float effectsBenchmark(int e, const CRGB* lutWrap, const CRGB* lutLin, int frames) {
+    if (e < 0 || e >= NUM_EFFECTS || frames < 1) return -1;
+    CRGB* out = (CRGB*)malloc(NL * sizeof(CRGB));
+    uint16_t* phase = (uint16_t*)malloc(NL * sizeof(uint16_t));
+    uint8_t* colour = (uint8_t*)malloc(NL);
+    if (!out || !phase || !colour) {
+        free(out); free(phase); free(colour);
+        return -1;
+    }
+    memcpy(phase, spPhase, NL * sizeof(uint16_t));
+    memcpy(colour, spColour, NL);
+    float ang[4], prev[4];
+    uint8_t col[4];
+    Drop drp[10];
+    memcpy(ang, sweepAng, sizeof(ang)); memcpy(prev, sweepPrev, sizeof(prev));
+    memcpy(col, sweepCol, sizeof(col)); memcpy(drp, drops, sizeof(drp));
+
+    const EffectDef& d = EFFECTS[e];
+    float p[MAXP] = {}, s[MAXP] = {};
+    for (int j = 0; j < d.n; j++) p[j] = d.params[j].def;
+    Ctx c{p, 1.f / 40, s, lutWrap, lutLin, out, 0, 120, 0, false};
+    d.render(c);  // first frame: state set up
+    const uint32_t t0 = micros();
+    for (int k = 0; k < frames; k++) {
+        c.beat += 0.05;
+        d.render(c);
+    }
+    const float ms = (micros() - t0) / 1000.f / frames;
+
+    memcpy(spPhase, phase, NL * sizeof(uint16_t));
+    memcpy(spColour, colour, NL);
+    memcpy(sweepAng, ang, sizeof(ang)); memcpy(sweepPrev, prev, sizeof(prev));
+    memcpy(sweepCol, col, sizeof(col)); memcpy(drops, drp, sizeof(drp));
+    free(out); free(phase); free(colour);
+    return ms;
 }

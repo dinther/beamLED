@@ -80,6 +80,7 @@ bool engineOn() { return isOn; }
 void engineResetEffect() { memset(effState, 0, sizeof(effState)); }
 float engineFps() { return fps; }
 float engineRenderMs() { return renderMs; }
+float engineSendMs() { return artnet.sendMs(); }
 int engineCurrent() { return pending >= 0 ? pending : settings.current; }
 const BeatTime& engineBeat() { return beat; }
 
@@ -159,8 +160,15 @@ static void renderFrame(float dt) {
     Preset& p = presets[settings.current];
     const PresetSync& y = presetSync[settings.current];
     const Palette& pal = palettes[p.palette < NUM_PALETTES ? p.palette : 0];
-    buildLut(pal, lutWrap, true);
-    buildLut(pal, lutLin, false);
+    // The palette tables are rebuilt only when the palette changes
+    static Palette built;
+    static bool have = false;
+    if (!have || memcmp(&built, &pal, sizeof(pal)) != 0) {
+        buildLut(pal, lutWrap, true);
+        buildLut(pal, lutLin, false);
+        built = pal;
+        have = true;
+    }
     const EffectDef& e = EFFECTS[p.effect < NUM_EFFECTS ? p.effect : 0];
     // Following the tempo (or in beats), the other motion runs at bpm/120 times the set speed
     const float edt = y.timing != TIMING_TIME ? dt * (float)beat.bpm / 120.f : dt;
@@ -173,7 +181,13 @@ static void renderFrame(float dt) {
 // Gamma, brightness and fade in one table. The fade is squared so it looks even to the eye.
 static void buildOutLut() {
     const float B = settings.brightness / 255.f * level * level * beatPulse();
-    for (int v = 0; v < 256; v++) outLut[v] = (uint8_t)(powf(v / 255.f, settings.gamma) * 255.f * B + 0.5f);
+    // The gamma curve (256 powf) only when gamma changes; brightness and fade every frame
+    static float gamma = -1, curve[256];
+    if (settings.gamma != gamma) {
+        gamma = settings.gamma;
+        for (int v = 0; v < 256; v++) curve[v] = powf(v / 255.f, gamma) * 255.f;
+    }
+    for (int v = 0; v < 256; v++) outLut[v] = (uint8_t)(curve[v] * B + 0.5f);
 }
 
 // ---------------------------------------------------------------- button
@@ -211,6 +225,7 @@ void setup() {
     effectsInit();
     netBegin();
     linkClock = new LinkClock(linkSettings.bpm);
+    artnet.begin();
     webBegin();
     printLayout();
     Serial.printf("Preset %d, Art-Net to %s\n", settings.current + 1,
@@ -243,7 +258,7 @@ void loop() {
     else memset(leds, 0, layoutLeds() * sizeof(CRGB));
     buildOutLut();
     const uint32_t t1 = micros();
-    if (netCanSend()) artnet.send(IPAddress(settings.target), leds, outLut);
+    if (netCanSend()) artnet.send(IPAddress(settings.target), leds, outLut);  // handed to its task
 
     // Stats, smoothed
     renderMs += ((t1 - t0) / 1000.f - renderMs) * 0.05f;

@@ -46,5 +46,7 @@ extern const int NUM_EFFECTS;
 
 // (Re)compute LED positions from the layout; call after a layout change
 void effectsInit();
+// ms per frame for effect e at its defaults (scratch buffer; the effect playing isn't disturbed)
+float effectsBenchmark(int e, const CRGB* lutWrap, const CRGB* lutLin, int frames);
 // White twinkles added on top of any effect. density 0..1.
 void sparkleOverlay(CRGB* out, float density, float dt);
