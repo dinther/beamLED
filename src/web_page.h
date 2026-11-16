@@ -153,7 +153,7 @@ function paletteEditor(q, i) {
     box.append(b);
   }
   if (q.colors.length > 2) {
-    const b = h('button', {textContent: '\u00e2\u02c6\u2019', title: 'Remove the last colour'});
+    const b = h('button', {textContent: '\u2212', title: 'Remove the last colour'});
     b.onclick = () => { q.colors.pop(); send(); draw(); };
     box.append(b);
   }
@@ -246,7 +246,7 @@ function networkCard() {
 
 function showStatus() {
   const el = document.getElementById('status');
-  if (el) el.textContent = S.fps + ' fps, render ' + S.renderMs + ' ms \u00c2\u00b7 ' + S.net + ' \u00c2\u00b7 WiFi: ' + S.wifi;
+  if (el) el.textContent = S.fps + ' fps, render ' + S.renderMs + ' ms \u00b7 ' + S.net + ' \u00b7 WiFi: ' + S.wifi;
 }
 
 // Follow button presses on the board without disturbing a slider being dragged
