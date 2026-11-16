@@ -55,13 +55,41 @@ select,input[type=text],input[type=password],input[type=number]{flex:1;min-width
 let S, N;
 const h = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; };
 let saveBtn = null;  // the playing preset's Save button: lit by any edit
+function markChanged(i) {
+  if (!S || !S.presets[i]) return;
+  S.presets[i].changed = true;
+  if (saveBtn && i == S.current) { saveBtn.disabled = false; saveBtn.className = 'on'; saveBtn.textContent = 'Save •'; }
+}
 const post = (u, o) => {
-  if (u == '/api/preset' && !o.save && !o.revert && o.name == null && S && S.presets[o.index]) {
-    S.presets[o.index].changed = true;
-    if (saveBtn && o.index == S.current) { saveBtn.disabled = false; saveBtn.className = 'on'; saveBtn.textContent = 'Save •'; }
-  }
+  if (u == '/api/preset' && !o.save && !o.revert && o.name == null) markChanged(o.index);
   return fetch(u, {method: 'POST', body: JSON.stringify(o)}).then(r => r.ok ? r.json() : r.text().then(t => { throw new Error(t); }));
 };
+
+// Sliders go to the board as OSC over the live connection: the latest value of each address
+// once per screen refresh, applied on the board's next frame. No HTTP request per move. Without
+// the live connection: the old way (an HTTP request at most every 120 ms). `persist`: also one
+// HTTP request half a second after the last move, so the setting is saved (brightness).
+const oscOut = {}, persistTimer = {};
+let oscQueued = false;
+function oscMessage(addr, v) {
+  const pad = n => (n + 4) & ~3, a = pad(addr.length), buf = new ArrayBuffer(a + 4 + 4), u8 = new Uint8Array(buf);
+  for (let k = 0; k < addr.length; k++) u8[k] = addr.charCodeAt(k);
+  u8[a] = 44; u8[a + 1] = 102;  // ",f"
+  new DataView(buf).setFloat32(a + 4, v);
+  return buf;
+}
+function flushOsc() {
+  oscQueued = false;
+  if (!sock || sock.readyState != 1) return;
+  for (const a in oscOut) { sock.send(oscMessage(a, oscOut[a])); delete oscOut[a]; }
+}
+function liveSend(addr, v, fallback, persist) {
+  if (!sock || sock.readyState != 1 || !sock.accepted) return throttle(addr, fallback);
+  oscOut[addr] = v;
+  if (!oscQueued) { oscQueued = true; requestAnimationFrame(flushOsc); }
+  if (persist) { clearTimeout(persistTimer[addr]); persistTimer[addr] = setTimeout(fallback, 500); }
+}
+const presetAddr = key => '/beamled/presets/' + (S.current + 1) + '/' + key;
 // At most one request per key every 120 ms while a slider moves; the last value always goes out
 const pend = {};
 function throttle(k, fn) {
@@ -191,7 +219,7 @@ function draw() {
   app.append(h('div', {className: 'top'}, h('h1', {textContent: 'beamLED'}), onb));
   app.append(h('div', {className: 'card'},
     slider('Brightness', 0, 255, 1, S.brightness, v => Math.round(v / 2.55) + '%',
-      v => { S.brightness = v; throttle('b', () => post('/api/set', {brightness: v})); }, H.brightness, 'brightness'),
+      v => { S.brightness = v; liveSend('/beamled/brightness', v / 255, () => post('/api/set', {brightness: v}), true); }, H.brightness, 'brightness'),
     tip(h('div', {className: 'status', id: 'status'}), H.status)));
 
   app.append(heading('Presets', H.presets));
@@ -251,13 +279,13 @@ function draw() {
     if (inBeats && j == ef.speedParam) return;
     card.append(slider(d.name, d.min, d.max, d.step, p.params[j],
       v => v.toFixed(decimals(d.step)),
-      v => { p.params[j] = v; throttle('p', () => post('/api/preset', {index: S.current, params: p.params})); },
+      v => { p.params[j] = v; markChanged(S.current); liveSend(presetAddr(slug(d.name)), v, () => post('/api/preset', {index: S.current, params: p.params})); },
       d.help + ' (' + d.min + ' to ' + d.max + ', default ' + d.def + ')', 'p' + j));
   });
   if (ef.sparkle) card.append(slider('Sparkle overlay', 0, 1, 0.01, p.sparkle, v => v.toFixed(2),
-    v => { p.sparkle = v; throttle('s', () => post('/api/preset', {index: S.current, sparkle: v})); }, H.sparkle, 'sparkle'));
+    v => { p.sparkle = v; markChanged(S.current); liveSend(presetAddr('sparkle'), v, () => post('/api/preset', {index: S.current, sparkle: v})); }, H.sparkle, 'sparkle'));
   card.append(slider('Beat pulse', 0, 1, 0.01, p.pulse, v => v.toFixed(2),
-    v => { p.pulse = v; throttle('pu', () => post('/api/preset', {index: S.current, pulse: v})); }, H.pulse, 'pulse'));
+    v => { p.pulse = v; markChanged(S.current); liveSend(presetAddr('pulse'), v, () => post('/api/preset', {index: S.current, pulse: v})); }, H.pulse, 'pulse'));
   const reset = button('Reset parameters', H.reset);
   reset.onclick = () => { p.params = ef.params.map(d => d.def); p.changed = true; post('/api/preset', {index: S.current, params: p.params}); draw(); };
   const save = button(p.changed ? 'Save •' : 'Saved', H.save, {className: p.changed ? 'on' : '', disabled: !p.changed});

@@ -1,6 +1,6 @@
 // OSC control with OSCQuery (https://github.com/Vidvox/OSCQueryProposal), made for MIMa.
 //
-// OSC in: UDP port cfg::OSC_PORT. OSCQuery: HTTP on cfg::OSCQUERY_PORT lists every address with
+// OSC in: UDP port cfg::OSC_PORT, or binary frames on the WebSocket (the web page's sliders). OSCQuery: HTTP on cfg::OSCQUERY_PORT lists every address with
 // its type, range, description and current value; HOST_INFO points clients at the OSC port.
 // LISTEN: a WebSocket on the same port; a client sends {"COMMAND":"LISTEN","DATA":"/beamled/on"}
 // (or IGNORE; a container covers everything under it) and gets each change of that address as

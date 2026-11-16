@@ -853,6 +853,12 @@ static void command(int fd, const char* text) {
     }
 }
 
+struct WsPacket {
+    uint16_t len;
+    uint8_t data[256];
+};
+static QueueHandle_t wsIn = nullptr;  // OSC packets from WebSocket clients, for the render loop
+
 static esp_err_t onRequest(httpd_req_t* req) {
     const int fd = httpd_req_to_sockfd(req);
     if (req->method == HTTP_GET) {
@@ -880,6 +886,14 @@ static esp_err_t onRequest(httpd_req_t* req) {
     if (f.len && httpd_ws_recv_frame(req, &f, f.len) != ESP_OK) return ESP_FAIL;
     text[f.len] = 0;
     if (f.type == HTTPD_WS_TYPE_TEXT) command(fd, text);
+    // OSC over the WebSocket (the web page's sliders): to the render loop, which applies it as
+    // OSC from UDP, so nothing changes while a frame is drawn
+    else if (f.type == HTTPD_WS_TYPE_BINARY && f.len && f.len < sizeof(WsPacket::data) && wsIn) {
+        WsPacket pk;
+        pk.len = f.len;
+        memcpy(pk.data, text, f.len);
+        xQueueSend(wsIn, &pk, 0);  // full: dropped (the next value follows within a frame)
+    }
     return ESP_OK;
 }
 
@@ -908,6 +922,7 @@ static String startProblem;
 
 static void start() {
     started = true;
+    wsIn = xQueueCreate(16, sizeof(WsPacket));
     size_t n = 0;
     for (int e = 0; e < NUM_EFFECTS && n + 40 < sizeof(effectList); e++)
         n += snprintf(effectList + n, sizeof(effectList) - n, "%s%d %s", e ? ", " : "The effect: ", e + 1, EFFECTS[e].name);
@@ -958,6 +973,14 @@ void oscLoop() {
     if (!started) {
         if (!netCanSend()) return;
         start();
+    }
+    // OSC that came over the WebSocket (the page's sliders)
+    if (wsIn) {
+        static WsPacket pk;
+        while (xQueueReceive(wsIn, &pk, 0) == pdTRUE) {
+            pk.data[pk.len < sizeof(pk.data) ? pk.len : sizeof(pk.data) - 1] = 0;
+            parsePacket(pk.data, pk.len);
+        }
     }
     if (udpSocket >= 0) {
         static uint8_t buf[1024];
