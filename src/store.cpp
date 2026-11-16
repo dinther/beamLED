@@ -17,6 +17,8 @@ static Preset* savedPresets = nullptr;
 static PresetSync* savedSync = nullptr;
 Motion (*presetMotion)[MOTIONS] = nullptr;      // what plays
 static Motion (*savedMotion)[MOTIONS] = nullptr;  // as saved
+// Added and not saved since: its first Save takes a new name in place (it is new anyway)
+static bool fresh[MAX_PRESETS];
 static const Motion MOTION_OFF = {0, SHAPE_SINE, 0, 3, 0, 1, 8, 0};
 LinkSettings linkSettings;
 
@@ -276,7 +278,7 @@ bool presetChanged(int i) {
 // inPlace: always save i itself (the new name too).
 int presetSave(int i, bool inPlace) {
     if (i < 0 || i >= presetCount) return -1;
-    if (!inPlace && strncmp(presets[i].name, savedPresets[i].name, sizeof(presets[i].name)) != 0) {
+    if (!inPlace && !fresh[i] && strncmp(presets[i].name, savedPresets[i].name, sizeof(presets[i].name)) != 0) {
         char name[sizeof(presets[i].name)];
         strlcpy(name, presets[i].name, sizeof(name));
         const int k = presetAdd(i);  // a copy of what plays, edits and motions included
@@ -284,14 +286,18 @@ int presetSave(int i, bool inPlace) {
         strlcpy(presets[k].name, name, sizeof(presets[k].name));
         strlcpy(savedPresets[k].name, name, sizeof(savedPresets[k].name));
         presetRevert(i);
+        fresh[k] = false;  // saved, under its own name
         return k;
     }
+    fresh[i] = false;
     savedPresets[i] = presets[i];
     savedSync[i] = presetSync[i];
     for (int m = 0; m < MOTIONS; m++) savedMotion[i][m] = presetMotion[i][m];
     storeMarkDirty();
     return i;
 }
+
+bool presetFresh(int i) { return i >= 0 && i < presetCount && fresh[i]; }
 
 void presetSaveAll() {
     for (int i = 0; i < presetCount; i++) presetSave(i, true);
@@ -329,6 +335,7 @@ int presetAdd(int from) {
     snprintf(name, sizeof(name), "%.14s copy", presets[from].name);
     strlcpy(presets[i].name, name, sizeof(presets[i].name));
     for (int m = 0; m < MOTIONS; m++) presetMotion[i][m] = presetMotion[from][m];
+    fresh[i] = true;
     savedPresets[i] = presets[i];  // a new preset is saved as it is
     savedSync[i] = presetSync[i];
     for (int m = 0; m < MOTIONS; m++) savedMotion[i][m] = presetMotion[i][m];
@@ -344,6 +351,7 @@ bool presetDelete(int i) {
         presetSync[k] = presetSync[k + 1];
         savedPresets[k] = savedPresets[k + 1];
         savedSync[k] = savedSync[k + 1];
+        fresh[k] = fresh[k + 1];
         for (int m = 0; m < MOTIONS; m++) {
             presetMotion[k][m] = presetMotion[k + 1][m];
             savedMotion[k][m] = savedMotion[k + 1][m];
@@ -351,6 +359,7 @@ bool presetDelete(int i) {
     }
     presetCount--;
     presetSync[presetCount] = savedSync[presetCount] = SYNC_DEFAULT;
+    fresh[presetCount] = false;
     storeMarkDirty();
     return true;
 }
@@ -360,6 +369,7 @@ bool presetMove(int from, int to) {
     if (from < 0 || from >= presetCount || to < 0 || to >= presetCount || from == to) return false;
     Motion mo[MOTIONS], smo[MOTIONS];
     for (int m = 0; m < MOTIONS; m++) { mo[m] = presetMotion[from][m]; smo[m] = savedMotion[from][m]; }
+    const bool fr = fresh[from];
     const Preset p = presets[from], sp = savedPresets[from];
     const PresetSync y = presetSync[from], sy = savedSync[from];
     const int d = to > from ? 1 : -1;
@@ -368,6 +378,7 @@ bool presetMove(int from, int to) {
         presetSync[k] = presetSync[k + d];
         savedPresets[k] = savedPresets[k + d];
         savedSync[k] = savedSync[k + d];
+        fresh[k] = fresh[k + d];
         for (int m = 0; m < MOTIONS; m++) {
             presetMotion[k][m] = presetMotion[k + d][m];
             savedMotion[k][m] = savedMotion[k + d][m];
@@ -377,6 +388,7 @@ bool presetMove(int from, int to) {
     presetSync[to] = y;
     savedPresets[to] = sp;
     savedSync[to] = sy;
+    fresh[to] = fr;
     for (int m = 0; m < MOTIONS; m++) { presetMotion[to][m] = mo[m]; savedMotion[to][m] = smo[m]; }
     storeMarkDirty();
     return true;

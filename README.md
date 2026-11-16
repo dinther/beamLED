@@ -32,10 +32,10 @@ for this kind of installation (see [docs/background.md](docs/background.md)):
   any of them.
 - **Presets**: up to 32, each an effect with its settings and a palette. The button on the board
   steps through them (short press: next, long press: on/off); the one playing survives a power cut.
-  Edits play at once and are kept with **Save**, or dropped with **Revert**.
+  Edits play at once and are kept with **Save**, or dropped with **Revert**. Rename a saved preset\n  and Save, and it becomes a new preset.
 - **Motions**: up to two per preset, each moving one slider back and forth by itself (a beam
   swinging, bands scrolling to and fro, a width breathing) along a shape, in seconds or in beats.
-- **Palettes**: 8, of 2 to 5 colours, shared by the presets.
+- **Palettes**: up to 16, of 2 to 5 colours, shared by the presets. Each colour has a position\n  along the palette: drag its marker to bunch colours together or give one a long blend.
 - **Ableton Link**: tempo and beat shared with Ableton Live and other Link apps. Per preset, an
   effect can run in time, follow the tempo, or run in beats (one band, revolution or ring per 1 to
   64 beats, landing on the bar), with an optional brightness pulse on the beat.
@@ -77,7 +77,7 @@ saved yet.
 ![A preset's settings](docs/images/ui_preset.png)
 
 Each preset: its name, its place in the list (Earlier / Later / Delete), effect, palette, timing
-and the effect's sliders. Sliders reach the ceiling within a frame. A slider moved by a Motion
+and the effect's sliders. **Save** keeps the changes; after a rename it reads **Save as new** and adds\na preset with the new name, leaving the original as it was. A preset just added takes its first\nSave in place. Sliders reach the ceiling within a frame. A slider moved by a Motion
 shows ↔ and follows it on screen.
 
 ![A Motion](docs/images/ui_motion.png)
@@ -141,6 +141,7 @@ browsed, sent to (a group's *Sends to* can name the OSCQuery application) and fo
 | `/beamled/presets/<n>/motion1_target` ... `motion2_phase` | | each motion's `target`, `shape`, `from`, `to`, `seconds`, `beats` and `phase` |
 | `/beamled/palettes/<k>/colours` | i 2..5 | how many colours |
 | `/beamled/palettes/<k>/colour1` ... `colour5` | r | a colour (also `"#RRGGBB"` or three numbers) |
+| `/beamled/palettes/<k>/position1` ... `position5` | f 0..1 | where that colour sits along the palette |
 
 Preset changes over OSC play at once and, like changes on the page, are kept with Save
 (`/beamled/save`). The tempo isn't on OSC: Ableton Link moves it by fractions of a BPM all the time.
@@ -215,6 +216,7 @@ The page uses these; they take and return JSON.
 | `POST /api/set` | brightness, gamma, Art-Net target, preset playing, on/off |
 | `POST /api/preset` | a preset's settings; `save`, `revert`; `{"motion": m, ...}` for a motion |
 | `POST /api/presets` | `add`, `delete`, `move` |
+| `POST /api/palettes` | `add`, `delete` |
 | `POST /api/palette`, `/api/layout`, `/api/link`, `/api/net` | palettes, layout, Link, network |
 | `GET /api/bench?e=<effect>&frames=<n>` | render time of an effect, and free network sockets |
 

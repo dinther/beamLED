@@ -105,7 +105,9 @@ static void presetJson(JsonObject o, int i) {
     const Preset& p = presets[i];
     o["name"] = p.name;
     o["changed"] = presetChanged(i);  // unsaved edits
-    if (strcmp(p.name, presetSavedName(i)) != 0) o["savedName"] = presetSavedName(i);  // renamed: Save makes a new preset
+    if (presetFresh(i)) o["fresh"] = true;  // just added: Save keeps a new name in place
+    if (strcmp(p.name, presetSavedName(i)) != 0 && !presetFresh(i))
+        o["savedName"] = presetSavedName(i);  // renamed: Save makes a new preset
     o["timing"] = presetSync[i].timing;
     o["beatsExp"] = presetSync[i].beatsExp;
     o["reverse"] = presetSync[i].reverse != 0;

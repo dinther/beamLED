@@ -87,6 +87,7 @@ void presetSaveAll();
 void presetRevert(int i);
 void presetRename(int i, const char* name);  // an edit, until Save
 const char* presetSavedName(int i);
+bool presetFresh(int i);  // added and not saved since: Save keeps a new name in place
 // Another effect for preset i: its parameters to that effect's defaults, its motions off
 void presetChangeEffect(int i, uint8_t effect);
 // The palette list (saved a few seconds later)

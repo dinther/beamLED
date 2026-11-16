@@ -279,7 +279,7 @@ function draw() {
   const card = h('div', {className: 'card'});
   const nm = h('input', {type: 'text', value: p.name, maxLength: 19});
   nm.onchange = () => {
-    if (p.savedName == null && nm.value != p.name) p.savedName = p.name;
+    if (p.savedName == null && nm.value != p.name && !p.fresh) p.savedName = p.name;
     if (nm.value == p.savedName) delete p.savedName;
     p.name = nm.value; post('/api/preset', {index: S.current, name: nm.value}); draw();
   };
