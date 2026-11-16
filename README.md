@@ -1,10 +1,11 @@
 # beamLED
 
-A standalone LED ceiling renderer on a WT32-ETH01 (ESP32). It draws calm, big-shaped effects for
-a ceiling of LED bars and sends them as Art-Net to a pixel controller such as an Advatek PixLite.
-There is no PC in the chain: the board runs for hours as ambient light, steps through presets on a
-single button, follows the tempo of Ableton Live over Ableton Link, and takes live control over
-OSC (made for [MIMa](https://beatline.xyz)).
+A standalone LED ceiling renderer on a WT32-ETH01 (ESP32). It draws big, bold effects for a ceiling
+of LED bars, from a slow drift of colour to beams and bars that snap and sweep on every beat, and
+sends them as Art-Net to a pixel controller such as an Advatek PixLite. There is no PC in the
+chain: the board steps through presets on a single button or by itself, locks to the beat of
+Ableton Live over Ableton Link, and takes live control over OSC (made for
+[MIMa](https://beatline.xyz)).
 
 ![Rolling bars on the ceiling, rendered in Beam](docs/images/beam_rolling_sunset.jpg)
 
@@ -23,13 +24,16 @@ for this kind of installation (see [docs/background.md](docs/background.md)):
   empty space between the bars.
 - Detail across the bars is kept soft (features of 0.8 m and more), and where an edge crosses a bar
   it is widened by the bar's share of the gap, so it moves across the ceiling smoothly.
-- Effects are slow and calm by default: wide bands, beams, clouds and rings, not pixel detail.
+- Effects are made of big shapes (wide bands, beams, clouds, rings, gradients), not pixel detail.
+  They can drift for hours as background light, or run fast and land on every beat for a show.
 
 ## Features
 
 - **11 effects**, each with its own sliders and a palette: Rolling bars, Searchlights, Lighthouse,
   Clouds, Sparkle, Sweeps, Plaid, Rings, Drops, Interference and Gradient, plus a sparkle overlay on
   any of them.
+- **Auto**: the presets change by themselves every so many seconds, or every so many bars on the
+  beat, in order or shuffled, among the presets you choose.
 - **Presets**: up to 32, each an effect with its settings and a palette. The button on the board
   steps through them (short press: next, long press: on/off); the one playing survives a power cut.
   Edits play at once and are kept with **Save**, or dropped with **Revert**. Rename a saved preset\n  and Save, and it becomes a new preset.
