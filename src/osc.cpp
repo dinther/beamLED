@@ -13,6 +13,7 @@
 #include "link_clock.h"
 #include "net.h"
 #include "store.h"
+#include "web.h"
 
 // ---------------------------------------------------------------- the address space
 // Every address has a fixed number (node id), so feedback can remember values and
@@ -297,6 +298,7 @@ static void apply(const char* path, const Arg* a, int n) {
                 break;
             case P_EFFECT:
                 if ((int)v - 1 != p.effect) {
+                    webChanged();  // the page shows the new effect's sliders
                     presetSetEffect(p, (int)v - 1);
                     if (i == settings.current) engineResetEffect();
                 }
@@ -313,6 +315,7 @@ static void apply(const char* path, const Arg* a, int n) {
     const int k = (id - PALETTE_BASE) / CSLOTS, slot = (id - PALETTE_BASE) % CSLOTS;
     Palette& pal = palettes[k];
     if (slot == 0) {
+        if (pal.n != (int)v) webChanged();  // colours come or go on the page
         pal.n = (int)v;
         return;
     }
@@ -632,9 +635,10 @@ static esp_err_t serveHttp(httpd_req_t* req) {
 // Everything below runs on the server's own task (handlers, close, and the queued push), so
 // the client list needs no lock.
 
-static const int MAX_LISTENERS = 3;
+static const int MAX_LISTENERS = 4;  // MIMa and a few web pages
 struct Listener {
     int fd = -1;
+    bool page = false;  // the web page: also gets the status, the change counter and scan results
     uint32_t bits[WORDS];
 };
 static Listener listeners[MAX_LISTENERS];
@@ -673,6 +677,11 @@ static void markCurrent(int id) {
     lastValue[id] = v;
     setBit(known, id, true);
 }
+static void sendStatus(int fd) {
+    const String s = "{\"COMMAND\":\"STATUS\",\"DATA\":" + webStatusJson() + "}";
+    sendFrame(fd, HTTPD_WS_TYPE_TEXT, (const uint8_t*)s.c_str(), s.length());
+}
+
 static void notifyPath(const char* command, const char* path) {
     char b[128];
     snprintf(b, sizeof(b), "{\"COMMAND\":\"%s\",\"DATA\":\"%s\"}", command, path);
@@ -766,6 +775,23 @@ static void push(void*) {
         }
     }
     for (int k = 0; k < MAX_LISTENERS; k++) bundleFlush(k);
+
+    // The web page: the status once a second, scan results as soon as a scan ends
+    static uint32_t lastStatus = 0;
+    static int lastScan = 0;
+    const int scan = netScanState();
+    const bool scanDone = scan != lastScan && (scan == 2 || scan == 3);
+    lastScan = scan;
+    const bool status = millis() - lastStatus >= 1000;
+    if (status) lastStatus = millis();
+    if (!status && !scanDone) return;
+    String scanText;
+    if (scanDone) scanText = "{\"COMMAND\":\"SCAN\",\"DATA\":{\"state\":" + String(scan) + ",\"nets\":" + netScanResults() + "}}";
+    for (Listener& l : listeners) {
+        if (l.fd < 0 || !l.page) continue;
+        if (status) sendStatus(l.fd);
+        if (scanDone) sendFrame(l.fd, HTTPD_WS_TYPE_TEXT, (const uint8_t*)scanText.c_str(), scanText.length());
+    }
 }
 
 static Listener* listenerFor(int fd) {
@@ -780,10 +806,15 @@ static void command(int fd, const char* text) {
     if (deserializeJson(d, text)) return;
     const char* cmd = d["COMMAND"] | "";
     const char* path = d["DATA"] | "";
-    const bool listen = !strcmp(cmd, "LISTEN");
-    if (!listen && strcmp(cmd, "IGNORE")) return;
     Listener* l = listenerFor(fd);
     if (!l) return;
+    if (!strcmp(cmd, "PAGE")) {  // beamLED's own web page
+        l->page = true;
+        sendStatus(fd);
+        return;
+    }
+    const bool listen = !strcmp(cmd, "LISTEN");
+    if (!listen && strcmp(cmd, "IGNORE")) return;
     updateTree();  // the subscription is to the addresses as they are now
     const int id = findNode(path);
     if (id >= 0) {
@@ -812,6 +843,7 @@ static esp_err_t onRequest(httpd_req_t* req) {
                 Listener* slot = listenerFor(-1);
                 if (!slot) return ESP_FAIL;  // full: the connection is closed
                 slot->fd = fd;
+                slot->page = false;
                 memset(slot->bits, 0, sizeof(slot->bits));
                 listenerCount = listenerCount + 1;
             }

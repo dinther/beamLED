@@ -138,10 +138,13 @@ const H = {
 };
 
 const decimals = s => s >= 1 ? 0 : s >= 0.1 ? 1 : 2;
-function slider(label, min, max, step, val, fmt, onin, help) {
+// Sliders by key, so a change pushed by the board moves them in place (no redraw)
+let sliders = {};
+function slider(label, min, max, step, val, fmt, onin, help, key) {
   const o = h('output', {textContent: fmt(val)});
   const r = h('input', {type: 'range', min, max, step, value: val});
   r.oninput = () => { o.textContent = fmt(+r.value); onin(+r.value); };
+  if (key) sliders[key] = {r, o, fmt};
   return tip(h('div', {className: 'row'}, h('label', {textContent: label}), r, o), help);
 }
 function select(label, items, val, onch, help) {
@@ -165,6 +168,7 @@ const presetList = o => post('/api/presets', o).then(st => { S = st; draw(); });
 
 function draw() {
   hideTip();
+  sliders = {};
   const app = document.getElementById('app');
   app.replaceChildren();
   const p = S.presets[S.current], ef = S.effects[p.effect];
@@ -174,7 +178,7 @@ function draw() {
   app.append(h('div', {className: 'top'}, h('h1', {textContent: 'beamLED'}), onb));
   app.append(h('div', {className: 'card'},
     slider('Brightness', 0, 255, 1, S.brightness, v => Math.round(v / 2.55) + '%',
-      v => { S.brightness = v; throttle('b', () => post('/api/set', {brightness: v})); }, H.brightness),
+      v => { S.brightness = v; throttle('b', () => post('/api/set', {brightness: v})); }, H.brightness, 'brightness'),
     tip(h('div', {className: 'status', id: 'status'}), H.status)));
 
   app.append(heading('Presets', H.presets));
@@ -235,12 +239,12 @@ function draw() {
     card.append(slider(d.name, d.min, d.max, d.step, p.params[j],
       v => v.toFixed(decimals(d.step)),
       v => { p.params[j] = v; throttle('p', () => post('/api/preset', {index: S.current, params: p.params})); },
-      d.help + ' (' + d.min + ' to ' + d.max + ', default ' + d.def + ')'));
+      d.help + ' (' + d.min + ' to ' + d.max + ', default ' + d.def + ')', 'p' + j));
   });
   if (ef.sparkle) card.append(slider('Sparkle overlay', 0, 1, 0.01, p.sparkle, v => v.toFixed(2),
-    v => { p.sparkle = v; throttle('s', () => post('/api/preset', {index: S.current, sparkle: v})); }, H.sparkle));
+    v => { p.sparkle = v; throttle('s', () => post('/api/preset', {index: S.current, sparkle: v})); }, H.sparkle, 'sparkle'));
   card.append(slider('Beat pulse', 0, 1, 0.01, p.pulse, v => v.toFixed(2),
-    v => { p.pulse = v; throttle('pu', () => post('/api/preset', {index: S.current, pulse: v})); }, H.pulse));
+    v => { p.pulse = v; throttle('pu', () => post('/api/preset', {index: S.current, pulse: v})); }, H.pulse, 'pulse'));
   const reset = button('Reset parameters', H.reset);
   reset.onclick = () => { p.params = ef.params.map(d => d.def); post('/api/preset', {index: S.current, params: p.params}); draw(); };
   card.append(h('div', {className: 'btns'}, reset));
@@ -365,8 +369,11 @@ function networkCard() {
   const scan = button('Scan', H.scan);
   scan.onclick = async () => {
     scan.disabled = true; msg.textContent = 'Scanning...';
+    // The board pushes the results when the scan ends (live connection), no asking again
+    const done = new Promise(res => { scanDone = res; setTimeout(() => res({state: 3, nets: []}), 20000); });
     let r = await post('/api/scan', {});
-    for (let k = 0; k < 30 && r.state == 1; k++) { await new Promise(res => setTimeout(res, 700)); r = await (await fetch('/api/scan')).json(); }
+    if (r.state == 1) r = await done;
+    scanDone = null;
     scan.disabled = false;
     msg.textContent = r.state == 2 ? '' : 'Scan failed';
     nets.replaceChildren(...r.nets.map(n => { const b = h('button', {textContent: n.s + '  (' + n.r + ' dBm' + (n.l ? ', locked' : '') + ')'}); b.onclick = () => { ssid.value = n.s; wp.focus(); }; return b; }));
@@ -413,16 +420,117 @@ function showStatus() {
   if (o) o.textContent = S.osc || '';
 }
 
-// Follow the button and OSC without disturbing a slider being dragged. A preset count that
-// changed elsewhere (OSC can't, but another browser can) reloads everything.
-setInterval(async () => {
-  try {
-    const st = await (await fetch('/api/status')).json();
-    if (st.presetCount != null && st.presetCount != S.presets.length) { load(); return; }
-    const redraw = st.current != S.current || st.on != S.on;
-    Object.assign(S, st);
-    if (redraw) draw(); else showStatus();
-  } catch (e) {}
-}, 2000);
-load();
+// ---- live: no polling. The board pushes over a WebSocket on its OSCQuery port (8010): every
+// change of a value as OSC (whoever made it: MIMa, the button, another browser), and as text
+// its status once a second, a change counter for what OSC doesn't carry (names, the preset
+// list, layout: the page reloads), and WiFi scan results.
+let scanDone = null, held = false, redrawDue = false, reloadDue = false;
+// While a slider is dragged or a text field has the cursor, redraws wait
+addEventListener('pointerdown', () => { held = true; }, true);
+addEventListener('pointerup', () => { held = false; setTimeout(settle, 0); }, true);
+addEventListener('focusout', () => setTimeout(settle, 0), true);
+const editing = () => held || (document.activeElement && /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName) &&
+  document.activeElement.type != 'range' && document.activeElement.type != 'checkbox');
+function settle() {
+  if (editing()) return;
+  if (reloadDue) { reloadDue = false; redrawDue = false; load(); }
+  else if (redrawDue) { redrawDue = false; draw(); }
+}
+const redraw = () => { redrawDue = true; settle(); };
+function moveSlider(key, v) {
+  const s = sliders[key];
+  if (!s) return redraw();
+  if (held && document.activeElement == s.r) return;  // being dragged here
+  s.r.value = v; s.o.textContent = s.fmt(v);
+}
+// A parameter's OSC name, as the board makes it: lower case up to any "(unit)", spaces as _
+const slug = n => n.split('(')[0].toLowerCase().replace(/[^a-z0-9 ]/g, '').trim().replace(/ +/g, '_');
+
+function oscMessages(buf, out = []) {
+  const u8 = new Uint8Array(buf), dv = new DataView(buf);
+  let p = 0;
+  const str = () => { let e = p; while (e < u8.length && u8[e]) e++; const s = String.fromCharCode(...u8.subarray(p, e)); p = (e + 4) & ~3; return s; };
+  const addr = str();
+  if (addr == '#bundle') {
+    p = 16;
+    while (p + 4 <= u8.length) { const n = dv.getUint32(p); out.push(...oscMessages(buf.slice(p + 4, p + 4 + n))); p += 4 + n; }
+    return out;
+  }
+  const tags = str(), args = [];
+  for (const t of tags.slice(1)) {
+    if (t == 'f') { args.push(dv.getFloat32(p)); p += 4; }
+    else if (t == 'i') { args.push(dv.getInt32(p)); p += 4; }
+    else if (t == 'r') { args.push('#' + (dv.getUint32(p) >>> 8).toString(16).padStart(6, '0')); p += 4; }
+    else if (t == 'T' || t == 'F') args.push(t == 'T');
+  }
+  out.push([addr, args[0]]);
+  return out;
+}
+
+function oscValue(addr, v) {
+  const a = addr.split('/');
+  if (a[1] != 'beamled' || !S) return;
+  if (a.length == 3) {
+    if (a[2] == 'brightness') { S.brightness = Math.round(v * 255); moveSlider('brightness', S.brightness); }
+    else if (a[2] == 'on') { if (S.on != v) { S.on = v; redraw(); } }
+    else if (a[2] == 'preset') { if (S.current != v - 1) { S.current = v - 1; redraw(); } }
+    else if (a[2] == 'link') { if (S.link.enabled != v) { S.link.enabled = v; redraw(); } }
+    return;
+  }
+  const n = +a[3] - 1, key = a[4];
+  if (a[2] == 'presets') {
+    const p = S.presets[n];
+    if (!p || key == 'play') return;
+    const mine = n == S.current;
+    if (key == 'effect') { if (p.effect != v - 1) reload(); return; }
+    if (key == 'palette') p.palette = v - 1;
+    else if (key == 'sparkle') { p.sparkle = v; if (mine) return moveSlider('sparkle', v); }
+    else if (key == 'pulse') { p.pulse = v; if (mine) return moveSlider('pulse', v); }
+    else if (key == 'timing') p.timing = v;
+    else if (key == 'beats') p.beatsExp = Math.round(Math.log2(v));
+    else if (key == 'reverse') p.reverse = v;
+    else {
+      const j = S.effects[p.effect].params.findIndex(d => slug(d.name) == key);
+      if (j < 0) return;
+      p.params[j] = v;
+      if (mine) return moveSlider('p' + j, v);
+    }
+    if (mine) redraw();
+  } else if (a[2] == 'palettes') {
+    const q = S.palettes[n];
+    if (!q) return;
+    if (key == 'colours') { if (q.colors.length != v) reload(); return; }
+    const j = +key.slice(6) - 1;
+    if (j < q.colors.length && q.colors[j] != v) { q.colors[j] = v; redraw(); }
+  }
+}
+const reload = () => { reloadDue = true; settle(); };
+
+function live() {
+  const ws = new WebSocket('ws://' + location.hostname + ':8010/');
+  ws.binaryType = 'arraybuffer';
+  ws.onopen = () => {
+    ws.send(JSON.stringify({COMMAND: 'PAGE'}));
+    ws.send(JSON.stringify({COMMAND: 'LISTEN', DATA: '/'}));
+  };
+  ws.onmessage = e => {
+    if (typeof e.data != 'string') { for (const [addr, v] of oscMessages(e.data)) oscValue(addr, v); return; }
+    const m = JSON.parse(e.data);
+    if (m.COMMAND == 'STATUS') {
+      const st = m.DATA;
+      if (!S) return;
+      if (st.rev != S.rev || st.presetCount != S.presets.length) { S.rev = st.rev; reload(); }
+      const changed = st.current != S.current || st.on != S.on;
+      Object.assign(S, st);
+      if (changed) redraw(); else showStatus();
+    } else if (m.COMMAND == 'SCAN') {
+      if (scanDone) scanDone(m.DATA);
+    } else if (m.COMMAND == 'PATH_ADDED' || m.COMMAND == 'PATH_REMOVED') {
+      reload();
+    }
+  };
+  // The board restarted or the network dropped: connect again (and reload, things may differ)
+  ws.onclose = () => setTimeout(() => { reloadDue = true; settle(); live(); }, 3000);
+}
+load().then(live);
 </script></body></html>)HTML";

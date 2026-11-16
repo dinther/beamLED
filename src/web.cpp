@@ -13,6 +13,10 @@
 
 static WebServer server(80);
 static bool restartRequested = false;
+// Counts changes the page shows but OSC doesn't carry (names, the preset list, layout, ...):
+// open pages reload when it moves. Values (brightness, sliders, colours) reach them as OSC.
+static volatile uint32_t revision = 0;
+void webChanged() { revision = revision + 1; }
 static uint32_t restartAt = 0;
 
 static String hexColour(const CRGB& c) {
@@ -64,6 +68,8 @@ static void statusJson(JsonObject o) {
     o["on"] = engineOn();
     o["current"] = engineCurrent();
     o["presetCount"] = presetCount;
+    o["brightness"] = settings.brightness;
+    o["rev"] = revision;
     o["fps"] = roundf(engineFps() * 10) / 10;
     o["renderMs"] = roundf(engineRenderMs() * 10) / 10;
     o["sendMs"] = roundf(engineSendMs() * 10) / 10;
@@ -76,6 +82,14 @@ static void statusJson(JsonObject o) {
     l["bpm"] = round(b.bpm * 10) / 10;
     l["peers"] = b.peers;
     o["osc"] = oscStatusText();
+}
+
+String webStatusJson() {
+    JsonDocument d;
+    statusJson(d.to<JsonObject>());
+    String s;
+    serializeJson(d, s);
+    return s;
 }
 
 static void handleState() {
@@ -133,10 +147,14 @@ static void handleSet() {
     JsonDocument d;
     if (!readBody(d)) return;
     if (d["brightness"].is<int>()) settings.brightness = constrain(d["brightness"].as<int>(), 0, 255);
-    if (d["gamma"].is<float>()) settings.gamma = constrain(d["gamma"].as<float>(), 1.f, 3.f);
+    if (d["gamma"].is<float>()) {
+        settings.gamma = constrain(d["gamma"].as<float>(), 1.f, 3.f);
+        webChanged();
+    }
     if (d["target"].is<const char*>()) {
         IPAddress ip;
         if (ip.fromString(d["target"].as<const char*>())) settings.target = (uint32_t)ip;
+        webChanged();
     }
     if (d["current"].is<int>()) engineSelect(d["current"].as<int>());
     if (d["on"].is<bool>()) engineSetOn(d["on"].as<bool>());
@@ -150,11 +168,15 @@ static void handlePreset() {
     const int i = d["index"] | -1;
     if (i < 0 || i >= presetCount) { server.send(400, "text/plain", "bad index"); return; }
     Preset& p = presets[i];
-    if (d["name"].is<const char*>()) strlcpy(p.name, d["name"].as<const char*>(), sizeof(p.name));
+    if (d["name"].is<const char*>()) {
+        strlcpy(p.name, d["name"].as<const char*>(), sizeof(p.name));
+        webChanged();
+    }
     if (d["effect"].is<int>()) {
         const int e = d["effect"].as<int>();
         if (e >= 0 && e < NUM_EFFECTS && e != p.effect) {
             presetSetEffect(p, e);
+            webChanged();
             if (i == settings.current) engineResetEffect();
         }
     }
@@ -192,6 +214,7 @@ static void handlePresetList() {
         ok = engineMovePreset(d["move"].as<int>(), d["to"].as<int>());
     }
     if (!ok) { server.send(400, "text/plain", "not possible"); return; }
+    webChanged();
     handleState();
 }
 
@@ -201,10 +224,14 @@ static void handlePalette() {
     const int i = d["index"] | -1;
     if (i < 0 || i >= NUM_PALETTES) { server.send(400, "text/plain", "bad index"); return; }
     Palette& p = palettes[i];
-    if (d["name"].is<const char*>()) strlcpy(p.name, d["name"].as<const char*>(), sizeof(p.name));
+    if (d["name"].is<const char*>()) {
+        strlcpy(p.name, d["name"].as<const char*>(), sizeof(p.name));
+        webChanged();
+    }
     if (d["colors"].is<JsonArray>()) {
         JsonArray a = d["colors"].as<JsonArray>();
         if (a.size() >= 2) {
+            if (p.n != min((int)a.size(), PAL_MAX)) webChanged();
             p.n = min((int)a.size(), PAL_MAX);
             for (int j = 0; j < p.n; j++) p.c[j] = parseColour(a[j].as<const char*>());
         }
@@ -238,6 +265,7 @@ static void handleLayout() {
     }
     layout = l;
     engineLayoutChanged();
+    webChanged();
     handleState();
 }
 
@@ -247,7 +275,10 @@ static void handleLink() {
     if (!readBody(d)) return;
     if (d["enabled"].is<bool>()) linkSettings.enabled = d["enabled"].as<bool>();
     if (d["bpm"].is<float>()) engineSetTempo(d["bpm"].as<float>());
-    if (d["latency"].is<float>()) linkSettings.latencyMs = constrain(d["latency"].as<float>(), 0.f, 500.f);
+    if (d["latency"].is<float>()) {
+        linkSettings.latencyMs = constrain(d["latency"].as<float>(), 0.f, 500.f);
+        webChanged();
+    }
     storeMarkDirty();
     handleStatus();
 }
