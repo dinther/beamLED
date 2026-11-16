@@ -1,0 +1,31 @@
+{
+  "note": "Bar y positions in metres from the Beam project (saved 2026-11-16 13:53). Bar 15 not in Beam yet: estimated as bar 14 + 0.5 m. Verify on site.",
+  "bars": 15,
+  "pixelsPerBar": 180,
+  "barLength_m": 5.0,
+  "pitch_m": 0.0276,
+  "marginEnds_m": 0.02,
+  "barY_m": [
+    0,
+    0.46,
+    0.96,
+    1.51,
+    2,
+    2.54,
+    3,
+    3.5,
+    4.03,
+    4.58,
+    5.16,
+    5.79,
+    6.44,
+    6.92,
+    7.42
+  ],
+  "artnet": {
+    "target": "192.168.0.50",
+    "testTarget": "192.168.0.20",
+    "universeOfBar": "2*n",
+    "channelsPerUniverse": 510
+  }
+}
