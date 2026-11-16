@@ -19,8 +19,8 @@
 // subscriptions in small arrays: the globals, then MAX_PRESETS blocks of PSLOTS, then
 // NUM_PALETTES blocks of CSLOTS. A preset's parameters take the slots after its fixed ones.
 
-enum Global : uint8_t { G_PRESET, G_NEXT, G_PREV, G_ON, G_BRIGHTNESS, G_TEMPO, G_LINK, G_SAVE, NUM_GLOBALS };
-static const char* const GLOBAL_NAME[NUM_GLOBALS] = {"preset", "next", "prev", "on", "brightness", "tempo", "link", "save"};
+enum Global : uint8_t { G_PRESET, G_NEXT, G_PREV, G_ON, G_BRIGHTNESS, G_LINK, G_SAVE, NUM_GLOBALS };
+static const char* const GLOBAL_NAME[NUM_GLOBALS] = {"preset", "next", "prev", "on", "brightness", "link", "save"};
 
 enum PSlot : uint8_t { P_PLAY, P_EFFECT, P_PALETTE, P_SPARKLE, P_TIMING, P_BEATS, P_REVERSE, P_PULSE, P_FIXED };
 static const char* const PSLOT_NAME[P_FIXED] = {"play", "effect", "palette", "sparkle", "timing", "beats", "reverse", "pulse"};
@@ -76,9 +76,6 @@ static bool nodeInfo(int id, NodeInfo& n, char* path, size_t len) {
             case G_PREV: n = {'N', 2, false, 0, 0, "The previous preset. An argument of 0 is ignored."}; break;
             case G_ON: n = {'T', 3, false, 0, 1, "On or off, with a fade, as a long press of the button. No argument toggles."}; break;
             case G_BRIGHTNESS: n = {'f', 3, true, 0, 1, "Master brightness, 0..1, as the web page's Brightness slider."}; break;
-            case G_TEMPO:
-                n = {'f', 3, true, 40, 240, "Tempo in BPM, for presets that follow the tempo or run in beats. With Ableton Link enabled this sets everyone's tempo. The range is for knobs; 20..999 is taken."};
-                break;
             case G_LINK: n = {'T', 3, false, 0, 1, "Ableton Link: Enabled (true) or Disabled (false). No argument toggles."}; break;
             case G_SAVE: n = {'N', 2, false, 0, 0, "Saves the presets, palettes and settings as they are now, so they survive a power cut. OSC changes are not saved otherwise until the next save from the web page or a preset change."}; break;
         }
@@ -130,7 +127,6 @@ static bool nodeValue(int id, char type, uint32_t& v) {
             case G_PRESET: return i(engineCurrent() + 1);
             case G_ON: return i(engineOn());
             case G_BRIGHTNESS: return f(settings.brightness / 255.f);
-            case G_TEMPO: return f(roundf((float)engineBeat().bpm * 100.f) / 100.f);
             case G_LINK: return i(linkSettings.enabled != 0);
         }
         return false;
@@ -282,7 +278,6 @@ static void apply(const char* path, const Arg* a, int n) {
             case G_PREV: engineSelect((cur + presetCount - 1) % presetCount); break;
             case G_ON: engineSetOn(on); break;
             case G_BRIGHTNESS: settings.brightness = (uint8_t)lroundf(constrain(v, 0.f, 1.f) * 255.f); break;
-            case G_TEMPO: engineSetTempo(v); break;
             case G_LINK: linkSettings.enabled = on; break;
             case G_SAVE: storeMarkDirty(); break;
         }
@@ -666,16 +661,18 @@ static void sendFrame(int fd, httpd_ws_type_t type, const uint8_t* data, size_t 
     httpd_ws_send_frame_async(server, fd, &f);
 }
 
-static void sendValue(int fd, int id) {
+// A new subscription gets no value straight away: only changes from now on. MIMa's Learn takes
+// the first message after its subscriptions as the one to learn, and the board can't answer 200
+// subscriptions within the 0.5 s it ignores; clients that want the current value ask ?VALUE.
+// The value as it is now counts as sent, so the next push doesn't send it either.
+static void markCurrent(int id) {
     NodeInfo n;
     char p[64];
     uint32_t v;
-    uint8_t m[96];
-    if (!nodeInfo(id, n, p, sizeof(p)) || !nodeValue(id, n.type, v)) return;
-    const size_t len = encode(p, n.type, v, m, sizeof(m));
-    if (len) sendFrame(fd, HTTPD_WS_TYPE_BINARY, m, len);
+    if (hasBit(known, id) || !nodeInfo(id, n, p, sizeof(p)) || !nodeValue(id, n.type, v)) return;
+    lastValue[id] = v;
+    setBit(known, id, true);
 }
-
 static void notifyPath(const char* command, const char* path) {
     char b[128];
     snprintf(b, sizeof(b), "{\"COMMAND\":\"%s\",\"DATA\":\"%s\"}", command, path);
@@ -724,10 +721,34 @@ static void updateTree() {
 }
 
 // Sends every change since last time to the listeners that follow it
+// Changes go out as OSC bundles, one WebSocket frame per listener for everything that changed
+// since the last push (split when a bundle fills a packet): each frame costs a network round
+// trip on the board, each extra message in it almost nothing.
+static const size_t BUNDLE_MAX = 1400;
+static uint8_t bundle[MAX_LISTENERS][BUNDLE_MAX];
+static size_t bundleLen[MAX_LISTENERS];
+
+static void bundleFlush(int k) {
+    if (bundleLen[k] > 16 && listeners[k].fd >= 0) sendFrame(listeners[k].fd, HTTPD_WS_TYPE_BINARY, bundle[k], bundleLen[k]);
+    // "#bundle", then the time tag 1 = at once
+    static const uint8_t head[16] = {'#', 'b', 'u', 'n', 'd', 'l', 'e', 0, 0, 0, 0, 0, 0, 0, 0, 1};
+    memcpy(bundle[k], head, 16);
+    bundleLen[k] = 16;
+}
+
+static void bundleAdd(int k, const uint8_t* m, size_t len) {
+    if (bundleLen[k] + 4 + len > BUNDLE_MAX) bundleFlush(k);
+    uint8_t* b = bundle[k] + bundleLen[k];
+    b[0] = len >> 24; b[1] = len >> 16; b[2] = len >> 8; b[3] = len;
+    memcpy(b + 4, m, len);
+    bundleLen[k] += 4 + len;
+}
+
 static void push(void*) {
     pushQueued = false;
     if (!listenerCount) return;
     updateTree();
+    for (int k = 0; k < MAX_LISTENERS; k++) bundleLen[k] = 16, bundleFlush(k);  // fresh, empty
     NodeInfo n;
     char p[64];
     for (int id = 0; id < NUM_NODES; id++) {
@@ -738,12 +759,13 @@ static void push(void*) {
         setBit(known, id, true);
         uint8_t m[96];
         size_t len = 0;
-        for (Listener& l : listeners) {
-            if (l.fd < 0 || !hasBit(l.bits, id)) continue;
+        for (int k = 0; k < MAX_LISTENERS; k++) {
+            if (listeners[k].fd < 0 || !hasBit(listeners[k].bits, id)) continue;
             if (!len) len = encode(p, n.type, v, m, sizeof(m));
-            if (len) sendFrame(l.fd, HTTPD_WS_TYPE_BINARY, m, len);
+            if (len) bundleAdd(k, m, len);
         }
     }
+    for (int k = 0; k < MAX_LISTENERS; k++) bundleFlush(k);
 }
 
 static Listener* listenerFor(int fd) {
@@ -766,7 +788,7 @@ static void command(int fd, const char* text) {
     const int id = findNode(path);
     if (id >= 0) {
         setBit(l->bits, id, listen);
-        if (listen) sendValue(fd, id);
+        if (listen) markCurrent(id);
         return;
     }
     if (!isContainer(path)) return;
@@ -776,7 +798,7 @@ static void command(int fd, const char* text) {
     for (int k = 0; k < NUM_NODES; k++) {
         if (!nodeInfo(k, n, p, sizeof(p)) || strncmp(p, path, plen) || p[plen] != '/') continue;
         setBit(l->bits, k, listen);
-        if (listen) sendValue(fd, k);
+        if (listen) markCurrent(k);
     }
 }
 
@@ -805,6 +827,15 @@ static esp_err_t onRequest(httpd_req_t* req) {
     if (f.len && httpd_ws_recv_frame(req, &f, f.len) != ESP_OK) return ESP_FAIL;
     text[f.len] = 0;
     if (f.type == HTTPD_WS_TYPE_TEXT) command(fd, text);
+    return ESP_OK;
+}
+
+// Every connection sends at once: without this, Nagle holds each small reply until the last
+// one is acknowledged, and Windows delays its acknowledgements, so a value takes milliseconds
+// and the tree seconds. MIMa's Learn ignores values only in the first 0.5 s after it subscribes.
+static esp_err_t onOpen(httpd_handle_t, int fd) {
+    const int one = 1;
+    setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
     return ESP_OK;
 }
 
@@ -847,6 +878,7 @@ static void start() {
     c.max_open_sockets = MAX_LISTENERS + 1;  // the listeners and one plain request at a time
     c.lru_purge_enable = true;
     c.uri_match_fn = httpd_uri_match_wildcard;
+    c.open_fn = onOpen;
     c.close_fn = onClose;
     c.core_id = 0;  // with the network stack; the render loop has core 1
     c.stack_size = 6144;
