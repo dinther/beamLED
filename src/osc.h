@@ -16,9 +16,8 @@
 //   /beamled/presets/<n>/play T | effect i | palette i | sparkle f | timing i | beats i |
 //                        reverse T | pulse f | <parameter> (named after it: speed, bars, ...)
 //   /beamled/palettes/<k>/colours i 2..5 | colour1 .. colour5 r
-// Values are in real units, as the web page shows them. OSC changes don't start a save by
-// themselves (a fader moving all show doesn't keep writing the flash), but the next save (an edit
-// on the web page, a preset change, /beamled/save) stores them along with everything else.
+// Values are in real units, as the web page shows them. Preset changes from OSC play at once but,
+// as edits on the web page, aren't saved until Save on the page or /beamled/save (all presets).
 #pragma once
 #include <Arduino.h>
 

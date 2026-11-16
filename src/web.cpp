@@ -47,6 +47,7 @@ static bool readBody(JsonDocument& d) {
 static void presetJson(JsonObject o, int i) {
     const Preset& p = presets[i];
     o["name"] = p.name;
+    o["changed"] = presetChanged(i);  // unsaved edits
     o["timing"] = presetSync[i].timing;
     o["beatsExp"] = presetSync[i].beatsExp;
     o["reverse"] = presetSync[i].reverse != 0;
@@ -70,6 +71,10 @@ static void statusJson(JsonObject o) {
     o["presetCount"] = presetCount;
     o["brightness"] = settings.brightness;
     o["rev"] = revision;
+    uint32_t changed = 0;  // presets with unsaved edits, one bit each
+    for (int i = 0; i < presetCount; i++)
+        if (presetChanged(i)) changed |= 1u << i;
+    o["changed"] = changed;
     o["fps"] = roundf(engineFps() * 10) / 10;
     o["renderMs"] = roundf(engineRenderMs() * 10) / 10;
     o["sendMs"] = roundf(engineSendMs() * 10) / 10;
@@ -169,8 +174,16 @@ static void handlePreset() {
     if (i < 0 || i >= presetCount) { server.send(400, "text/plain", "bad index"); return; }
     Preset& p = presets[i];
     if (d["name"].is<const char*>()) {
-        strlcpy(p.name, d["name"].as<const char*>(), sizeof(p.name));
+        presetRename(i, d["name"].as<const char*>());  // a name is saved at once
         webChanged();
+    }
+    // Save: what plays becomes the preset. Revert: back to the saved version.
+    if (d["save"] | false) presetSave(i);
+    if (d["revert"] | false) {
+        const uint8_t was = p.effect;
+        presetRevert(i);
+        webChanged();
+        if (i == settings.current && p.effect != was) engineResetEffect();
     }
     if (d["effect"].is<int>()) {
         const int e = d["effect"].as<int>();
@@ -192,7 +205,7 @@ static void handlePreset() {
     if (d["beatsExp"].is<int>()) presetSync[i].beatsExp = constrain(d["beatsExp"].as<int>(), 0, 6);
     if (d["reverse"].is<bool>()) presetSync[i].reverse = d["reverse"].as<bool>();
     if (d["pulse"].is<float>()) presetSync[i].pulse = constrain(d["pulse"].as<float>(), 0.f, 1.f);
-    storeMarkDirty();
+    // Edits play at once and stay unsaved until Save: nothing to write to flash here
     JsonDocument r;
     presetJson(r.to<JsonObject>(), i);
     sendJson(r);

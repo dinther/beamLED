@@ -54,7 +54,14 @@ select,input[type=text],input[type=password],input[type=number]{flex:1;min-width
 <script>
 let S, N;
 const h = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; };
-const post = (u, o) => fetch(u, {method: 'POST', body: JSON.stringify(o)}).then(r => r.ok ? r.json() : r.text().then(t => { throw new Error(t); }));
+let saveBtn = null;  // the playing preset's Save button: lit by any edit
+const post = (u, o) => {
+  if (u == '/api/preset' && !o.save && !o.revert && o.name == null && S && S.presets[o.index]) {
+    S.presets[o.index].changed = true;
+    if (saveBtn && o.index == S.current) { saveBtn.disabled = false; saveBtn.className = 'on'; saveBtn.textContent = 'Save •'; }
+  }
+  return fetch(u, {method: 'POST', body: JSON.stringify(o)}).then(r => r.ok ? r.json() : r.text().then(t => { throw new Error(t); }));
+};
 // At most one request per key every 120 ms while a slider moves; the last value always goes out
 const pend = {};
 function throttle(k, fn) {
@@ -98,7 +105,7 @@ const H = {
   on: 'Switches the ceiling on or off with a one-second fade, the same as a long press of the button on the board. Off keeps the board running, so it comes back where it was.',
   brightness: 'Master brightness for every preset. It works after the gamma curve, so 50% looks about half as bright. Saved, and kept after a power cut.',
   status: 'Frames per second (the target is 40) and the time one frame takes to draw (25 ms is the budget), the network connection, WiFi, Ableton Link and OSC.',
-  presets: 'Click a preset to play it. The button on the board steps through them in this order (short press: next, long press: on/off), and the one playing is kept after a power cut. Up to 32 presets.',
+  presets: 'Click a preset to play it. The button on the board steps through them in this order (short press: next, long press: on/off), and the one playing is kept after a power cut. Up to 32 presets. A • after a name: changes not saved yet (Save or Revert in its settings).',
   play: 'Plays this preset with a short fade.',
   add: 'Adds a new preset at the end, a copy of the one playing, and plays it. Up to 32 presets.',
   name: 'The preset’s name, shown on its button. Up to 19 characters.',
@@ -112,7 +119,9 @@ const H = {
   reverse: 'Runs the cycle backwards: the lighthouse turns the other way, bands roll back, rings flow in.',
   sparkle: 'White twinkles on top of this preset’s effect. 0 = none, 1 = about 8% of the LEDs lit at any moment.',
   pulse: 'A brightness accent on the beat: full on each beat and dipping in between, strongest on the bar’s first beat. 0 = steady. Follows Ableton Link, or the board’s own tempo.',
-  reset: 'Sets this preset’s effect parameters back to the effect’s defaults. Name, palette, timing, sparkle and pulse stay as they are.',
+  reset: 'Sets this preset’s effect parameters back to the effect’s defaults (not saved until you click Save). Name, palette, timing, sparkle and pulse stay as they are.',
+  save: 'Stores this preset as it plays now: effect, palette, sliders, timing, sparkle and pulse. Until you save, changes (here or from OSC) play on the ceiling but the preset keeps its saved settings, so you can tinker freely. Unsaved changes are kept while you switch presets, and lost on a power cut.',
+  revert: 'Goes back to this preset’s saved settings, dropping the changes since the last Save.',
   palettes: 'Palettes are shared: each preset picks one. Effects blend smoothly between the colours in order; looping effects wrap from the last colour back to the first.',
   palName: 'The palette’s name, as listed in each preset’s Palette choice. Up to 15 characters.',
   palColour: 'A colour of this palette. Effects blend between the colours in this order. Click to change it; the ceiling follows as you pick.',
@@ -188,7 +197,7 @@ function draw() {
   app.append(heading('Presets', H.presets));
   const g = h('div', {className: 'presets'});
   S.presets.forEach((q, i) => {
-    const b = button((i + 1) + '  ' + q.name, H.play + ' ' + (i + 1) + ': ' + q.name + ' (' + S.effects[q.effect].name + ').',
+    const b = button((i + 1) + '  ' + q.name + (q.changed ? ' •' : ''), H.play + ' ' + (i + 1) + ': ' + q.name + ' (' + S.effects[q.effect].name + ').' + (q.changed ? ' It has changes that aren’t saved yet.' : ''),
       {className: i == S.current ? 'on' : ''});
     b.onclick = () => { S.current = i; S.on = true; post('/api/set', {current: i}); draw(); };
     g.append(b);
@@ -250,8 +259,13 @@ function draw() {
   card.append(slider('Beat pulse', 0, 1, 0.01, p.pulse, v => v.toFixed(2),
     v => { p.pulse = v; throttle('pu', () => post('/api/preset', {index: S.current, pulse: v})); }, H.pulse, 'pulse'));
   const reset = button('Reset parameters', H.reset);
-  reset.onclick = () => { p.params = ef.params.map(d => d.def); post('/api/preset', {index: S.current, params: p.params}); draw(); };
-  card.append(h('div', {className: 'btns'}, reset));
+  reset.onclick = () => { p.params = ef.params.map(d => d.def); p.changed = true; post('/api/preset', {index: S.current, params: p.params}); draw(); };
+  const save = button(p.changed ? 'Save •' : 'Saved', H.save, {className: p.changed ? 'on' : '', disabled: !p.changed});
+  save.onclick = () => post('/api/preset', {index: S.current, save: true}).then(np => { S.presets[S.current] = np; draw(); });
+  saveBtn = save;
+  const revert = button('Revert', H.revert, {disabled: !p.changed});
+  revert.onclick = () => post('/api/preset', {index: S.current, revert: true}).then(np => { S.presets[S.current] = np; draw(); });
+  card.append(h('div', {className: 'btns'}, save, revert, reset));
   app.append(card);
 
   app.append(heading('Palettes', H.palettes));
@@ -545,7 +559,9 @@ function live(take = false) {
       const st = m.DATA;
       if (!S) return;
       if (st.rev != S.rev || st.presetCount != S.presets.length) { S.rev = st.rev; reload(); }
-      const changed = st.current != S.current || st.on != S.on;
+      let changed = st.current != S.current || st.on != S.on;
+      // Unsaved edits per preset (one bit each): the • marks and the Save button follow
+      S.presets.forEach((q, i) => { const c = !!(st.changed >>> i & 1); if (q.changed != c) { q.changed = c; changed = true; } });
       Object.assign(S, st);
       if (changed) redraw(); else showStatus();
     } else if (m.COMMAND == 'SCAN') {

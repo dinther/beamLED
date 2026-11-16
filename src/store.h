@@ -60,3 +60,10 @@ void presetSetEffect(Preset& p, uint8_t effect);
 int presetAdd(int from);          // a copy of preset 'from' at the end; its index, or -1 when full
 bool presetDelete(int i);         // never the last one
 bool presetMove(int from, int to);
+// Edits to a preset (sliders, effect, palette, timing, OSC) play at once but aren't saved until
+// presetSave; presetRevert goes back to the saved version. A name is saved at once.
+bool presetChanged(int i);   // differs from its saved version
+void presetSave(int i);
+void presetSaveAll();
+void presetRevert(int i);
+void presetRename(int i, const char* name);

@@ -10,6 +10,10 @@ int presetCount = 0;
 Settings settings;
 Layout layout;
 PresetSync presetSync[MAX_PRESETS];
+// The presets as saved: presets[] is what plays (edits land there at once), these are what Save
+// stores and Revert goes back to. From the heap: static DRAM is full.
+static Preset* savedPresets = nullptr;
+static PresetSync* savedSync = nullptr;
 LinkSettings linkSettings;
 
 static const uint32_t SCHEMA = 1;  // bump when a struct above changes
@@ -119,9 +123,9 @@ static void save() {
     prefs.begin("beamled", false);
     prefs.putUInt("ver", SCHEMA);
     prefs.putBytes("pal", palettes, sizeof(palettes));
-    prefs.putBytes("pres", presets, presetCount * sizeof(Preset));
+    prefs.putBytes("pres", savedPresets, presetCount * sizeof(Preset));
     prefs.putBytes("set", &settings, sizeof(settings));
-    prefs.putBytes("syncs", presetSync, presetCount * sizeof(PresetSync));
+    prefs.putBytes("syncs", savedSync, presetCount * sizeof(PresetSync));
     prefs.putBytes("link", &linkSettings, sizeof(linkSettings));
     if (prefs.isKey("pre")) prefs.remove("pre");
     if (prefs.isKey("sync")) prefs.remove("sync");
@@ -186,7 +190,54 @@ void storeLoad() {
     linkSettings.enabled = linkSettings.enabled ? 1 : 0;
     if (!(linkSettings.bpm >= 20 && linkSettings.bpm <= 999)) linkSettings.bpm = 120;
     if (!(linkSettings.latencyMs >= 0 && linkSettings.latencyMs <= 500)) linkSettings.latencyMs = 20;
+    if (!savedPresets) savedPresets = (Preset*)calloc(MAX_PRESETS, sizeof(Preset));
+    if (!savedSync) savedSync = (PresetSync*)calloc(MAX_PRESETS, sizeof(PresetSync));
+    for (int i = 0; i < MAX_PRESETS; i++) {
+        savedPresets[i] = presets[i];
+        savedSync[i] = presetSync[i];
+    }
     if (!ok || old) save();
+}
+
+// ---- Save / Revert per preset
+
+static bool samePreset(const Preset& a, const Preset& b) {
+    if (a.effect != b.effect || a.palette != b.palette || a.sparkle != b.sparkle) return false;
+    for (int j = 0; j < MAXP; j++)
+        if (a.p[j] != b.p[j]) return false;
+    return true;  // the name is saved at once, so it never differs
+}
+
+static bool sameSync(const PresetSync& a, const PresetSync& b) {
+    return a.timing == b.timing && a.beatsExp == b.beatsExp && a.reverse == b.reverse && a.pulse == b.pulse;
+}
+
+bool presetChanged(int i) {
+    return i >= 0 && i < presetCount && (!samePreset(presets[i], savedPresets[i]) || !sameSync(presetSync[i], savedSync[i]));
+}
+
+void presetSave(int i) {
+    if (i < 0 || i >= presetCount) return;
+    savedPresets[i] = presets[i];
+    savedSync[i] = presetSync[i];
+    storeMarkDirty();
+}
+
+void presetSaveAll() {
+    for (int i = 0; i < presetCount; i++) presetSave(i);
+}
+
+void presetRevert(int i) {
+    if (i < 0 || i >= presetCount) return;
+    presets[i] = savedPresets[i];
+    presetSync[i] = savedSync[i];
+}
+
+void presetRename(int i, const char* name) {
+    if (i < 0 || i >= presetCount) return;
+    strlcpy(presets[i].name, name, sizeof(presets[i].name));
+    strlcpy(savedPresets[i].name, name, sizeof(savedPresets[i].name));
+    storeMarkDirty();
 }
 
 // Adds a copy of preset `from` after the last one. Returns its index, or -1 when full.
@@ -199,6 +250,8 @@ int presetAdd(int from) {
     char name[sizeof(presets[i].name)];
     snprintf(name, sizeof(name), "%.14s copy", presets[from].name);
     strlcpy(presets[i].name, name, sizeof(presets[i].name));
+    savedPresets[i] = presets[i];  // a new preset is saved as it is
+    savedSync[i] = presetSync[i];
     storeMarkDirty();
     return i;
 }
@@ -209,9 +262,11 @@ bool presetDelete(int i) {
     for (int k = i; k < presetCount - 1; k++) {
         presets[k] = presets[k + 1];
         presetSync[k] = presetSync[k + 1];
+        savedPresets[k] = savedPresets[k + 1];
+        savedSync[k] = savedSync[k + 1];
     }
     presetCount--;
-    presetSync[presetCount] = SYNC_DEFAULT;
+    presetSync[presetCount] = savedSync[presetCount] = SYNC_DEFAULT;
     storeMarkDirty();
     return true;
 }
@@ -219,18 +274,23 @@ bool presetDelete(int i) {
 // Moves preset `from` to position `to`, shifting the ones between.
 bool presetMove(int from, int to) {
     if (from < 0 || from >= presetCount || to < 0 || to >= presetCount || from == to) return false;
-    const Preset p = presets[from];
-    const PresetSync y = presetSync[from];
+    const Preset p = presets[from], sp = savedPresets[from];
+    const PresetSync y = presetSync[from], sy = savedSync[from];
     const int d = to > from ? 1 : -1;
     for (int k = from; k != to; k += d) {
         presets[k] = presets[k + d];
         presetSync[k] = presetSync[k + d];
+        savedPresets[k] = savedPresets[k + d];
+        savedSync[k] = savedSync[k + d];
     }
     presets[to] = p;
     presetSync[to] = y;
+    savedPresets[to] = sp;
+    savedSync[to] = sy;
     storeMarkDirty();
     return true;
 }
+
 void storeMarkDirty() {
     dirty = true;
     dirtyAt = millis();

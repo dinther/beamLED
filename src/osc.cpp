@@ -78,7 +78,7 @@ static bool nodeInfo(int id, NodeInfo& n, char* path, size_t len) {
             case G_ON: n = {'T', 3, false, 0, 1, "On or off, with a fade, as a long press of the button. No argument toggles."}; break;
             case G_BRIGHTNESS: n = {'f', 3, true, 0, 1, "Master brightness, 0..1, as the web page's Brightness slider."}; break;
             case G_LINK: n = {'T', 3, false, 0, 1, "Ableton Link: Enabled (true) or Disabled (false). No argument toggles."}; break;
-            case G_SAVE: n = {'N', 2, false, 0, 0, "Saves the presets, palettes and settings as they are now, so they survive a power cut. OSC changes are not saved otherwise until the next save from the web page or a preset change."}; break;
+            case G_SAVE: n = {'N', 2, false, 0, 0, "Saves every preset as it plays now (as Save on each preset on the web page), with the palettes and settings, so they survive a power cut. Until then, preset changes from OSC or the web page play but are not saved."}; break;
         }
         return true;
     }
@@ -280,7 +280,7 @@ static void apply(const char* path, const Arg* a, int n) {
             case G_ON: engineSetOn(on); break;
             case G_BRIGHTNESS: settings.brightness = (uint8_t)lroundf(constrain(v, 0.f, 1.f) * 255.f); break;
             case G_LINK: linkSettings.enabled = on; break;
-            case G_SAVE: storeMarkDirty(); break;
+            case G_SAVE: presetSaveAll(); storeMarkDirty(); break;
         }
         return;
     }
