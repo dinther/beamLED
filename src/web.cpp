@@ -41,11 +41,17 @@ static int replyCode = 0;
 static const char* replyType = "text/plain";
 static String replyBody;
 static bool replyCache = false;  // the same for this firmware build: may be cached for good
+// A JSON reply is kept as the document and written out in 1 KB pieces as it is serialised: a
+// 16 KB String needs one free block that big, and when the heap is in pieces it stops growing
+// and the reply goes out cut off.
+static JsonDocument replyDoc;
+static bool replyJson = false;
 
 static void reply(int code, const char* type, const String& body) {
     replyCode = code;
     replyType = type;
     replyBody = body;
+    replyJson = false;
 }
 
 static bool hasArg(const char* key) {
@@ -58,11 +64,34 @@ static String arg(const char* key) {
     return httpd_query_key_value(rqQuery.c_str(), key, v, sizeof(v)) == ESP_OK ? String(v) : String();
 }
 
-static void sendJson(const JsonDocument& d) {
-    String out;
-    serializeJson(d, out);
-    reply(200, "application/json", out);
+static void sendJson(JsonDocument& d) {
+    replyCode = 200;
+    replyType = "application/json";
+    replyBody = String();
+    replyDoc = std::move(d);
+    replyJson = true;
 }
+
+// Serialised JSON straight into the HTTP reply, 1 KB at a time
+struct ChunkOut {
+    httpd_req_t* req;
+    char buf[1024];
+    size_t n = 0;
+    esp_err_t err = ESP_OK;
+    void flush() {
+        if (n && err == ESP_OK) err = httpd_resp_send_chunk(req, buf, n);
+        n = 0;
+    }
+    size_t write(uint8_t c) {
+        buf[n++] = (char)c;
+        if (n == sizeof(buf)) flush();
+        return 1;
+    }
+    size_t write(const uint8_t* s, size_t len) {
+        for (size_t i = 0; i < len; i++) write(s[i]);
+        return len;
+    }
+};
 
 static bool readBody(JsonDocument& d) {
     if (deserializeJson(d, rqBody)) {
@@ -529,6 +558,7 @@ bool webApi(httpd_req_t* req, esp_err_t& result) {
     rq = req;
     replyCode = 0;
     replyCache = false;
+    replyJson = false;
     {
         EngineLock lock;
         route->handler();
@@ -539,7 +569,16 @@ bool webApi(httpd_req_t* req, esp_err_t& result) {
     httpd_resp_set_status(req, statusLine(replyCode));
     httpd_resp_set_type(req, replyType);
     if (replyCache) httpd_resp_set_hdr(req, "Cache-Control", "public, max-age=31536000, immutable");
-    result = httpd_resp_send(req, replyBody.c_str(), replyBody.length());
+    if (replyJson) {
+        ChunkOut out{req};
+        serializeJson(replyDoc, out);
+        out.flush();
+        result = out.err == ESP_OK ? httpd_resp_send_chunk(req, nullptr, 0) : out.err;
+        replyDoc.clear();
+        replyJson = false;
+    } else {
+        result = httpd_resp_send(req, replyBody.c_str(), replyBody.length());
+    }
     replyBody = String();
     return true;
 }
