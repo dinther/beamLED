@@ -211,12 +211,27 @@ function field(label, input, help) { return tip(h('div', {className: 'row'}, h('
 const button = (text, help, props = {}) => tip(h('button', Object.assign({textContent: text}, props)), help);
 const heading = (text, help) => tip(h('h2', {textContent: text}), help);
 
-async function load() {
-  S = await (await fetch('/api/state')).json();
-  // The effects (names, ranges, help) are fixed per firmware build: cached by the browser
-  S.effects = await (await fetch('/api/effects?v=' + encodeURIComponent(S.build))).json();
-  N = await (await fetch('/api/net')).json();
-  draw();
+// The settings from the board. When it can't be reached (restarting, network) this says so and
+// tries again every 2 s, instead of leaving the page stuck.
+const getJson = async u => { const r = await fetch(u); if (!r.ok) throw new Error(u + ': ' + r.status); return r.json(); };
+let loading = null;  // one load at a time: a second ask waits for the one under way
+function load() { return loading || (loading = loadOnce().finally(() => { loading = null; })); }
+async function loadOnce() {
+  for (;;) {
+    try {
+      const st = await getJson('/api/state');
+      // The effects (names, ranges, help) are fixed per firmware build: cached by the browser
+      st.effects = await getJson('/api/effects?v=' + encodeURIComponent(st.build));
+      N = await getJson('/api/net');
+      S = st;
+      draw();
+      return;
+    } catch (e) {
+      const el = S ? document.getElementById('status') : document.getElementById('app');
+      if (el) el.textContent = 'Can’t reach beamLED (' + e.message + '), trying again…';
+      await new Promise(res => setTimeout(res, 2000));
+    }
+  }
 }
 
 // The preset list changed on the board: take its state
