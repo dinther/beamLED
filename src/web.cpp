@@ -231,6 +231,32 @@ static void handlePreset() {
     const int i = d["index"] | -1;
     if (i < 0 || i >= presetCount) { reply(400, "text/plain", "bad index"); return; }
     Preset& p = presets[i];
+    // {"motion": m, ...fields}: one motion's settings, and nothing else. Its fields share names
+    // with the preset's own (beatsExp: a motion's period in beats, or the preset's beats per cycle),
+    // so they are never read as the preset's.
+    if (d["motion"].is<int>()) {
+        const int m = d["motion"].as<int>();
+        if (m < 0 || m >= MOTIONS) { reply(400, "text/plain", "bad motion"); return; }
+        Motion& mo = presetMotion[i][m];
+        const EffectDef& e = EFFECTS[p.effect];
+        if (d["target"].is<int>()) mo.target = constrain(d["target"].as<int>(), 0, (int)e.n);
+        if (d["shape"].is<int>()) mo.shape = constrain(d["shape"].as<int>(), 0, NUM_SHAPES - 1);
+        if (d["inBeats"].is<bool>()) mo.inBeats = d["inBeats"].as<bool>();
+        if (d["beatsExp"].is<int>()) mo.beatsExp = constrain(d["beatsExp"].as<int>(), 0, 6);
+        if (d["seconds"].is<float>()) mo.seconds = constrain(d["seconds"].as<float>(), 0.25f, 600.f);
+        if (d["phase"].is<float>()) mo.phase = constrain(d["phase"].as<float>(), 0.f, 1.f);
+        if (d["from"].is<float>()) mo.from = d["from"].as<float>();
+        if (d["to"].is<float>()) mo.to = d["to"].as<float>();
+        if (mo.target) {  // the ends within the slider's range
+            const ParamDef& pd = e.params[mo.target - 1];
+            mo.from = constrain(mo.from, pd.min, pd.max);
+            mo.to = constrain(mo.to, pd.min, pd.max);
+        }
+        JsonDocument r;
+        presetJson(r.to<JsonObject>(), i);
+        sendJson(r);
+        return;
+    }
     if (d["name"].is<const char*>()) {
         presetRename(i, d["name"].as<const char*>());  // a name is saved at once
         webChanged();
@@ -263,27 +289,7 @@ static void handlePreset() {
     if (d["beatsExp"].is<int>()) presetSync[i].beatsExp = constrain(d["beatsExp"].as<int>(), 0, 6);
     if (d["reverse"].is<bool>()) presetSync[i].reverse = d["reverse"].as<bool>();
     if (d["pulse"].is<float>()) presetSync[i].pulse = constrain(d["pulse"].as<float>(), 0.f, 1.f);
-    // {"motion": m, ...fields}: one motion's settings
-    if (d["motion"].is<int>()) {
-        const int m = d["motion"].as<int>();
-        if (m >= 0 && m < MOTIONS) {
-            Motion& mo = presetMotion[i][m];
-            const EffectDef& e = EFFECTS[p.effect];
-            if (d["target"].is<int>()) mo.target = constrain(d["target"].as<int>(), 0, (int)e.n);
-            if (d["shape"].is<int>()) mo.shape = constrain(d["shape"].as<int>(), 0, NUM_SHAPES - 1);
-            if (d["inBeats"].is<bool>()) mo.inBeats = d["inBeats"].as<bool>();
-            if (d["beatsExp"].is<int>()) mo.beatsExp = constrain(d["beatsExp"].as<int>(), 0, 6);
-            if (d["seconds"].is<float>()) mo.seconds = constrain(d["seconds"].as<float>(), 0.25f, 600.f);
-            if (d["phase"].is<float>()) mo.phase = constrain(d["phase"].as<float>(), 0.f, 1.f);
-            if (d["from"].is<float>()) mo.from = d["from"].as<float>();
-            if (d["to"].is<float>()) mo.to = d["to"].as<float>();
-            if (mo.target) {  // the ends within the slider's range
-                const ParamDef& pd = e.params[mo.target - 1];
-                mo.from = constrain(mo.from, pd.min, pd.max);
-                mo.to = constrain(mo.to, pd.min, pd.max);
-            }
-        }
-    }    // Edits play at once and stay unsaved until Save: nothing to write to flash here
+    // Edits play at once and stay unsaved until Save: nothing to write to flash here
     JsonDocument r;
     presetJson(r.to<JsonObject>(), i);
     sendJson(r);
