@@ -75,7 +75,8 @@ static void handleState() {
     lay["length"] = layout.length;
     lay["aspect"] = layout.aspect;
     lay["measured"] = layout.measured != 0;
-    lay["startUni"] = layout.startUni;
+    JsonArray ru = lay["rowUni"].to<JsonArray>();
+    for (int b = 0; b < layout.ny; b++) ru.add(layout.rowUni[b]);
     lay["maxLeds"] = MAX_LEDS;
     lay["measuredRows"] = cfg::CEILING_ROWS;
     JsonArray ef = d["effects"].to<JsonArray>();
@@ -180,7 +181,13 @@ static void handleLayout() {
     if (d["length"].is<float>()) l.length = d["length"].as<float>();
     if (d["aspect"].is<float>()) l.aspect = d["aspect"].as<float>();
     if (d["measured"].is<bool>()) l.measured = d["measured"].as<bool>();
-    if (d["startUni"].is<int>()) l.startUni = constrain(d["startUni"].as<int>(), 0, 32767);
+    // rowUni: start universe per row; rows not listed continue after the last one listed
+    if (d["rowUni"].is<JsonArray>()) {
+        JsonArray a = d["rowUni"].as<JsonArray>();
+        const int n = min((int)a.size(), MAX_Y);
+        for (int b = 0; b < n; b++) l.rowUni[b] = constrain(a[b].as<int>(), 0, 32767);
+        layoutFillUniverses(l, n, n ? l.rowUni[0] : 0);
+    }
     if (l.nx * l.ny > MAX_LEDS) {
         server.send(400, "text/plain", "at most " + String(MAX_LEDS) + " LEDs");
         return;

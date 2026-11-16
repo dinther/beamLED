@@ -48,15 +48,20 @@ float engineFps() { return fps; }
 float engineRenderMs() { return renderMs; }
 int engineCurrent() { return pending >= 0 ? pending : settings.current; }
 
+static void printLayout() {
+    Serial.printf("Layout %u x %u, %.2f m rows, aspect %.1f%s, row universes:", layout.nx, layout.ny,
+                  layout.length, layout.aspect, layout.measured ? " (measured rows)" : "");
+    for (int b = 0; b < layout.ny; b++) Serial.printf(" %u", layout.rowUni[b]);
+    Serial.println();
+}
+
 void engineLayoutChanged() {
     layoutSanitize(layout);
     effectsInit();
     memset(effState, 0, sizeof(effState));
     memset(leds, 0, sizeof(leds));
     storeSaveLayout();
-    Serial.printf("Layout %u x %u, %.2f m rows, aspect %.1f%s, universes %u-%u\n", layout.nx, layout.ny,
-                  layout.length, layout.aspect, layout.measured ? " (measured rows)" : "", layout.startUni,
-                  layout.startUni + layout.ny * universesPerRow() - 1);
+    printLayout();
 }
 
 static void updateFade(float dt) {
@@ -127,6 +132,7 @@ void setup() {
     effectsInit();
     netBegin();
     webBegin();
+    printLayout();
     Serial.printf("Preset %d, Art-Net to %s\n", settings.current + 1,
                   IPAddress(settings.target).toString().c_str());
 }

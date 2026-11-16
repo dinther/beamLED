@@ -22,15 +22,15 @@ void ArtNetOut::sendUniverse(IPAddress to, uint16_t universe, const uint8_t* dat
     udp.endPacket();
 }
 
-// Each row starts on a new universe (170 RGB pixels per universe), as the PixLite is set up:
-// with 180 LEDs per row, row n = universe start + 2n (pixels 1-170) and + 2n+1 (pixels 171-180).
+// Each row starts at its own universe (layout.rowUni) and fills 170 RGB pixels per universe. The
+// ceiling's PixLite: 180 LEDs per row, row n = universe 2n (pixels 1-170) + 2n+1 (pixels 171-180).
 void ArtNetOut::send(IPAddress to, const CRGB* leds, const uint8_t* lut) {
     const int nx = layout.nx, upr = universesPerRow();
     for (int b = 0; b < layout.ny; b++) {
         const uint8_t* row = (const uint8_t*)&leds[b * nx];
         for (int u = 0; u < upr; u++) {
             const int first = u * 170, count = min(170, nx - first);
-            sendUniverse(to, layout.startUni + b * upr + u, row + first * 3, count * 3, lut);
+            sendUniverse(to, layout.rowUni[b] + u, row + first * 3, count * 3, lut);
         }
     }
     if (++seq == 0) seq = 1;  // 0 means "sequence not used"

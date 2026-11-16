@@ -78,7 +78,16 @@ void layoutSanitize(Layout& l) {
     if (!(l.length >= 0.05f && l.length <= 200)) l.length = cfg::CEILING_LENGTH;
     if (!(l.aspect >= 0.1f && l.aspect <= 500)) l.aspect = 19.1f;
     l.measured = l.measured ? 1 : 0;
-    l.startUni = constrain(l.startUni, 0, 32767 - l.ny * ((l.nx + 169) / 170));
+    const int upr = (l.nx + 169) / 170;
+    for (int b = 0; b < MAX_Y; b++) l.rowUni[b] = constrain(l.rowUni[b], 0, 32768 - upr);
+}
+
+void layoutFillUniverses(Layout& l, int from, int start) {
+    const int upr = (l.nx + 169) / 170;
+    for (int b = from < 0 ? 0 : from; b < MAX_Y; b++) {
+        const int u = b == 0 ? start : l.rowUni[b - 1] + upr;
+        l.rowUni[b] = constrain(u, 0, 32768 - upr);
+    }
 }
 
 static void layoutDefaults() {
@@ -88,7 +97,7 @@ static void layoutDefaults() {
     // Mean measured row spacing / LED spacing: (7.42 m / 14) / (5 m / 180)
     layout.aspect = 19.1f;
     layout.measured = 1;
-    layout.startUni = 0;
+    layoutFillUniverses(layout, 0, 0);  // the PixLite: row n at universe 2n
 }
 
 // The layout has its own key, so changing it never resets presets or palettes

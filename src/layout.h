@@ -14,7 +14,9 @@ struct Layout {
     float length;      // m, row length
     float aspect;      // row spacing / LED spacing
     uint8_t measured;  // use the measured ceiling rows (15 rows only)
-    uint16_t startUni; // Art-Net universe of row 0; each row starts on a new universe
+    // Art-Net start universe of each row. A row uses universesPerRow() consecutive universes
+    // from there (170 RGB pixels each).
+    uint16_t rowUni[MAX_Y];
 };
 
 extern Layout layout;
@@ -22,3 +24,5 @@ extern Layout layout;
 inline int layoutLeds() { return layout.nx * layout.ny; }
 inline int universesPerRow() { return (layout.nx + 169) / 170; }
 void layoutSanitize(Layout& l);
+// Rows from `from` on get consecutive universes after row from-1 (or from `start` for row 0)
+void layoutFillUniverses(Layout& l, int from, int start = 0);

@@ -33,6 +33,11 @@ select,input[type=text],input[type=password],input[type=number]{flex:1;min-width
 .status{color:var(--dim);font-size:13px;margin-top:6px}
 .nets button{display:block;width:100%;text-align:left;margin:3px 0}
 .hint{color:var(--dim);font-size:13px}
+.unis{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px 12px;margin:6px 0 10px}
+.unis label{display:flex;align-items:center;gap:6px;color:#bbb;font-size:13px}
+.unis label span:first-child{flex:0 0 46px}
+.unis input{flex:0 0 72px;width:72px}
+.row input[type=number]{flex:0 0 90px}
 </style></head><body><main id="app">Loading...</main>
 <script>
 let S, N;
@@ -118,7 +123,7 @@ function draw() {
   const quick = (t, ip) => { const b = h('button', {textContent: t}); b.onclick = () => { tgt.value = ip; tgt.onchange(); }; return b; };
   app.append(h('div', {className: 'card'},
     field('Art-Net to', tgt),
-    h('div', {className: 'row'}, h('label'), quick('PixLite', '192.168.0.50'), quick('Beam', '192.168.0.20')),
+    h('div', {className: 'row'}, h('label'), quick('PixLite', '192.168.0.50'), quick('Beam (LAN)', '192.168.1.2'), quick('Beam', '192.168.0.20')),
     slider('Gamma', 1, 3, 0.1, S.gamma, v => v.toFixed(1), v => { S.gamma = v; throttle('g', () => post('/api/set', {gamma: v})); })));
 
   app.append(h('h2', {textContent: 'Layout'}));
@@ -160,29 +165,55 @@ function paletteEditor(q, i) {
 function layoutCard() {
   const L = S.layout;
   const num = (v, step) => h('input', {type: 'number', value: v, step, min: 0});
-  const nx = num(L.nx, 1), ny = num(L.ny, 1), len = num(L.length, 0.01), asp = num(L.aspect, 0.1), su = num(L.startUni, 1);
+  const nx = num(L.nx, 1), ny = num(L.ny, 1), len = num(L.length, 0.01), asp = num(L.aspect, 0.1);
   const meas = h('input', {type: 'checkbox', checked: L.measured});
   const info = h('div', {className: 'hint'});
+  // Start universe per row; a row uses ceil(LEDs per row / 170) universes from there
+  const uni = L.rowUni.slice();
+  const upr = () => Math.max(1, Math.ceil(+nx.value / 170));
+  const grid = h('div', {className: 'unis'});
+  const table = () => {
+    const rows = Math.max(1, Math.min(64, +ny.value || 1));
+    while (uni.length < rows) uni.push(uni.length ? uni[uni.length - 1] + upr() : 0);
+    grid.replaceChildren();
+    for (let b = 0; b < rows; b++) {
+      const range = h('span', {className: 'hint'});
+      const showRange = () => range.textContent = upr() > 1 ? '\u2013' + (uni[b] + upr() - 1) : '';
+      const inp = h('input', {type: 'number', min: 0, max: 32767, step: 1, value: uni[b]});
+      inp.oninput = () => { uni[b] = Math.max(0, Math.round(+inp.value)); showRange(); upd(); };
+      showRange();
+      grid.append(h('label', {}, h('span', {textContent: 'Row ' + (b + 1)}), inp, range));
+    }
+  };
+  const fillFrom = num(uni[0] || 0, 1);
+  const fill = h('button', {textContent: 'Fill'});
+  fill.onclick = () => { for (let b = 0; b < uni.length; b++) uni[b] = +fillFrom.value + b * upr(); table(); upd(); };
   const upd = () => {
-    const pitch = +len.value / Math.max(1, +nx.value), upr = Math.ceil(+nx.value / 170), leds = +nx.value * +ny.value;
+    const pitch = +len.value / Math.max(1, +nx.value), leds = +nx.value * +ny.value;
     const m = meas.checked && +ny.value == L.measuredRows;
+    const used = uni.slice(0, +ny.value), dup = new Set();
+    used.forEach((u, i) => used.forEach((v, j) => { if (i != j && u < v + upr() && v < u + upr()) dup.add(i + 1); }));
     info.textContent = 'LED spacing ' + (pitch * 1000).toFixed(1) + ' mm, row spacing ' +
       (m ? 'measured (ceiling)' : (pitch * +asp.value).toFixed(3) + ' m') + ' \u00b7 ' + leds + ' LEDs' +
-      (leds > L.maxLeds ? ' (max ' + L.maxLeds + ')' : '') + ' \u00b7 universes ' + (+su.value) + '\u2013' +
-      (+su.value + upr * +ny.value - 1) + ' (' + upr + ' per row)';
+      (leds > L.maxLeds ? ' (max ' + L.maxLeds + ')' : '') + ' \u00b7 ' + upr() + ' universe' + (upr() > 1 ? 's' : '') +
+      ' per row' + (dup.size ? ' \u00b7 overlapping universes: rows ' + [...dup].join(', ') : '');
   };
-  [nx, ny, len, asp, su, meas].forEach(e => e.oninput = upd);
+  nx.oninput = () => { table(); upd(); };
+  ny.oninput = () => { table(); upd(); };
+  [len, asp, meas].forEach(e => e.oninput = upd);
   const apply = h('button', {textContent: 'Apply', className: 'on'});
   const msg = h('div', {className: 'hint'});
   apply.onclick = () => post('/api/layout', {nx: +nx.value, ny: +ny.value, length: +len.value, aspect: +asp.value,
-      measured: meas.checked, startUni: +su.value})
+      measured: meas.checked, rowUni: uni.slice(0, +ny.value)})
     .then(st => { S = st; draw(); }).catch(e => { msg.textContent = e.message; });
+  table();
   upd();
   return h('div', {className: 'card'},
     field('LEDs per row', nx), field('Rows', ny), field('Row length (m)', len),
     field('Aspect', asp), h('div', {className: 'row'}, h('label'), h('span', {className: 'hint', textContent: 'row spacing \u00f7 LED spacing'})),
-    field('Measured rows', meas), field('Start universe', su),
-    info, h('div', {className: 'row'}, h('label'), apply), msg);
+    field('Measured rows', meas),
+    h('div', {className: 'row'}, h('label', {textContent: 'Row universes'}), h('span', {className: 'hint', textContent: 'consecutive from'}), fillFrom, fill),
+    grid, info, h('div', {className: 'row'}, h('label'), apply), msg);
 }
 
 function networkCard() {
