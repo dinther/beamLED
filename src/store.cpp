@@ -5,10 +5,11 @@
 #include <Preferences.h>
 
 Palette palettes[NUM_PALETTES];
-Preset presets[NUM_PRESETS];
+Preset presets[MAX_PRESETS];
+int presetCount = 0;
 Settings settings;
 Layout layout;
-PresetSync presetSync[NUM_PRESETS];
+PresetSync presetSync[MAX_PRESETS];
 LinkSettings linkSettings;
 
 static const uint32_t SCHEMA = 1;  // bump when a struct above changes
@@ -16,6 +17,7 @@ static const uint32_t SAVE_DELAY_MS = 3000;
 static Preferences prefs;
 static bool dirty = false;
 static uint32_t dirtyAt = 0;
+static bool freshDefaults = false;  // nothing was saved: no old values to convert
 
 static void setPalette(int i, const char* name, std::initializer_list<uint32_t> cols) {
     Palette& p = palettes[i];
@@ -56,15 +58,16 @@ static void defaults() {
 
     // effect: 0 Rolling bars, 1 Searchlights, 2 Lighthouse, 3 Clouds, 4 Sparkle
     setPreset(0, "Ocean rolls", 0, 0, 0);
-    setPreset(1, "Sunset rolls", 0, 1, 0, {0.1f, 3, 0.8f, 0.2f, 1, 0.2f});
+    setPreset(1, "Sunset rolls", 0, 1, 0, {0.1f, 2, 0.8f, 0.2f, 1, 0.2f});
     setPreset(2, "Searchlights", 1, 7, 0);
     setPreset(3, "Warm lights", 1, 5, 0, {2, 1.8f, 0.2f, 0.05f, 0.8f});
     setPreset(4, "Lighthouse", 2, 3, 0);
     setPreset(5, "Clouds", 3, 6, 0);
     setPreset(6, "Sunset clouds", 3, 1, 0, {0.6f, 4, 0.1f, 0.3f, 0.2f, 0.6f});
-    setPreset(7, "Ice + sparkle", 0, 4, 0.3f, {0.08f, 3, 0.7f, 0.4f, -1, 0.25f});
+    setPreset(7, "Ice + sparkle", 0, 4, 0.3f, {0.08f, 2, 0.7f, 0.4f, -1, 0.25f});
     setPreset(8, "Starry", 4, 4, 0);
     setPreset(9, "Forest clouds", 3, 2, 0.1f, {0.45f, 5, 0.08f, -0.3f, 0.15f, 0.5f});
+    presetCount = 10;
 
     settings.brightness = 160;
     settings.current = 0;
@@ -109,29 +112,46 @@ void storeSaveLayout() {
     prefs.end();
 }
 
+// Presets are saved as a list ("pres", "syncs"); before presets could be added there were
+// always 10, under "pre" and "sync". Those are read once and then removed.
+static const int OLD_PRESETS = 10;
+
 static void save() {
     prefs.begin("beamled", false);
     prefs.putUInt("ver", SCHEMA);
     prefs.putBytes("pal", palettes, sizeof(palettes));
-    prefs.putBytes("pre", presets, sizeof(presets));
+    prefs.putBytes("pres", presets, presetCount * sizeof(Preset));
     prefs.putBytes("set", &settings, sizeof(settings));
-    prefs.putBytes("sync", presetSync, sizeof(presetSync));
+    prefs.putBytes("syncs", presetSync, presetCount * sizeof(PresetSync));
     prefs.putBytes("link", &linkSettings, sizeof(linkSettings));
+    if (prefs.isKey("pre")) prefs.remove("pre");
+    if (prefs.isKey("sync")) prefs.remove("sync");
     prefs.end();
     Serial.println("Settings saved");
 }
 
+static const PresetSync SYNC_DEFAULT = {TIMING_TIME, 2, 0, 0};
+
 void storeLoad() {
     defaults();
+    for (PresetSync& y : presetSync) y = SYNC_DEFAULT;
     prefs.begin("beamled", true);
+    const size_t listLen = prefs.isKey("pres") ? prefs.getBytesLength("pres") : 0;
+    const bool list = listLen >= sizeof(Preset) && listLen % sizeof(Preset) == 0 &&
+                      listLen / sizeof(Preset) <= MAX_PRESETS;
+    const bool old = !list && prefs.isKey("pre") &&
+                     prefs.getBytesLength("pre") == OLD_PRESETS * sizeof(Preset);
     const bool ok = prefs.getUInt("ver", 0) == SCHEMA &&
                     prefs.getBytesLength("pal") == sizeof(palettes) &&
-                    prefs.getBytesLength("pre") == sizeof(presets) &&
-                    prefs.getBytesLength("set") == sizeof(settings);
+                    prefs.getBytesLength("set") == sizeof(settings) && (list || old);
     if (ok) {
         prefs.getBytes("pal", palettes, sizeof(palettes));
-        prefs.getBytes("pre", presets, sizeof(presets));
         prefs.getBytes("set", &settings, sizeof(settings));
+        presetCount = list ? listLen / sizeof(Preset) : OLD_PRESETS;
+        prefs.getBytes(list ? "pres" : "pre", presets, presetCount * sizeof(Preset));
+        const char* syncKey = list ? "syncs" : "sync";
+        if (prefs.isKey(syncKey) && prefs.getBytesLength(syncKey) == presetCount * sizeof(PresetSync))
+            prefs.getBytes(syncKey, presetSync, presetCount * sizeof(PresetSync));
     }
     prefs.end();
     // Repair anything out of range
@@ -139,39 +159,99 @@ void storeLoad() {
         p.name[sizeof(p.name) - 1] = 0;
         p.n = constrain(p.n, 2, PAL_MAX);
     }
-    for (Preset& p : presets) {
+    for (int i = 0; i < presetCount; i++) {
+        Preset& p = presets[i];
         p.name[sizeof(p.name) - 1] = 0;
         if (p.effect >= NUM_EFFECTS) presetSetEffect(p, 0);
         if (p.palette >= NUM_PALETTES) p.palette = 0;
     }
-    if (settings.current >= NUM_PRESETS) settings.current = 0;
-    if (!(settings.gamma >= 1 && settings.gamma <= 3)) settings.gamma = 2.2f;
-    if (!ok) save();
-
-    // Kept under their own keys: a missing or older one falls back to defaults on its own
-    layoutDefaults();
-    for (PresetSync& y : presetSync) y = {TIMING_TIME, 2, 0, 0};
-    linkSettings = {0, 120, 20};
-    prefs.begin("beamled", true);
-    if (prefs.isKey("lay") && prefs.getBytesLength("lay") == sizeof(layout))
-        prefs.getBytes("lay", &layout, sizeof(layout));
-    if (prefs.isKey("sync") && prefs.getBytesLength("sync") == sizeof(presetSync))
-        prefs.getBytes("sync", presetSync, sizeof(presetSync));
-    if (prefs.isKey("link") && prefs.getBytesLength("link") == sizeof(linkSettings))
-        prefs.getBytes("link", &linkSettings, sizeof(linkSettings));
-    prefs.end();
-    layoutSanitize(layout);
     for (PresetSync& y : presetSync) {
         if (y.timing > TIMING_BEATS) y.timing = TIMING_TIME;
         if (y.beatsExp > 6) y.beatsExp = 2;
         y.reverse = y.reverse ? 1 : 0;
         if (!(y.pulse >= 0 && y.pulse <= 1)) y.pulse = 0;
     }
+    if (settings.current >= presetCount) settings.current = 0;
+    if (!(settings.gamma >= 1 && settings.gamma <= 3)) settings.gamma = 2.2f;
+    freshDefaults = !ok;
+
+    // Kept under their own keys: a missing or older one falls back to defaults on its own
+    layoutDefaults();
+    linkSettings = {0, 120, 20};
+    prefs.begin("beamled", true);
+    if (prefs.isKey("lay") && prefs.getBytesLength("lay") == sizeof(layout))
+        prefs.getBytes("lay", &layout, sizeof(layout));
+    if (prefs.isKey("link") && prefs.getBytesLength("link") == sizeof(linkSettings))
+        prefs.getBytes("link", &linkSettings, sizeof(linkSettings));
+    prefs.end();
+    layoutSanitize(layout);
     linkSettings.enabled = linkSettings.enabled ? 1 : 0;
     if (!(linkSettings.bpm >= 20 && linkSettings.bpm <= 999)) linkSettings.bpm = 120;
     if (!(linkSettings.latencyMs >= 0 && linkSettings.latencyMs <= 500)) linkSettings.latencyMs = 20;
+    if (!ok || old) save();
 }
 
+// Rolling bars' second parameter was a band width in metres; it is now a bar count. Converted
+// once (needs effectsInit for the ceiling's size). Fresh defaults are bar counts already.
+void storeMigrate() {
+    prefs.begin("beamled", true);
+    const bool done = prefs.getUChar("rollbars", 0) == 1;
+    prefs.end();
+    if (done) return;
+    if (!freshDefaults) {
+        for (int i = 0; i < presetCount; i++) {
+            Preset& p = presets[i];
+            if (p.effect == 0 && p.p[1] > 0) p.p[1] = constrain(roundf(rollingSpan() / p.p[1]), 1.f, 8.f);
+        }
+        save();
+    }
+    prefs.begin("beamled", false);
+    prefs.putUChar("rollbars", 1);
+    prefs.end();
+}
+
+// Adds a copy of preset `from` after the last one. Returns its index, or -1 when full.
+int presetAdd(int from) {
+    if (presetCount >= MAX_PRESETS) return -1;
+    if (from < 0 || from >= presetCount) from = settings.current;
+    const int i = presetCount++;
+    presets[i] = presets[from];
+    presetSync[i] = presetSync[from];
+    char name[sizeof(presets[i].name)];
+    snprintf(name, sizeof(name), "%.14s copy", presets[from].name);
+    strlcpy(presets[i].name, name, sizeof(presets[i].name));
+    storeMarkDirty();
+    return i;
+}
+
+// Removes preset i; the last one stays.
+bool presetDelete(int i) {
+    if (presetCount <= 1 || i < 0 || i >= presetCount) return false;
+    for (int k = i; k < presetCount - 1; k++) {
+        presets[k] = presets[k + 1];
+        presetSync[k] = presetSync[k + 1];
+    }
+    presetCount--;
+    presetSync[presetCount] = SYNC_DEFAULT;
+    storeMarkDirty();
+    return true;
+}
+
+// Moves preset `from` to position `to`, shifting the ones between.
+bool presetMove(int from, int to) {
+    if (from < 0 || from >= presetCount || to < 0 || to >= presetCount || from == to) return false;
+    const Preset p = presets[from];
+    const PresetSync y = presetSync[from];
+    const int d = to > from ? 1 : -1;
+    for (int k = from; k != to; k += d) {
+        presets[k] = presets[k + d];
+        presetSync[k] = presetSync[k + d];
+    }
+    presets[to] = p;
+    presetSync[to] = y;
+    storeMarkDirty();
+    return true;
+}
 void storeMarkDirty() {
     dirty = true;
     dirtyAt = millis();

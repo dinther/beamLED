@@ -16,4 +16,8 @@ constexpr uint8_t ETH_IP[4] = {192, 168, 0, 10};
 constexpr uint8_t DEFAULT_TARGET[4] = {192, 168, 0, 20};  // Beam; PixLite is 192.168.0.50
 
 constexpr int BUTTON_PIN = 4;          // to GND; short press next preset, long press on/off
+
+// OSC in (UDP) and OSCQuery (HTTP + WebSocket, for MIMa and other OSCQuery clients)
+constexpr uint16_t OSC_PORT = 8000;
+constexpr uint16_t OSCQUERY_PORT = 8010;
 }  // namespace cfg

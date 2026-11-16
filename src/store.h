@@ -6,7 +6,7 @@
 #include "layout.h"
 #include "config.h"
 
-constexpr int NUM_PRESETS = 10;
+constexpr int MAX_PRESETS = 32;  // presets can be added up to this many
 constexpr int NUM_PALETTES = 8;
 
 struct Preset {
@@ -45,8 +45,9 @@ struct LinkSettings {
 };
 
 extern Palette palettes[NUM_PALETTES];
-extern Preset presets[NUM_PRESETS];
-extern PresetSync presetSync[NUM_PRESETS];
+extern Preset presets[MAX_PRESETS];
+extern PresetSync presetSync[MAX_PRESETS];
+extern int presetCount;  // 1..MAX_PRESETS
 extern Settings settings;
 extern LinkSettings linkSettings;
 
@@ -54,4 +55,9 @@ void storeLoad();
 void storeMarkDirty();
 void storePoll();
 void storeSaveLayout();
+void storeMigrate();  // once, after effectsInit: old saved values to new meanings
 void presetSetEffect(Preset& p, uint8_t effect);
+// Editing the list (saved a few seconds later). The engine has to follow: see engine.h.
+int presetAdd(int from);          // a copy of preset 'from' at the end; its index, or -1 when full
+bool presetDelete(int i);         // never the last one
+bool presetMove(int from, int to);

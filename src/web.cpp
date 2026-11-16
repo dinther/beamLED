@@ -6,6 +6,7 @@
 #include "engine.h"
 #include "link_clock.h"
 #include "net.h"
+#include "osc.h"
 #include "config.h"
 #include "store.h"
 #include "web_page.h"
@@ -62,6 +63,7 @@ static void paletteJson(JsonObject o, const Palette& p) {
 static void statusJson(JsonObject o) {
     o["on"] = engineOn();
     o["current"] = engineCurrent();
+    o["presetCount"] = presetCount;
     o["fps"] = roundf(engineFps() * 10) / 10;
     o["renderMs"] = roundf(engineRenderMs() * 10) / 10;
     o["net"] = netModeText();
@@ -72,6 +74,7 @@ static void statusJson(JsonObject o) {
     l["enabled"] = linkSettings.enabled != 0;
     l["bpm"] = round(b.bpm * 10) / 10;
     l["peers"] = b.peers;
+    o["osc"] = oscStatusText();
 }
 
 static void handleState() {
@@ -97,11 +100,13 @@ static void handleState() {
         o["sparkle"] = !EFFECTS[i].ownSparkle;
         if (EFFECTS[i].cycle) o["cycle"] = EFFECTS[i].cycle;
         o["speedParam"] = EFFECTS[i].speedParam;
+        o["help"] = EFFECTS[i].help;
         JsonArray ps = o["params"].to<JsonArray>();
         for (int j = 0; j < EFFECTS[i].n; j++) {
             const ParamDef& pd = EFFECTS[i].params[j];
             JsonObject q = ps.add<JsonObject>();
             q["name"] = pd.name;
+            q["help"] = pd.help;
             q["min"] = pd.min;
             q["max"] = pd.max;
             q["step"] = pd.step;
@@ -111,7 +116,8 @@ static void handleState() {
     JsonArray pl = d["palettes"].to<JsonArray>();
     for (const Palette& p : palettes) paletteJson(pl.add<JsonObject>(), p);
     JsonArray pr = d["presets"].to<JsonArray>();
-    for (int i = 0; i < NUM_PRESETS; i++) presetJson(pr.add<JsonObject>(), i);
+    for (int i = 0; i < presetCount; i++) presetJson(pr.add<JsonObject>(), i);
+    d["maxPresets"] = MAX_PRESETS;
     d["linkLatency"] = linkSettings.latencyMs;
     sendJson(d);
 }
@@ -141,7 +147,7 @@ static void handlePreset() {
     JsonDocument d;
     if (!readBody(d)) return;
     const int i = d["index"] | -1;
-    if (i < 0 || i >= NUM_PRESETS) { server.send(400, "text/plain", "bad index"); return; }
+    if (i < 0 || i >= presetCount) { server.send(400, "text/plain", "bad index"); return; }
     Preset& p = presets[i];
     if (d["name"].is<const char*>()) strlcpy(p.name, d["name"].as<const char*>(), sizeof(p.name));
     if (d["effect"].is<int>()) {
@@ -167,6 +173,25 @@ static void handlePreset() {
     JsonDocument r;
     presetJson(r.to<JsonObject>(), i);
     sendJson(r);
+}
+
+// The preset list: {"add": from} copies preset `from` to the end (and plays it),
+// {"delete": i}, {"move": i, "to": j}. Answers with the whole state.
+static void handlePresetList() {
+    JsonDocument d;
+    if (!readBody(d)) return;
+    bool ok = false;
+    if (d["add"].is<int>()) {
+        const int i = presetAdd(d["add"].as<int>());
+        ok = i >= 0;
+        if (ok) engineSelect(i);
+    } else if (d["delete"].is<int>()) {
+        ok = engineDeletePreset(d["delete"].as<int>());
+    } else if (d["move"].is<int>() && d["to"].is<int>()) {
+        ok = engineMovePreset(d["move"].as<int>(), d["to"].as<int>());
+    }
+    if (!ok) { server.send(400, "text/plain", "not possible"); return; }
+    handleState();
 }
 
 static void handlePalette() {
@@ -285,6 +310,7 @@ void webBegin() {
     server.on("/api/status", HTTP_GET, handleStatus);
     server.on("/api/set", HTTP_POST, handleSet);
     server.on("/api/preset", HTTP_POST, handlePreset);
+    server.on("/api/presets", HTTP_POST, handlePresetList);
     server.on("/api/palette", HTTP_POST, handlePalette);
     server.on("/api/layout", HTTP_POST, handleLayout);
     server.on("/api/link", HTTP_POST, handleLink);

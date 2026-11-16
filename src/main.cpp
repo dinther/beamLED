@@ -8,6 +8,7 @@
 #include "engine.h"
 #include "link_clock.h"
 #include "net.h"
+#include "osc.h"
 #include "palette.h"
 #include "store.h"
 #include "web.h"
@@ -42,9 +43,36 @@ static void activate(int i) {
 }
 
 void engineSelect(int i) {
-    if (i < 0 || i >= NUM_PRESETS) return;
+    if (i < 0 || i >= presetCount) return;
     isOn = true;
     pending = i != settings.current ? i : -1;
+}
+
+// Editing the preset list: the same preset keeps playing wherever it moves to
+bool engineDeletePreset(int i) {
+    if (!presetDelete(i)) return false;
+    if (pending == i) pending = -1;
+    else if (pending > i) pending--;
+    if (settings.current > i) {
+        settings.current--;
+    } else if (settings.current == i) {  // the one playing is gone: its neighbour takes over
+        if (settings.current >= presetCount) settings.current = presetCount - 1;
+        memset(effState, 0, sizeof(effState));
+    }
+    return true;
+}
+
+bool engineMovePreset(int from, int to) {
+    if (!presetMove(from, to)) return false;
+    auto moved = [&](int k) {
+        if (k == from) return to;
+        if (from < to && k > from && k <= to) return k - 1;
+        if (to < from && k >= to && k < from) return k + 1;
+        return k;
+    };
+    settings.current = moved(settings.current);
+    if (pending >= 0) pending = moved(pending);
+    return true;
 }
 
 void engineSetOn(bool on) { isOn = on; }
@@ -163,7 +191,7 @@ static void pollButton() {
             longDone = false;
         } else if (!longDone) {  // short press
             if (!isOn) engineSetOn(true);
-            else engineSelect(((pending >= 0 ? pending : settings.current) + 1) % NUM_PRESETS);
+            else engineSelect(((pending >= 0 ? pending : settings.current) + 1) % presetCount);
         }
     }
     if (down && !longDone && t - downAt >= LONG_PRESS_MS) {
@@ -181,6 +209,7 @@ void setup() {
     storeLoad();
     netLoad();
     effectsInit();
+    storeMigrate();
     netBegin();
     linkClock = new LinkClock(linkSettings.bpm);
     webBegin();
@@ -194,12 +223,19 @@ void loop() {
     webHandle();
     pollButton();
     storePoll();
+    oscLoop();
 
+    // Between frames, sleep instead of spinning: the core idles (cooler), and the network, web
+    // and OSC are still looked at every millisecond. Frames stay on a steady 1/FPS grid.
+    static const uint32_t PERIOD = 1000000u / cfg::FPS;
     static uint32_t last = micros();
     const uint32_t now = micros();
-    if (now - last < 1000000u / cfg::FPS) return;
+    if (now - last < PERIOD) {
+        if (PERIOD - (now - last) > 1500) delay(1);
+        return;
+    }
     const float dt = fminf((now - last) / 1e6f, 0.1f);
-    last = now;
+    last = now - last > 2 * PERIOD ? now : last + PERIOD;
 
     updateLink();
     updateFade(dt);

@@ -3,6 +3,8 @@
 
 void engineSelect(int preset);   // fades over to the preset (and switches on)
 void engineSetOn(bool on);       // fades in / out
+bool engineDeletePreset(int i);  // the preset list changes: the engine keeps its place
+bool engineMovePreset(int from, int to);
 bool engineOn();
 void engineResetEffect();        // the current preset's effect changed
 float engineFps();

@@ -11,6 +11,7 @@ constexpr int MAXP = 8;
 struct ParamDef {
     const char* name;
     float min, max, def, step;
+    const char* help;  // what it does, for the page's tooltip and OSCQuery's description
 };
 
 struct Ctx {
@@ -37,6 +38,7 @@ struct EffectDef {
     // replaces (the speed). nullptr / -1: the effect has no cycle, time timing only.
     const char* cycle;
     int8_t speedParam;
+    const char* help;  // what the effect looks like
 };
 
 extern const EffectDef EFFECTS[];
@@ -44,5 +46,7 @@ extern const int NUM_EFFECTS;
 
 // (Re)compute LED positions from the layout; call after a layout change
 void effectsInit();
+// Rolling bars: the extent its bar count spans (m), for converting old band widths
+float rollingSpan();
 // White twinkles added on top of any effect. density 0..1.
 void sparkleOverlay(CRGB* out, float density, float dt);
