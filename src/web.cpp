@@ -105,6 +105,7 @@ static void presetJson(JsonObject o, int i) {
     const Preset& p = presets[i];
     o["name"] = p.name;
     o["changed"] = presetChanged(i);  // unsaved edits
+    o["auto"] = presetInAuto(i);       // in Auto
     if (presetFresh(i)) o["fresh"] = true;  // just added: Save keeps a new name in place
     if (strcmp(p.name, presetSavedName(i)) != 0 && !presetFresh(i))
         o["savedName"] = presetSavedName(i);  // renamed: Save makes a new preset
@@ -145,6 +146,7 @@ static void statusJson(JsonObject o) {
     o["presetCount"] = presetCount;
     o["brightness"] = settings.brightness;
     o["rev"] = revision;
+    o["autoLeft"] = roundf(engineAutoLeft() * 10) / 10;  // Auto: until the next change (s or bars), -1 = not running
     uint32_t changed = 0;  // presets with unsaved edits, one bit each
     for (int i = 0; i < presetCount; i++)
         if (presetChanged(i)) changed |= 1u << i;
@@ -232,6 +234,12 @@ static void handleState() {
     JsonArray pr = d["presets"].to<JsonArray>();
     for (int i = 0; i < presetCount; i++) presetJson(pr.add<JsonObject>(), i);
     d["maxPresets"] = MAX_PRESETS;
+    JsonObject au = d["auto"].to<JsonObject>();
+    au["enabled"] = autoSettings.enabled != 0;
+    au["inBars"] = autoSettings.inBars != 0;
+    au["barsExp"] = autoSettings.barsExp;
+    au["seconds"] = autoSettings.seconds;
+    au["shuffle"] = autoSettings.shuffle != 0;
     d["maxPalettes"] = MAX_PALETTES;
     d["linkLatency"] = linkSettings.latencyMs;
     sendJson(d);
@@ -335,6 +343,11 @@ static void handlePreset() {
     if (d["beatsExp"].is<int>()) presetSync[i].beatsExp = constrain(d["beatsExp"].as<int>(), 0, 6);
     if (d["reverse"].is<bool>()) presetSync[i].reverse = d["reverse"].as<bool>();
     if (d["pulse"].is<float>()) presetSync[i].pulse = constrain(d["pulse"].as<float>(), 0.f, 1.f);
+    if (d["auto"].is<bool>()) {  // in Auto or not: a setting, saved at once (not a preset edit)
+        if (d["auto"].as<bool>()) autoSettings.skip &= ~(1u << i);
+        else autoSettings.skip |= 1u << i;
+        storeMarkDirty();
+    }
     // Edits play at once and stay unsaved until Save: nothing to write to flash here
     JsonDocument r;
     presetJson(r.to<JsonObject>(), savedAs >= 0 ? savedAs : i);
@@ -431,6 +444,21 @@ static void handleLayout() {
     engineLayoutChanged();
     webChanged();
     handleState();
+}
+
+// Auto: {enabled, inBars, barsExp, seconds, shuffle}
+static void handleAuto() {
+    JsonDocument d;
+    if (!readBody(d)) return;
+    AutoSettings& a = autoSettings;
+    if (d["enabled"].is<bool>()) a.enabled = d["enabled"].as<bool>();
+    if (d["inBars"].is<bool>()) a.inBars = d["inBars"].as<bool>();
+    if (d["barsExp"].is<int>()) a.barsExp = constrain(d["barsExp"].as<int>(), 0, 6);
+    if (d["seconds"].is<float>()) a.seconds = constrain(d["seconds"].as<float>(), 2.f, 3600.f);
+    if (d["shuffle"].is<bool>()) a.shuffle = d["shuffle"].as<bool>();
+    storeMarkDirty();
+    webChanged();
+    handleStatus();
 }
 
 // Ableton Link: enabled, tempo (with Link enabled it changes everyone's), output latency
@@ -530,7 +558,8 @@ static const Route ROUTES[] = {
     {"/api/preset", HTTP_POST, handlePreset},    {"/api/presets", HTTP_POST, handlePresetList},
     {"/api/palette", HTTP_POST, handlePalette},  {"/api/palettes", HTTP_POST, handlePaletteList},
      {"/api/layout", HTTP_POST, handleLayout},
-    {"/api/link", HTTP_POST, handleLink},        {"/api/net", HTTP_GET, handleNetGet},
+    {"/api/link", HTTP_POST, handleLink},        {"/api/auto", HTTP_POST, handleAuto},
+           {"/api/net", HTTP_GET, handleNetGet},
     {"/api/net", HTTP_POST, handleNetSet},       {"/api/scan", -1, handleScan},
     {"/api/bench", HTTP_GET, handleBench},
 };

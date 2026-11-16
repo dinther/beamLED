@@ -51,8 +51,15 @@ static void activate(int i) {
     Serial.printf("Preset %d: %s\n", i + 1, presets[i].name);
 }
 
+// Auto: how far it has come since the last change (any change, by hand too, starts it again)
+static float autoAcc = 0;          // seconds
+static double autoSlot = -1;       // bars: the stretch of N bars we are in (-1: not known yet)
+static float autoLeft = -1;        // until the next change, in seconds or bars (-1: not running)
+
 void engineSelect(int i) {
     if (i < 0 || i >= presetCount) return;
+    autoAcc = 0;
+    autoSlot = -1;
     isOn = true;
     pending = i != settings.current ? i : -1;
 }
@@ -85,6 +92,49 @@ bool engineMovePreset(int from, int to) {
 }
 
 void engineSetOn(bool on) { isOn = on; }
+float engineAutoLeft() { return autoLeft; }
+
+// The next preset for Auto: the next one in it, or a random other one (shuffle). -1: none to go to.
+static int autoPick() {
+    const int cur = pending >= 0 ? pending : settings.current;
+    int in[MAX_PRESETS], n = 0;
+    for (int i = 0; i < presetCount; i++)
+        if (presetInAuto(i) && i != cur) in[n++] = i;
+    if (!n) return -1;
+    if (autoSettings.shuffle) return in[esp_random() % n];
+    for (int k = 1; k <= presetCount; k++) {
+        const int i = (cur + k) % presetCount;
+        if (presetInAuto(i) && i != cur) return i;
+    }
+    return -1;
+}
+
+// Every frame: change preset when the time is up, or when the beat crosses the next multiple of N bars
+static void updateAuto(float dt) {
+    const AutoSettings& a = autoSettings;
+    if (!a.enabled || !isOn || pending >= 0) {
+        autoAcc = 0;
+        autoSlot = -1;
+        autoLeft = -1;
+        return;
+    }
+    bool due = false;
+    if (a.inBars) {
+        const double every = 1 << a.barsExp, bars = beat.beat / (beat.quantum > 0 ? beat.quantum : 4);
+        const double slot = floor(bars / every);
+        if (autoSlot < 0) autoSlot = slot;
+        else if (slot != autoSlot) due = true;
+        autoLeft = (float)((slot + 1) * every - bars);
+    } else {
+        autoAcc += dt;
+        due = autoAcc >= a.seconds;
+        autoLeft = a.seconds - autoAcc;
+    }
+    if (!due) return;
+    const int next = autoPick();
+    if (next >= 0) engineSelect(next);  // also starts the count again
+    else autoAcc = 0, autoSlot = -1;
+}
 bool engineOn() { return isOn; }
 void engineResetEffect() { memset(effState, 0, sizeof(effState)); }
 float engineFps() { return fps; }
@@ -305,6 +355,7 @@ void loop() {
     {
         EngineLock lock;  // the web API waits for the frame, not the other way round
         updateLink();
+        updateAuto(dt);
         updateFade(dt);
         t0 = micros();
         if (netOtaActive()) return;  // keep the network free for the update

@@ -57,6 +57,17 @@ constexpr int MOTIONS = 2;
 // come from it, so they are the same on every run and on the page); m: which motion (its own values).
 float motionShape(uint8_t shape, float phase, uint32_t cycle = 0, int m = 0);
 
+// Auto: the presets change by themselves, every so many seconds or bars (on the bar line), in order
+// or shuffled, among the presets that are in it.
+struct AutoSettings {
+    uint8_t enabled;
+    uint8_t inBars;   // the interval in bars (2^barsExp) instead of seconds
+    uint8_t barsExp;  // 0..6 = 1, 2, 4 ... 64 bars
+    uint8_t shuffle;  // a random preset each time, not the next
+    float seconds;    // the interval in seconds
+    uint32_t skip;    // presets left out, one bit each
+};
+
 struct LinkSettings {
     uint8_t enabled;  // Ableton Link
     float bpm;        // own tempo when no peers (and the last tempo seen)
@@ -71,6 +82,8 @@ extern int presetCount;  // 1..MAX_PRESETS
 extern Motion (*presetMotion)[MOTIONS];  // [MAX_PRESETS][MOTIONS], from the heap
 extern Settings settings;
 extern LinkSettings linkSettings;
+extern AutoSettings autoSettings;
+inline bool presetInAuto(int i) { return !(autoSettings.skip >> i & 1); }
 
 void storeLoad();
 void storeMarkDirty();

@@ -23,6 +23,11 @@ button:disabled{opacity:.4;cursor:default}
 .presets{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:6px}
 .presets button{text-align:left;padding:9px 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .presets button.add{text-align:center;color:var(--dim)}
+.presets button.out{opacity:.5}
+.auto{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:10px}
+.auto select{flex:0 1 auto}
+.auto input[type=number]{flex:0 0 80px;width:80px}
+.auto .hint{margin-left:auto}
 .row{display:flex;align-items:center;gap:10px;margin:7px 0}
 .row label{flex:0 0 130px;color:#bbb}
 .row input[type=range]{flex:1;min-width:0;accent-color:var(--acc)}
@@ -70,7 +75,7 @@ function markChanged(i) {
   if (saveBtn && i == S.current) { saveBtn.disabled = false; saveBtn.className = 'on'; saveBtn.textContent = 'Save •'; }
 }
 const post = (u, o) => {
-  if (u == '/api/preset' && !o.save && !o.revert) markChanged(o.index);
+  if (u == '/api/preset' && !o.save && !o.revert && o.auto == null) markChanged(o.index);  // In Auto isn't a preset edit
   return fetch(u, {method: 'POST', body: JSON.stringify(o)}).then(r => r.ok ? r.json() : r.text().then(t => { throw new Error(t); }));
 };
 
@@ -142,6 +147,10 @@ const H = {
   on: 'Switches the ceiling on or off with a one-second fade, the same as a long press of the button on the board. Off keeps the board running, so it comes back where it was.',
   brightness: 'Master brightness for every preset. It works after the gamma curve, so 50% looks about half as bright. Saved, and kept after a power cut.',
   status: 'Frames per second (the target is 40) and the time one frame takes to draw (25 ms is the budget), the network connection, WiFi, Ableton Link and OSC.',
+  auto: 'Auto: the presets change by themselves, every so many seconds, or every so many bars with Ableton Link (always on the bar line). Only the presets with In Auto ticked take part; the others are dimmed. Picking a preset by hand, here, with the button or over OSC, starts the count again from there. While the ceiling is off Auto waits.',
+  autoEvery: 'How often Auto changes preset: a number of seconds, or a number of bars (4 beats each) on the beat grid of Ableton Link or the board\u2019s own tempo.',
+  autoOrder: 'In order: the next preset in the list that is in Auto, round and round. Shuffle: a random one each time, never the same twice in a row.',
+  inAuto: 'Whether Auto plays this preset. Leave out presets you only want to pick by hand. Saved at once.',
   presets: 'Click a preset to play it. The button on the board steps through them in this order (short press: next, long press: on/off), and the one playing is kept after a power cut. Up to 32 presets. A • after a name: changes not saved yet (Save or Revert in its settings).',
   play: 'Plays this preset with a short fade.',
   add: 'Adds a new preset at the end, a copy of the one playing, and plays it. Up to 32 presets.',
@@ -264,7 +273,7 @@ function draw() {
   const g = h('div', {className: 'presets'});
   S.presets.forEach((q, i) => {
     const b = button((i + 1) + '  ' + q.name + (q.changed ? ' •' : ''), H.play + ' ' + (i + 1) + ': ' + q.name + ' (' + S.effects[q.effect].name + ').' + (q.changed ? ' It has changes that aren’t saved yet.' : ''),
-      {className: i == S.current ? 'on' : ''});
+      {className: (i == S.current ? 'on' : '') + (q.auto === false ? ' out' : '')});
     b.onclick = () => { S.current = i; S.on = true; post('/api/set', {current: i}); draw(); };
     g.append(b);
   });
@@ -274,6 +283,7 @@ function draw() {
     g.append(add);
   }
   app.append(g);
+  app.append(autoRow());
 
   app.append(heading('Preset ' + (S.current + 1), H.presets));
   const card = h('div', {className: 'card'});
@@ -296,6 +306,9 @@ function draw() {
     armed = setTimeout(() => { armed = null; del.textContent = 'Delete'; del.className = ''; }, 3000);
   };
   card.append(h('div', {className: 'btns'}, earlier, later, del));
+  const inAuto = h('input', {type: 'checkbox', checked: p.auto !== false});
+  inAuto.onchange = () => { p.auto = inAuto.checked; post('/api/preset', {index: S.current, auto: inAuto.checked}); draw(); };
+  card.append(field('In Auto', inAuto, H.inAuto));
   card.append(select('Effect', S.effects.map(e => e.name), p.effect, v =>
     post('/api/preset', {index: S.current, effect: v}).then(np => { S.presets[S.current] = np; draw(); }),
     H.effect + ' ' + ef.name + ': ' + ef.help));
@@ -477,6 +490,29 @@ requestAnimationFrame(animateMotions);
 // Where each colour sits, 0..1: the palette's own, or evenly spaced
 const evenStops = n => Array.from({length: n}, (_, j) => n > 1 ? j / (n - 1) : 0);
 const isEven = s => s.every((v, j) => Math.abs(v - (s.length > 1 ? j / (s.length - 1) : 0)) < 1e-3);
+function autoRow() {
+  const A = S.auto || {};
+  const send = o => { Object.assign(A, o); post('/api/auto', o); };
+  const onb = button(A.enabled ? 'Auto on' : 'Auto off', H.auto, {className: A.enabled ? 'on' : ''});
+  onb.onclick = () => { send({enabled: !A.enabled}); draw(); };
+  const mode = tip(h('select'), H.autoEvery);
+  ['Every … seconds', 'Every … bars'].forEach((l, k) => mode.append(h('option', {value: k, textContent: l, selected: (A.inBars ? 1 : 0) == k})));
+  mode.onchange = () => { send({inBars: mode.value == 1}); draw(); };
+  let amount;
+  if (A.inBars) {
+    amount = tip(h('select'), H.autoEvery);
+    [1, 2, 4, 8, 16, 32, 64].forEach((b, k) => amount.append(h('option', {value: k, textContent: b + ' bar' + (b > 1 ? 's' : ''), selected: A.barsExp == k})));
+    amount.onchange = () => send({barsExp: +amount.value});
+  } else {
+    amount = tip(h('input', {type: 'number', min: 2, max: 3600, step: 1, value: A.seconds}), H.autoEvery);
+    amount.onchange = () => send({seconds: Math.max(2, Math.min(3600, +amount.value || 60))});
+  }
+  const order = tip(h('select'), H.autoOrder);
+  ['In order', 'Shuffle'].forEach((l, k) => order.append(h('option', {value: k, textContent: l, selected: (A.shuffle ? 1 : 0) == k})));
+  order.onchange = () => send({shuffle: order.value == 1});
+  return h('div', {className: 'auto'}, onb, mode, amount, order, h('span', {className: 'hint', id: 'autoLeft'}));
+}
+
 function paletteEditor(q, i) {
   if (!q.stops || q.stops.length != q.colors.length) q.stops = evenStops(q.colors.length);
   const box = h('div', {className: 'pal'});
@@ -659,6 +695,8 @@ function showStatus() {
   if (pe) pe.textContent = L.enabled ? (L.peers > 0 ? L.peers + ' peer' + (L.peers == 1 ? '' : 's') : 'no peers') : '';
   const b = document.getElementById('bpm');
   if (b && document.activeElement != b) b.value = L.bpm;
+  const al = document.getElementById('autoLeft');
+  if (al) al.textContent = S.autoLeft >= 0 ? 'next in ' + (S.auto && S.auto.inBars ? Math.ceil(S.autoLeft) + ' bar' + (Math.ceil(S.autoLeft) == 1 ? '' : 's') : Math.ceil(S.autoLeft) + ' s') : '';
   const o = document.getElementById('osc');
   if (o) o.textContent = S.osc || '';
 }
@@ -718,6 +756,7 @@ function oscValue(addr, v) {
     else if (a[2] == 'on') { if (S.on != v) { S.on = v; redraw(); } }
     else if (a[2] == 'preset') { if (S.current != v - 1) { S.current = v - 1; redraw(); } }
     else if (a[2] == 'link') { if (S.link.enabled != v) { S.link.enabled = v; redraw(); } }
+    else if (a[2] == 'auto') { if (S.auto && S.auto.enabled != v) { S.auto.enabled = v; redraw(); } }
     return;
   }
   const n = +a[3] - 1, key = a[4];
@@ -735,6 +774,7 @@ function oscValue(addr, v) {
       return;
     }
     if (key == 'effect') { if (p.effect != v - 1) reload(); return; }
+    if (key == 'auto') { if (p.auto !== v) { p.auto = v; redraw(); } return; }
     if (key == 'palette') p.palette = v - 1;
     else if (key == 'sparkle') { p.sparkle = v; if (mine) return moveSlider('sparkle', v); }
     else if (key == 'pulse') { p.pulse = v; if (mine) return moveSlider('pulse', v); }

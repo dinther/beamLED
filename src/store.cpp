@@ -21,6 +21,7 @@ static Motion (*savedMotion)[MOTIONS] = nullptr;  // as saved
 static bool fresh[MAX_PRESETS];
 static const Motion MOTION_OFF = {0, SHAPE_SINE, 0, 3, 0, 1, 8, 0};
 LinkSettings linkSettings;
+AutoSettings autoSettings;
 
 static const uint32_t SCHEMA = 1;  // bump when a struct above changes
 static const uint32_t SAVE_DELAY_MS = 3000;
@@ -135,6 +136,7 @@ static void save() {
     prefs.putBytes("set", &settings, sizeof(settings));
     prefs.putBytes("syncs", savedSync, presetCount * sizeof(PresetSync));
     prefs.putBytes("link", &linkSettings, sizeof(linkSettings));
+    prefs.putBytes("auto", &autoSettings, sizeof(autoSettings));
     prefs.putBytes("mots", savedMotion, presetCount * sizeof(Motion) * MOTIONS);
     if (prefs.isKey("pal")) prefs.remove("pal");
     if (prefs.isKey("pre")) prefs.remove("pre");
@@ -209,16 +211,24 @@ void storeLoad() {
     // Kept under their own keys: a missing or older one falls back to defaults on its own
     layoutDefaults();
     linkSettings = {0, 120, 20};
+    autoSettings = {0, 1, 3, 0, 60, 0};  // off; every 8 bars, or 60 s
     prefs.begin("beamled", true);
     if (prefs.isKey("lay") && prefs.getBytesLength("lay") == sizeof(layout))
         prefs.getBytes("lay", &layout, sizeof(layout));
     if (prefs.isKey("link") && prefs.getBytesLength("link") == sizeof(linkSettings))
         prefs.getBytes("link", &linkSettings, sizeof(linkSettings));
+    if (prefs.isKey("auto") && prefs.getBytesLength("auto") == sizeof(autoSettings))
+        prefs.getBytes("auto", &autoSettings, sizeof(autoSettings));
     prefs.end();
     layoutSanitize(layout);
     linkSettings.enabled = linkSettings.enabled ? 1 : 0;
     if (!(linkSettings.bpm >= 20 && linkSettings.bpm <= 999)) linkSettings.bpm = 120;
     if (!(linkSettings.latencyMs >= 0 && linkSettings.latencyMs <= 500)) linkSettings.latencyMs = 20;
+    autoSettings.enabled = autoSettings.enabled ? 1 : 0;
+    autoSettings.inBars = autoSettings.inBars ? 1 : 0;
+    autoSettings.shuffle = autoSettings.shuffle ? 1 : 0;
+    if (autoSettings.barsExp > 6) autoSettings.barsExp = 3;
+    if (!(autoSettings.seconds >= 2 && autoSettings.seconds <= 3600)) autoSettings.seconds = 60;
     if (!savedPresets) savedPresets = (Preset*)calloc(MAX_PRESETS, sizeof(Preset));
     if (!savedSync) savedSync = (PresetSync*)calloc(MAX_PRESETS, sizeof(PresetSync));
     if (!presetMotion) presetMotion = (Motion (*)[MOTIONS])calloc(MAX_PRESETS, sizeof(Motion) * MOTIONS);
@@ -336,6 +346,7 @@ int presetAdd(int from) {
     strlcpy(presets[i].name, name, sizeof(presets[i].name));
     for (int m = 0; m < MOTIONS; m++) presetMotion[i][m] = presetMotion[from][m];
     fresh[i] = true;
+    autoSettings.skip &= ~(1u << i);  // a new preset is in Auto
     savedPresets[i] = presets[i];  // a new preset is saved as it is
     savedSync[i] = presetSync[i];
     for (int m = 0; m < MOTIONS; m++) savedMotion[i][m] = presetMotion[i][m];
@@ -360,6 +371,10 @@ bool presetDelete(int i) {
     presetCount--;
     presetSync[presetCount] = savedSync[presetCount] = SYNC_DEFAULT;
     fresh[presetCount] = false;
+    {  // the In Auto bits after i move down one
+        const uint32_t s = autoSettings.skip, low = s & ((1u << i) - 1);
+        autoSettings.skip = low | ((s >> (i + 1)) << i);
+    }
     storeMarkDirty();
     return true;
 }
@@ -389,6 +404,13 @@ bool presetMove(int from, int to) {
     savedPresets[to] = sp;
     savedSync[to] = sy;
     fresh[to] = fr;
+    {  // the In Auto bit moves with the preset
+        uint32_t s = autoSettings.skip;
+        const uint32_t b = s >> from & 1;
+        const int d2 = to > from ? 1 : -1;
+        for (int k = from; k != to; k += d2) s = (s & ~(1u << k)) | ((s >> (k + d2) & 1) << k);
+        autoSettings.skip = (s & ~(1u << to)) | (b << to);
+    }
     for (int m = 0; m < MOTIONS; m++) { presetMotion[to][m] = mo[m]; savedMotion[to][m] = smo[m]; }
     storeMarkDirty();
     return true;

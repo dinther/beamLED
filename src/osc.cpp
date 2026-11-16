@@ -20,11 +20,11 @@
 // subscriptions in small arrays: the globals, then MAX_PRESETS blocks of PSLOTS, then
 // MAX_PALETTES blocks of CSLOTS. A preset's parameters take the slots after its fixed ones.
 
-enum Global : uint8_t { G_PRESET, G_NEXT, G_PREV, G_ON, G_BRIGHTNESS, G_LINK, G_SAVE, NUM_GLOBALS };
-static const char* const GLOBAL_NAME[NUM_GLOBALS] = {"preset", "next", "prev", "on", "brightness", "link", "save"};
+enum Global : uint8_t { G_PRESET, G_NEXT, G_PREV, G_ON, G_BRIGHTNESS, G_LINK, G_SAVE, G_AUTO, NUM_GLOBALS };
+static const char* const GLOBAL_NAME[NUM_GLOBALS] = {"preset", "next", "prev", "on", "brightness", "link", "save", "auto"};
 
-enum PSlot : uint8_t { P_PLAY, P_EFFECT, P_PALETTE, P_SPARKLE, P_TIMING, P_BEATS, P_REVERSE, P_PULSE, P_FIXED };
-static const char* const PSLOT_NAME[P_FIXED] = {"play", "effect", "palette", "sparkle", "timing", "beats", "reverse", "pulse"};
+enum PSlot : uint8_t { P_PLAY, P_EFFECT, P_PALETTE, P_SPARKLE, P_TIMING, P_BEATS, P_REVERSE, P_PULSE, P_AUTO, P_FIXED };
+static const char* const PSLOT_NAME[P_FIXED] = {"play", "effect", "palette", "sparkle", "timing", "beats", "reverse", "pulse", "auto"};
 // After a preset's parameters: its motions' settings
 enum MSlot : uint8_t { M_TARGET, M_SHAPE, M_FROM, M_TO, M_SECONDS, M_BEATS, M_PHASE, MSLOTS };
 static const char* const MSLOT_NAME[MSLOTS] = {"target", "shape", "from", "to", "seconds", "beats", "phase"};
@@ -81,6 +81,7 @@ static bool nodeInfo(int id, NodeInfo& n, char* path, size_t len) {
             case G_PREV: n = {'N', 2, false, 0, 0, "The previous preset. An argument of 0 is ignored."}; break;
             case G_ON: n = {'T', 3, false, 0, 1, "On or off, with a fade, as a long press of the button. No argument toggles."}; break;
             case G_BRIGHTNESS: n = {'f', 3, true, 0, 1, "Master brightness, 0..1, as the web page's Brightness slider."}; break;
+            case G_AUTO: n = {'T', 3, false, 0, 1, "Auto: the presets change by themselves, every so many seconds or bars as set on the web page, among the presets that are in Auto. No argument toggles."}; break;
             case G_LINK: n = {'T', 3, false, 0, 1, "Ableton Link: Enabled (true) or Disabled (false). No argument toggles."}; break;
             case G_SAVE: n = {'N', 2, false, 0, 0, "Saves every preset as it plays now (as Save on each preset on the web page), with the palettes and settings, so they survive a power cut. Until then, preset changes from OSC or the web page play but are not saved."}; break;
         }
@@ -124,6 +125,7 @@ static bool nodeInfo(int id, NodeInfo& n, char* path, size_t len) {
             case P_TIMING: n = {'i', 3, true, 0, 2, "0 = time (speeds in their own units), 1 = follow the tempo (the set speed at 120 BPM, scaled with the tempo), 2 = beats (the effect's cycle takes a whole number of beats and lands on the bar; only for effects with a cycle)."}; break;
             case P_BEATS: n = {'i', 3, true, 1, 64, "With timing 2 (beats): how many beats one cycle takes: 1, 2, 4, 8, 16, 32 or 64 (other numbers go to the nearest of these)."}; break;
             case P_REVERSE: n = {'T', 3, false, 0, 1, "With timing 2 (beats): run the cycle backwards. No argument toggles."}; break;
+            case P_AUTO: n = {'T', 3, false, 0, 1, "True when this preset is in Auto (the presets Auto changes between). No argument toggles."}; break;
             case P_PULSE: n = {'f', 3, true, 0, 1, "Beat pulse: brightness dips between beats and is full on each beat, strongest on the bar's first beat. 0 = none."}; break;
         }
         return true;
@@ -157,6 +159,7 @@ static bool nodeValue(int id, char type, uint32_t& v) {
             case G_ON: return i(engineOn());
             case G_BRIGHTNESS: return f(settings.brightness / 255.f);
             case G_LINK: return i(linkSettings.enabled != 0);
+            case G_AUTO: return i(autoSettings.enabled != 0);
         }
         return false;
     }
@@ -187,6 +190,7 @@ static bool nodeValue(int id, char type, uint32_t& v) {
             case P_BEATS: return i(1 << y.beatsExp);
             case P_REVERSE: return i(y.reverse != 0);
             case P_PULSE: return f(y.pulse);
+            case P_AUTO: return i(presetInAuto(k));
         }
         return false;
     }
@@ -331,6 +335,7 @@ static void apply(const char* path, const Arg* a, int n) {
             case G_BRIGHTNESS: settings.brightness = (uint8_t)lroundf(constrain(v, 0.f, 1.f) * 255.f); break;
             case G_LINK: linkSettings.enabled = on; break;
             case G_SAVE: presetSaveAll(); storeMarkDirty(); break;
+            case G_AUTO: autoSettings.enabled = on; storeMarkDirty(); break;
         }
         return;
     }
@@ -385,6 +390,11 @@ static void apply(const char* path, const Arg* a, int n) {
             case P_BEATS: y.beatsExp = constrain((int)lroundf(log2f(fmaxf(v, 1.f))), 0, 6); break;
             case P_REVERSE: y.reverse = on; break;
             case P_PULSE: y.pulse = v; break;
+            case P_AUTO:
+                if (on) autoSettings.skip &= ~(1u << i);
+                else autoSettings.skip |= 1u << i;
+                storeMarkDirty();
+                break;
         }
         return;
     }

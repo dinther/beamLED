@@ -14,6 +14,7 @@ struct EngineLock {
 
 void engineSelect(int preset);   // fades over to the preset (and switches on)
 void engineSetOn(bool on);       // fades in / out
+float engineAutoLeft();          // Auto: until the next change, in seconds or bars; -1 when not running
 bool engineDeletePreset(int i);  // the preset list changes: the engine keeps its place
 bool engineMovePreset(int from, int to);
 bool engineOn();
