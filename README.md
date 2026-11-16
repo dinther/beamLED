@@ -27,9 +27,9 @@ for this kind of installation (see [docs/background.md](docs/background.md)):
 
 ## Features
 
-- **10 effects**, each with its own sliders and a palette: Rolling bars, Searchlights, Lighthouse,
-  Clouds, Sparkle, Sweeps, Plaid, Rings, Drops and Interference, plus a sparkle overlay on any of
-  them.
+- **11 effects**, each with its own sliders and a palette: Rolling bars, Searchlights, Lighthouse,
+  Clouds, Sparkle, Sweeps, Plaid, Rings, Drops, Interference and Gradient, plus a sparkle overlay on
+  any of them.
 - **Presets**: up to 32, each an effect with its settings and a palette. The button on the board
   steps through them (short press: next, long press: on/off); the one playing survives a power cut.
   Edits play at once and are kept with **Save**, or dropped with **Revert**.
@@ -57,6 +57,7 @@ for this kind of installation (see [docs/background.md](docs/background.md)):
 | ![Sweeps](docs/images/beam_sweeps.jpg) **Sweeps**: bars sweeping across the ceiling one after another, each pass at a new angle, with a trail. | ![Plaid](docs/images/beam_plaid.jpg) **Plaid**: two sets of broad stripes crossing at an angle, moving and slowly turning. |
 | ![Rings](docs/images/beam_rings.jpg) **Rings**: concentric rings flowing out of, or into, a slowly wandering centre. | ![Drops](docs/images/beam_drops.jpg) **Drops**: big rings spreading from random points and fading out, like raindrops on a pond. |
 | ![Interference](docs/images/beam_interference.jpg) **Interference**: two sets of ring waves around centres that circle each other. | ![Sparkle overlay](docs/images/beam_rolling_ice_sparkle.jpg) **Sparkle**: twinkles in palette colours, as an effect of its own or as an overlay on any other. |
+| ![Gradient](docs/images/beam_gradient.jpg) **Gradient**: a steady gradient through the palette, straight at any angle or round from a centre; Drift or a Motion on Offset makes the colours flow. | |
 
 The scrolling effects have a position slider: **Offset** (Rolling bars, Plaid, Rings,
 Interference), **Offset X** and **Offset Y** (Clouds), and Lighthouse has **Angle**. With the speed
