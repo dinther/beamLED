@@ -41,6 +41,7 @@ static uint32_t linkUpAt = 0;
 static volatile uint32_t linkDownAt = 0;  // boot counts as link down
 static bool usingFallback = false;
 static bool servicesStarted = false;
+static volatile bool otaActive = false;
 static volatile bool dhcpRestartRequested = false;
 
 // During the grace window on the fallback address a DHCPDISCOVER is sent now and then; an offer
@@ -421,6 +422,8 @@ static void updateScan() {
 
 static bool onWifi() { return (!linkUp || usingFallback) && wifiState != WIFI_STANDBY; }
 
+bool netOtaActive() { return otaActive; }
+
 bool netCanSend() { return (linkUp && gotIp) || wifiGotIp; }
 
 // Address the web page is reachable on right now
@@ -459,8 +462,15 @@ static void startServicesOnce() {
     if (MDNS.begin(netSettings.name.c_str())) MDNS.addService("http", "tcp", 80);
     ArduinoOTA.setHostname(netSettings.name.c_str());
     ArduinoOTA.setMdnsEnabled(false);  // mDNS already started above
-    ArduinoOTA.onStart([]() { Serial.println("OTA update starting"); });
+    ArduinoOTA.onStart([]() {
+        otaActive = true;
+        Serial.println("OTA update starting");
+    });
     ArduinoOTA.onEnd([]() { Serial.println("OTA update done, restarting"); });
+    ArduinoOTA.onError([](ota_error_t e) {
+        otaActive = false;
+        Serial.printf("OTA update failed (%u)\n", e);
+    });
     ArduinoOTA.begin();
     Serial.printf("Web interface: http://%s.local  or  http://%s\n", netSettings.name.c_str(),
                   netCurrentIp().toString().c_str());

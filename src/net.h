@@ -29,6 +29,7 @@ void netSave();
 void netBegin();
 void netLoop();
 
+bool netOtaActive();        // a firmware update is running
 bool netCanSend();          // an interface with an address is up
 IPAddress netCurrentIp();
 IPAddress netAutoFallbackIp();

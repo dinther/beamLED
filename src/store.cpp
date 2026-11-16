@@ -7,6 +7,7 @@
 Palette palettes[NUM_PALETTES];
 Preset presets[NUM_PRESETS];
 Settings settings;
+Layout layout;
 
 static const uint32_t SCHEMA = 1;  // bump when a struct above changes
 static const uint32_t SAVE_DELAY_MS = 3000;
@@ -70,6 +71,33 @@ static void defaults() {
                                           cfg::DEFAULT_TARGET[2], cfg::DEFAULT_TARGET[3]);
 }
 
+void layoutSanitize(Layout& l) {
+    l.nx = constrain(l.nx, 1, MAX_X);
+    l.ny = constrain(l.ny, 1, MAX_Y);
+    if (l.nx * l.ny > MAX_LEDS) l.ny = MAX_LEDS / l.nx;
+    if (!(l.length >= 0.05f && l.length <= 200)) l.length = cfg::CEILING_LENGTH;
+    if (!(l.aspect >= 0.1f && l.aspect <= 500)) l.aspect = 19.1f;
+    l.measured = l.measured ? 1 : 0;
+    l.startUni = constrain(l.startUni, 0, 32767 - l.ny * ((l.nx + 169) / 170));
+}
+
+static void layoutDefaults() {
+    layout.nx = cfg::CEILING_PIX;
+    layout.ny = cfg::CEILING_ROWS;
+    layout.length = cfg::CEILING_LENGTH;
+    // Mean measured row spacing / LED spacing: (7.42 m / 14) / (5 m / 180)
+    layout.aspect = 19.1f;
+    layout.measured = 1;
+    layout.startUni = 0;
+}
+
+// The layout has its own key, so changing it never resets presets or palettes
+void storeSaveLayout() {
+    prefs.begin("beamled", false);
+    prefs.putBytes("lay", &layout, sizeof(layout));
+    prefs.end();
+}
+
 static void save() {
     prefs.begin("beamled", false);
     prefs.putUInt("ver", SCHEMA);
@@ -106,6 +134,13 @@ void storeLoad() {
     if (settings.current >= NUM_PRESETS) settings.current = 0;
     if (!(settings.gamma >= 1 && settings.gamma <= 3)) settings.gamma = 2.2f;
     if (!ok) save();
+
+    layoutDefaults();
+    prefs.begin("beamled", true);
+    if (prefs.isKey("lay") && prefs.getBytesLength("lay") == sizeof(layout))
+        prefs.getBytes("lay", &layout, sizeof(layout));
+    prefs.end();
+    layoutSanitize(layout);
 }
 
 void storeMarkDirty() {

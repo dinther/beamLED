@@ -5,6 +5,7 @@
 
 #include "engine.h"
 #include "net.h"
+#include "config.h"
 #include "store.h"
 #include "web_page.h"
 
@@ -68,6 +69,15 @@ static void handleState() {
     d["brightness"] = settings.brightness;
     d["gamma"] = settings.gamma;
     d["target"] = IPAddress(settings.target).toString();
+    JsonObject lay = d["layout"].to<JsonObject>();
+    lay["nx"] = layout.nx;
+    lay["ny"] = layout.ny;
+    lay["length"] = layout.length;
+    lay["aspect"] = layout.aspect;
+    lay["measured"] = layout.measured != 0;
+    lay["startUni"] = layout.startUni;
+    lay["maxLeds"] = MAX_LEDS;
+    lay["measuredRows"] = cfg::CEILING_ROWS;
     JsonArray ef = d["effects"].to<JsonArray>();
     for (int i = 0; i < NUM_EFFECTS; i++) {
         JsonObject o = ef.add<JsonObject>();
@@ -160,6 +170,26 @@ static void handlePalette() {
     sendJson(r);
 }
 
+// Takes effect at once; presets and palettes are kept
+static void handleLayout() {
+    JsonDocument d;
+    if (!readBody(d)) return;
+    Layout l = layout;
+    if (d["nx"].is<int>()) l.nx = constrain(d["nx"].as<int>(), 1, MAX_X);
+    if (d["ny"].is<int>()) l.ny = constrain(d["ny"].as<int>(), 1, MAX_Y);
+    if (d["length"].is<float>()) l.length = d["length"].as<float>();
+    if (d["aspect"].is<float>()) l.aspect = d["aspect"].as<float>();
+    if (d["measured"].is<bool>()) l.measured = d["measured"].as<bool>();
+    if (d["startUni"].is<int>()) l.startUni = constrain(d["startUni"].as<int>(), 0, 32767);
+    if (l.nx * l.ny > MAX_LEDS) {
+        server.send(400, "text/plain", "at most " + String(MAX_LEDS) + " LEDs");
+        return;
+    }
+    layout = l;
+    engineLayoutChanged();
+    handleState();
+}
+
 static void handleNetGet() {
     JsonDocument d;
     d["name"] = netSettings.name;
@@ -220,6 +250,7 @@ void webBegin() {
     server.on("/api/set", HTTP_POST, handleSet);
     server.on("/api/preset", HTTP_POST, handlePreset);
     server.on("/api/palette", HTTP_POST, handlePalette);
+    server.on("/api/layout", HTTP_POST, handleLayout);
     server.on("/api/net", HTTP_GET, handleNetGet);
     server.on("/api/net", HTTP_POST, handleNetSet);
     server.on("/api/scan", handleScan);

@@ -11,7 +11,7 @@
 #include "store.h"
 #include "web.h"
 
-static CRGB leds[cfg::NUM];
+static CRGB leds[MAX_LEDS];
 static CRGB lutWrap[256], lutLin[256];
 static uint8_t outLut[256];
 static float effState[MAXP];
@@ -47,6 +47,17 @@ void engineResetEffect() { memset(effState, 0, sizeof(effState)); }
 float engineFps() { return fps; }
 float engineRenderMs() { return renderMs; }
 int engineCurrent() { return pending >= 0 ? pending : settings.current; }
+
+void engineLayoutChanged() {
+    layoutSanitize(layout);
+    effectsInit();
+    memset(effState, 0, sizeof(effState));
+    memset(leds, 0, sizeof(leds));
+    storeSaveLayout();
+    Serial.printf("Layout %u x %u, %.2f m rows, aspect %.1f%s, universes %u-%u\n", layout.nx, layout.ny,
+                  layout.length, layout.aspect, layout.measured ? " (measured rows)" : "", layout.startUni,
+                  layout.startUni + layout.ny * universesPerRow() - 1);
+}
 
 static void updateFade(float dt) {
     if (pending >= 0) {
@@ -134,8 +145,9 @@ void loop() {
 
     updateFade(dt);
     const uint32_t t0 = micros();
+    if (netOtaActive()) return;  // keep the network free for the update
     if (level > 0) renderFrame(dt);
-    else memset(leds, 0, sizeof(leds));
+    else memset(leds, 0, layoutLeds() * sizeof(CRGB));
     buildOutLut();
     const uint32_t t1 = micros();
     if (netCanSend()) artnet.send(IPAddress(settings.target), leds, outLut);

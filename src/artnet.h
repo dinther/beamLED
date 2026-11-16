@@ -1,5 +1,4 @@
-// Art-Net output in the PixLite's universe map: bar n = universe 2n (pixels 1-170, 510
-// channels) + universe 2n+1 (pixels 171-180, 30 channels).
+// Art-Net output of the LED grid, one universe range per row (see artnet.cpp).
 #pragma once
 #include <FastLED.h>
 #include <IPAddress.h>

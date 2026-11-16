@@ -3,6 +3,8 @@
 #pragma once
 #include "effects.h"
 #include "palette.h"
+#include "layout.h"
+#include "config.h"
 
 constexpr int NUM_PRESETS = 10;
 constexpr int NUM_PALETTES = 8;
@@ -29,4 +31,5 @@ extern Settings settings;
 void storeLoad();
 void storeMarkDirty();
 void storePoll();
+void storeSaveLayout();
 void presetSetEffect(Preset& p, uint8_t effect);

@@ -8,3 +8,4 @@ void engineResetEffect();        // the current preset's effect changed
 float engineFps();
 float engineRenderMs();
 int engineCurrent();              // preset playing, or being faded to
+void engineLayoutChanged();      // after editing `layout`: re-init positions, save

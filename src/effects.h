@@ -1,9 +1,10 @@
-// Effects are evaluated at the 2700 real LED positions in metres: x along a bar, y across
-// the bars (measured). Detail across the bars is kept >= ~0.8 m, and sharp edges are widened
-// by each bar's footprint (half the gap to its neighbours) so they don't pop as they cross a bar.
+// Effects are evaluated at the real LED positions in metres: x along a row, y across the rows.
+// Detail across the rows is kept soft, and edges are widened by each row's footprint (half the gap
+// to its neighbours) so they don't pop as they cross a row. Stripe patterns are attenuated by the
+// same footprint (area averaging).
 #pragma once
 #include <FastLED.h>
-#include "config.h"
+#include "layout.h"
 
 constexpr int MAXP = 8;
 
@@ -18,7 +19,7 @@ struct Ctx {
     float* s;             // per-effect state (MAXP floats), zeroed when the preset changes
     const CRGB* lutWrap;  // palette as a loop
     const CRGB* lutLin;   // palette as a ramp, first colour -> last colour
-    CRGB* out;            // [bar * PIX + pixel]
+    CRGB* out;            // [row * nx + led]
 };
 
 struct EffectDef {
@@ -32,6 +33,7 @@ struct EffectDef {
 extern const EffectDef EFFECTS[];
 extern const int NUM_EFFECTS;
 
+// (Re)compute LED positions from the layout; call after a layout change
 void effectsInit();
 // White twinkles added on top of any effect. density 0..1.
 void sparkleOverlay(CRGB* out, float density, float dt);

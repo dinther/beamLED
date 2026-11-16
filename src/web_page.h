@@ -23,7 +23,7 @@ button.on{background:var(--acc);border-color:var(--acc);color:#000}
 .row label{flex:0 0 130px;color:#bbb}
 .row input[type=range]{flex:1;min-width:0;accent-color:var(--acc)}
 .row output{flex:0 0 46px;text-align:right;font-variant-numeric:tabular-nums;color:var(--dim)}
-select,input[type=text],input[type=password]{flex:1;min-width:0;background:#222;color:var(--fg);border:1px solid #444;border-radius:6px;padding:6px 8px;font:inherit}
+select,input[type=text],input[type=password],input[type=number]{flex:1;min-width:0;background:#222;color:var(--fg);border:1px solid #444;border-radius:6px;padding:6px 8px;font:inherit}
 .pal{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:8px 0;border-bottom:1px solid var(--line)}
 .pal:last-child{border-bottom:0}
 .pal input[type=text]{flex:0 1 140px}
@@ -121,6 +121,9 @@ function draw() {
     h('div', {className: 'row'}, h('label'), quick('PixLite', '192.168.0.50'), quick('Beam', '192.168.0.20')),
     slider('Gamma', 1, 3, 0.1, S.gamma, v => v.toFixed(1), v => { S.gamma = v; throttle('g', () => post('/api/set', {gamma: v})); })));
 
+  app.append(h('h2', {textContent: 'Layout'}));
+  app.append(layoutCard());
+
   app.append(h('h2', {textContent: 'Network'}));
   app.append(networkCard());
   showStatus();
@@ -145,13 +148,41 @@ function paletteEditor(q, i) {
     box.append(b);
   }
   if (q.colors.length > 2) {
-    const b = h('button', {textContent: '−', title: 'Remove the last colour'});
+    const b = h('button', {textContent: '\u00e2\u02c6\u2019', title: 'Remove the last colour'});
     b.onclick = () => { q.colors.pop(); send(); draw(); };
     box.append(b);
   }
   paint();
   box.append(sw);
   return box;
+}
+
+function layoutCard() {
+  const L = S.layout;
+  const num = (v, step) => h('input', {type: 'number', value: v, step, min: 0});
+  const nx = num(L.nx, 1), ny = num(L.ny, 1), len = num(L.length, 0.01), asp = num(L.aspect, 0.1), su = num(L.startUni, 1);
+  const meas = h('input', {type: 'checkbox', checked: L.measured});
+  const info = h('div', {className: 'hint'});
+  const upd = () => {
+    const pitch = +len.value / Math.max(1, +nx.value), upr = Math.ceil(+nx.value / 170), leds = +nx.value * +ny.value;
+    const m = meas.checked && +ny.value == L.measuredRows;
+    info.textContent = 'LED spacing ' + (pitch * 1000).toFixed(1) + ' mm, row spacing ' +
+      (m ? 'measured (ceiling)' : (pitch * +asp.value).toFixed(3) + ' m') + ' \u00b7 ' + leds + ' LEDs' +
+      (leds > L.maxLeds ? ' (max ' + L.maxLeds + ')' : '') + ' \u00b7 universes ' + (+su.value) + '\u2013' +
+      (+su.value + upr * +ny.value - 1) + ' (' + upr + ' per row)';
+  };
+  [nx, ny, len, asp, su, meas].forEach(e => e.oninput = upd);
+  const apply = h('button', {textContent: 'Apply', className: 'on'});
+  const msg = h('div', {className: 'hint'});
+  apply.onclick = () => post('/api/layout', {nx: +nx.value, ny: +ny.value, length: +len.value, aspect: +asp.value,
+      measured: meas.checked, startUni: +su.value})
+    .then(st => { S = st; draw(); }).catch(e => { msg.textContent = e.message; });
+  upd();
+  return h('div', {className: 'card'},
+    field('LEDs per row', nx), field('Rows', ny), field('Row length (m)', len),
+    field('Aspect', asp), h('div', {className: 'row'}, h('label'), h('span', {className: 'hint', textContent: 'row spacing \u00f7 LED spacing'})),
+    field('Measured rows', meas), field('Start universe', su),
+    info, h('div', {className: 'row'}, h('label'), apply), msg);
 }
 
 function networkCard() {
@@ -184,7 +215,7 @@ function networkCard() {
 
 function showStatus() {
   const el = document.getElementById('status');
-  if (el) el.textContent = S.fps + ' fps, render ' + S.renderMs + ' ms · ' + S.net + ' · WiFi: ' + S.wifi;
+  if (el) el.textContent = S.fps + ' fps, render ' + S.renderMs + ' ms \u00c2\u00b7 ' + S.net + ' \u00c2\u00b7 WiFi: ' + S.wifi;
 }
 
 // Follow button presses on the board without disturbing a slider being dragged
