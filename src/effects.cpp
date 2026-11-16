@@ -371,7 +371,7 @@ static void lighthouse(Ctx& c) {
     const float rpm = c.p[0], wdeg = c.p[1];
     const int arms = clampi((int)(c.p[2] + 0.5f), 1, 4);
     const float ox = c.p[3] * W, oy = Y[0] + c.p[4] * H, bg = c.p[5], spread = c.p[6];
-    const float P = TAU / arms, iP = arms / TAU, half = wdeg * DEG * 0.5f;
+    const float P = TAU / arms, iP = arms / TAU, half = wdeg * DEG * 0.5f, angle = c.p[7] * DEG;
     advance(c, c.s[0], rpm * (TAU / 60.f), TAU);  // in beats: one revolution per cycle
     float maxR = 0;
     for (float cx : {0.f, W})
@@ -387,7 +387,7 @@ static void lighthouse(Ctx& c) {
         for (int i = 0; i < NX; i++) {
             const float dx = X[i] - ox;
             const float r = sqrtf(dx * dx + dy * dy);
-            float a = atan2Fast(dy, dx) - c.s[0];
+            float a = atan2Fast(dy, dx) - c.s[0] - angle;
             a -= P * roundFast(a * iP);
             const float rc = fmaxf(r, 0.2f);
             float I;
@@ -639,14 +639,15 @@ const EffectDef EFFECTS[] = {
       {"Softness", 0, 1, 0.6f, 0.01f, "How far in from the edge a beam fades. 0 = an evenly lit disc with a short soft edge (never under 0.4 m), 1 = brightest only at the centre."}},
      searchlights, false, nullptr, -1,
      "Soft round beams wandering over the ceiling on slow looping paths, like searchlights in the sky. Their paths don't repeat for a long time."},
-    {"Lighthouse", 7,
+    {"Lighthouse", 8,
      {{"Speed (rpm)", -20, 20, 4, 0.1f, "Turns per minute; negative turns the other way. In Beats timing this slider is replaced by beats per revolution."},
       {"Beam width (deg)", 5, 120, 30, 1, "How wide the beam is, as an angle. The beam gets wider in metres the further it is from the centre."},
       {"Beams", 1, 4, 1, 1, "How many beams, evenly spaced around the centre like a lighthouse with several lamps. Each spot is passed this many times per turn."},
       {"Origin X", -0.2f, 1.2f, 0.5f, 0.01f, "Where the centre sits along the bars: 0 = one end, 0.5 = the middle, 1 = the other end. Below 0 or above 1 puts it outside the ceiling."},
       {"Origin Y", -0.2f, 1.2f, -0.05f, 0.01f, "Where the centre sits across the bars: 0 = the first bar, 1 = the last bar. The default, -0.05, is just outside the first bar, so the beam sweeps in from the edge."},
       {"Background", 0, 0.3f, 0.02f, 0.01f, H_BG},
-      {"Colour spread", 0, 1, 0.6f, 0.01f, "How the beam's colour changes with distance from the centre. 0 = all in the palette's first colour, 1 = through the whole palette out to the farthest corner."}},
+      {"Colour spread", 0, 1, 0.6f, 0.01f, "How the beam's colour changes with distance from the centre. 0 = all in the palette's first colour, 1 = through the whole palette out to the farthest corner."},
+      {"Angle (deg)", -180, 180, 0, 1, "Which way the beam points, in degrees: 0 = along the bars (towards their far end), 90 = across them (towards the last bar), -90 = towards the first bar, 180 = back along the bars. With Speed at 0 the beam stays there; while it turns, this sets where the turn starts, so it can also line a turn up with the beat. With several beams it is the first one's direction."}},
      lighthouse, false, "revolution", 0,
      "A beam turning around a point, like a lighthouse. The point can sit inside the ceiling, at its edge or beyond it. In Beats timing, one revolution takes the chosen number of beats."},
     {"Clouds", 6,
