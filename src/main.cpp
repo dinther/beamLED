@@ -209,7 +209,6 @@ void setup() {
     storeLoad();
     netLoad();
     effectsInit();
-    storeMigrate();
     netBegin();
     linkClock = new LinkClock(linkSettings.bpm);
     webBegin();
@@ -225,17 +224,16 @@ void loop() {
     storePoll();
     oscLoop();
 
-    // Between frames, sleep instead of spinning: the core idles (cooler), and the network, web
-    // and OSC are still looked at every millisecond. Frames stay on a steady 1/FPS grid.
+    // Between frames the core already idles: webHandle() sleeps 1 ms while no browser is
+    // connected (WebServer's null delay). Frames keep to a steady 1/FPS grid, so that sleep
+    // making one frame a little late doesn't slow the rate; dt is the real time between frames.
     static const uint32_t PERIOD = 1000000u / cfg::FPS;
-    static uint32_t last = micros();
+    static uint32_t due = micros(), prev = micros();
     const uint32_t now = micros();
-    if (now - last < PERIOD) {
-        if (PERIOD - (now - last) > 1500) delay(1);
-        return;
-    }
-    const float dt = fminf((now - last) / 1e6f, 0.1f);
-    last = now - last > 2 * PERIOD ? now : last + PERIOD;
+    if ((int32_t)(now - due) < 0) return;
+    due = now - due > 2 * PERIOD ? now + PERIOD : due + PERIOD;  // fell far behind: start afresh
+    const float dt = fminf((now - prev) / 1e6f, 0.1f);
+    prev = now;
 
     updateLink();
     updateFade(dt);

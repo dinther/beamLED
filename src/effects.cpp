@@ -148,14 +148,11 @@ void sparkleOverlay(CRGB* out, float density, float dt) {
 }
 
 // ---------------------------------------------------------------- Rolling bars
-// Wide bands rolling across the grid; their direction slowly turns. The bar count is over the
-// ceiling's mean extent ((length + depth) / 2), so it reads about right in any direction.
-
-float rollingSpan() { return (W + H) * 0.5f; }
+// Wide bands rolling across the grid; their direction slowly turns.
 
 static void rolling(Ctx& c) {
-    const float speed = c.p[0], width = rollingSpan() / fmaxf(c.p[1], 1.f), soft = c.p[2],
-                gap = c.p[3], turn = c.p[4], step = c.p[5];
+    const float speed = c.p[0], width = c.p[1], soft = c.p[2], gap = c.p[3], turn = c.p[4],
+                step = c.p[5];
     c.s[0] += c.dt * turn * DEG;
     advance(c, c.s[1], speed / width, 1.f);  // in beats: one band per cycle
     const float ca = cosf(c.s[0]), sa = sinf(c.s[0]);
@@ -515,7 +512,7 @@ static void sparkle(Ctx& c) {
 const EffectDef EFFECTS[] = {
     {"Rolling bars", 6,
      {{"Speed (m/s)", 0, 1, 0.15f, 0.01f, "How fast the bands roll, in metres per second. 0 stops them; the direction still turns. Calm: 0.05 to 0.2."},
-      {"Bars", 1, 8, 3, 1, "How many bands fit across the ceiling (over its average size, about 6 m). 1 = one huge band at a time, 8 = the narrowest, about 0.8 m: the finest the bar spacing shows without flicker."},
+      {"Band width (m)", 0.8f, 5, 2, 0.1f, "The width of one band, in metres. 0.8 m is the narrowest the bar spacing shows without flicker; 5 m is one band across the ceiling's length."},
       {"Softness", 0, 1, 0.6f, 0.01f, H_SOFT_BANDS},
       {"Dark gaps", 0, 1, 0.3f, 0.01f, H_GAPS},
       {"Turn (deg/s)", -10, 10, 1.5f, 0.1f, "How fast the rolling direction turns, in degrees per second; negative turns the other way. 1.5 = a full turn in 4 minutes, 0 = a fixed direction."},

@@ -17,7 +17,6 @@ static const uint32_t SAVE_DELAY_MS = 3000;
 static Preferences prefs;
 static bool dirty = false;
 static uint32_t dirtyAt = 0;
-static bool freshDefaults = false;  // nothing was saved: no old values to convert
 
 static void setPalette(int i, const char* name, std::initializer_list<uint32_t> cols) {
     Palette& p = palettes[i];
@@ -58,13 +57,13 @@ static void defaults() {
 
     // effect: 0 Rolling bars, 1 Searchlights, 2 Lighthouse, 3 Clouds, 4 Sparkle
     setPreset(0, "Ocean rolls", 0, 0, 0);
-    setPreset(1, "Sunset rolls", 0, 1, 0, {0.1f, 2, 0.8f, 0.2f, 1, 0.2f});
+    setPreset(1, "Sunset rolls", 0, 1, 0, {0.1f, 3, 0.8f, 0.2f, 1, 0.2f});
     setPreset(2, "Searchlights", 1, 7, 0);
     setPreset(3, "Warm lights", 1, 5, 0, {2, 1.8f, 0.2f, 0.05f, 0.8f});
     setPreset(4, "Lighthouse", 2, 3, 0);
     setPreset(5, "Clouds", 3, 6, 0);
     setPreset(6, "Sunset clouds", 3, 1, 0, {0.6f, 4, 0.1f, 0.3f, 0.2f, 0.6f});
-    setPreset(7, "Ice + sparkle", 0, 4, 0.3f, {0.08f, 2, 0.7f, 0.4f, -1, 0.25f});
+    setPreset(7, "Ice + sparkle", 0, 4, 0.3f, {0.08f, 3, 0.7f, 0.4f, -1, 0.25f});
     setPreset(8, "Starry", 4, 4, 0);
     setPreset(9, "Forest clouds", 3, 2, 0.1f, {0.45f, 5, 0.08f, -0.3f, 0.15f, 0.5f});
     presetCount = 10;
@@ -173,7 +172,6 @@ void storeLoad() {
     }
     if (settings.current >= presetCount) settings.current = 0;
     if (!(settings.gamma >= 1 && settings.gamma <= 3)) settings.gamma = 2.2f;
-    freshDefaults = !ok;
 
     // Kept under their own keys: a missing or older one falls back to defaults on its own
     layoutDefaults();
@@ -189,25 +187,6 @@ void storeLoad() {
     if (!(linkSettings.bpm >= 20 && linkSettings.bpm <= 999)) linkSettings.bpm = 120;
     if (!(linkSettings.latencyMs >= 0 && linkSettings.latencyMs <= 500)) linkSettings.latencyMs = 20;
     if (!ok || old) save();
-}
-
-// Rolling bars' second parameter was a band width in metres; it is now a bar count. Converted
-// once (needs effectsInit for the ceiling's size). Fresh defaults are bar counts already.
-void storeMigrate() {
-    prefs.begin("beamled", true);
-    const bool done = prefs.getUChar("rollbars", 0) == 1;
-    prefs.end();
-    if (done) return;
-    if (!freshDefaults) {
-        for (int i = 0; i < presetCount; i++) {
-            Preset& p = presets[i];
-            if (p.effect == 0 && p.p[1] > 0) p.p[1] = constrain(roundf(rollingSpan() / p.p[1]), 1.f, 8.f);
-        }
-        save();
-    }
-    prefs.begin("beamled", false);
-    prefs.putUChar("rollbars", 1);
-    prefs.end();
 }
 
 // Adds a copy of preset `from` after the last one. Returns its index, or -1 when full.

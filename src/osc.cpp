@@ -407,10 +407,13 @@ static size_t encode(const char* path, char type, uint32_t v, uint8_t* out, size
 
 static httpd_handle_t server = nullptr;
 
-// A JSON reply streamed out in chunks, so the whole tree never has to be in memory
+// A JSON reply streamed out in chunks, so the whole tree never has to be in memory. Bigger chunks
+// make the tree come down much faster (each chunk is a TCP round trip).
+static const size_t CHUNK = 4096;
+static char chunkBuf[CHUNK];
 struct Out {
     httpd_req_t* req;
-    char buf[1024];
+    char* buf;  // the shared chunk buffer: only the server's task writes replies
     size_t n = 0;
     void flush() {
         if (n) httpd_resp_send_chunk(req, buf, n);
@@ -418,7 +421,7 @@ struct Out {
     }
     void raw(const char* s) {
         while (*s) {
-            if (n == sizeof(buf)) flush();
+            if (n == CHUNK) flush();
             buf[n++] = *s++;
         }
     }
@@ -604,7 +607,7 @@ static esp_err_t serveHttp(httpd_req_t* req) {
     for (const char* a : ATTRS)
         if (!strcmp(query, a)) attr = a;
 
-    Out o{req};
+    Out o{req, chunkBuf};
     const int id = findNode(path);
     NodeInfo n;
     char p[64];

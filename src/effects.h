@@ -46,7 +46,5 @@ extern const int NUM_EFFECTS;
 
 // (Re)compute LED positions from the layout; call after a layout change
 void effectsInit();
-// Rolling bars: the extent its bar count spans (m), for converting old band widths
-float rollingSpan();
 // White twinkles added on top of any effect. density 0..1.
 void sparkleOverlay(CRGB* out, float density, float dt);

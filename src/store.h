@@ -55,7 +55,6 @@ void storeLoad();
 void storeMarkDirty();
 void storePoll();
 void storeSaveLayout();
-void storeMigrate();  // once, after effectsInit: old saved values to new meanings
 void presetSetEffect(Preset& p, uint8_t effect);
 // Editing the list (saved a few seconds later). The engine has to follow: see engine.h.
 int presetAdd(int from);          // a copy of preset 'from' at the end; its index, or -1 when full
