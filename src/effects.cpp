@@ -228,12 +228,13 @@ static void rolling(Ctx& c) {
     c.s[0] += c.dt * turn * DEG;
     advance(c, c.s[1], speed / width, 1.f);  // in beats: one band per cycle
     const float ca = cosf(c.s[0]), sa = sinf(c.s[0]), iw = 1.f / width;
+    const float ph = c.s[1] + c.p[6] * iw;  // where the bands are: their motion plus Offset
     for (int b = 0; b < NY; b++) {
         // Transition at least the row's footprint projected onto the roll direction
         const Bands bd(fmaxf(soft, FY[b] * fabsf(sa) * iw), step, gap);
         const float dy = (Y[b] - CY) * sa;
         CRGB* o = c.out + b * NX;
-        for (int i = 0; i < NX; i++) o[i] = bd.at(((X[i] - CX) * ca + dy) * iw - c.s[1], c.lutWrap);
+        for (int i = 0; i < NX; i++) o[i] = bd.at(((X[i] - CX) * ca + dy) * iw - ph, c.lutWrap);
     }
 }
 
@@ -312,14 +313,15 @@ static void plaid(Ctx& c) {
     c.s[2] += c.dt * drift * 0.02f;
     const float a1 = c.s[0], a2 = c.s[0] + cross * DEG;
     const float c1 = cosf(a1), s1 = sinf(a1), c2 = cosf(a2), s2 = sinf(a2), ip = 1.f / period;
+    const float ph = c.s[1] + c.p[6] * ip;  // their motion plus Offset
     for (int b = 0; b < NY; b++) {
         const float at1 = footAtten(b, fabsf(s1), period), at2 = footAtten(b, fabsf(s2), period);
         const float dy = Y[b] - CY;
         CRGB* o = c.out + b * NX;
         for (int i = 0; i < NX; i++) {
             const float dx = X[i] - CX;
-            const float v1 = cosCyc((dx * c1 + dy * s1) * ip - c.s[1]) * at1;
-            const float v2 = cosCyc((dx * c2 + dy * s2) * ip + c.s[1] * 0.7f) * at2;
+            const float v1 = cosCyc((dx * c1 + dy * s1) * ip - ph) * at1;
+            const float v2 = cosCyc((dx * c2 + dy * s2) * ip + ph * 0.7f) * at2;
             const CRGB colour = lutW(c.lutWrap, c.s[2] + 0.5f * sstep(-0.5f, 0.5f, v1 - v2));
             const float lvl = 1.f - contrast * (1.f - (v1 + v2 + 2.f) * 0.25f);
             o[i] = scaleF(colour, lvl);
@@ -412,7 +414,7 @@ static void rings(Ctx& c) {
     c.s[1] += c.dt * wspeed;
     const float cx = CX + wander * W * 0.5f * sinf(c.s[1] * 0.37f);
     const float cy = CY + wander * H * 0.5f * sinf(c.s[1] * 0.29f + 1.3f);
-    const float is = 1.f / spacing;
+    const float is = 1.f / spacing, ph = c.s[0] + c.p[7] * is;  // their motion plus Offset
     const Bands base(soft, step, gap);  // where the softness is wider than the row's footprint
     for (int b = 0; b < NY; b++) {
         const float dy = Y[b] - cy;
@@ -422,7 +424,7 @@ static void rings(Ctx& c) {
         for (int i = 0; i < NX; i++) {
             const float dx = X[i] - cx;
             const float r = sqrtf(dx * dx + dy * dy);
-            const float u = r * is - c.s[0];
+            const float u = r * is - ph;
             if (r > 1e-3f ? fy <= soft * r : FY[b] * is <= soft) o[i] = base.at(u, c.lutWrap);
             else o[i] = Bands(r > 1e-3f ? fy / r : FY[b] * is, step, gap).at(u, c.lutWrap);
         }
@@ -517,7 +519,7 @@ static void interference(Ctx& c) {
     const float half = sep * 0.5f * fmaxf(W, H) * 0.5f;
     const float x1 = CX + half * cosf(c.s[1]), y1 = CY + half * sinf(c.s[1]);
     const float x2 = CX - half * cosf(c.s[1]), y2 = CY - half * sinf(c.s[1]);
-    const float il = 1.f / lambda;
+    const float il = 1.f / lambda, ph = c.s[0] + c.p[6] * il;  // their motion plus Offset
     for (int b = 0; b < NY; b++) {
         const float dy1 = Y[b] - y1, dy2 = Y[b] - y2;
         // footAtten as exp(kb * sin^2), sin^2 = dy^2 / r^2 (1 at the centre)
@@ -528,8 +530,8 @@ static void interference(Ctx& c) {
             const float dx1 = X[i] - x1, dx2 = X[i] - x2;
             const float s1 = dx1 * dx1 + q1, s2 = dx2 * dx2 + q2;
             const float r1 = sqrtf(s1), r2 = sqrtf(s2);
-            const float v1 = cosCyc(r1 * il - c.s[0]) * expNeg(kb * (s1 > 1e-6f ? q1 / s1 : 1.f));
-            const float v2 = cosCyc(r2 * il - c.s[0]) * expNeg(kb * (s2 > 1e-6f ? q2 / s2 : 1.f));
+            const float v1 = cosCyc(r1 * il - ph) * expNeg(kb * (s1 > 1e-6f ? q1 / s1 : 1.f));
+            const float v2 = cosCyc(r2 * il - ph) * expNeg(kb * (s2 > 1e-6f ? q2 / s2 : 1.f));
             const float v = (v1 + v2) * 0.25f + 0.5f;  // 0..1
             o[i] = scaleF(lutW(c.lutWrap, c.s[2] + v * 0.5f), 1.f - contrast * (1.f - v));
         }
@@ -557,6 +559,7 @@ static void clouds(Ctx& c) {
     c.s[1] = fmodf(c.s[1], period);
     const float thr = 1.f - 2.f * cover, sw = 0.03f + soft * 0.5f;
     const float e0 = thr - sw, ie = 1.f / (2.f * sw);
+    const float sx = c.s[0] + c.p[6], sy = c.s[1] + c.p[7];  // the wind's drift plus Offset
     // fbm, as fbm() does it: octaves finer than 0.8 m are left out. What doesn't change along a
     // row is worked out once per frame (time) or per row (y).
     int oct = 0;
@@ -574,9 +577,9 @@ static void clouds(Ctx& c) {
     const float istep = NX > 1 ? (float)(ns - 1) / (NX - 1) : 0;
     for (int b = 0; b < NY; b++) {
         uint32_t ty[4];
-        for (int o = 0; o < oct; o++) ty[o] = cell16((Y[b] - c.s[1]) / lam[o] + o * 31.7f);
+        for (int o = 0; o < oct; o++) ty[o] = cell16((Y[b] - sy) / lam[o] + o * 31.7f);
         for (int k = 0; k < ns; k++) {
-            const float x = X[0] + (X[NX - 1] - X[0]) * k / (ns - 1) - c.s[0];
+            const float x = X[0] + (X[NX - 1] - X[0]) * k / (ns - 1) - sx;
             float sum = 0;
             for (int o = 0; o < oct; o++)
                 sum += ((int)inoise16(cell16(x / lam[o] + o * 17.3f), ty[o], tz[o]) - 32768) * wt[o];
@@ -622,13 +625,14 @@ static void sparkle(Ctx& c) {
 #define H_SOFT_BANDS "How gradually one band blends into the next. 0 = crisp edges (still softened where they cross the bars, so they don't flicker), 1 = smooth gradients."
 
 const EffectDef EFFECTS[] = {
-    {"Rolling bars", 6,
+    {"Rolling bars", 7,
      {{"Speed (m/s)", 0, 1, 0.15f, 0.01f, "How fast the bands roll, in metres per second. 0 stops them; the direction still turns. Calm: 0.05 to 0.2."},
       {"Band width (m)", 0.8f, 5, 2, 0.1f, "The width of one band, in metres. 0.8 m is the narrowest the bar spacing shows without flicker; 5 m is one band across the ceiling's length."},
       {"Softness", 0, 1, 0.6f, 0.01f, H_SOFT_BANDS},
       {"Dark gaps", 0, 1, 0.3f, 0.01f, H_GAPS},
       {"Turn (deg/s)", -10, 10, 1.5f, 0.1f, "How fast the rolling direction turns, in degrees per second; negative turns the other way. 1.5 = a full turn in 4 minutes, 0 = a fixed direction."},
-      {"Colour step", 0, 1, 0.2f, 0.01f, H_STEP}},
+      {"Colour step", 0, 1, 0.2f, 0.01f, H_STEP},
+      {"Offset (m)", -10, 10, 0, 0.01f, "Shifts the pattern by this many metres, the way Speed moves the bands (in the rolling direction). With Speed at 0 it stays put, so a Motion on Offset moves it back and forth (with easing). 0 = no shift."}},
      rolling, false, "band", 0,
      "Wide soft bands of palette colour rolling across the ceiling while their direction slowly turns. In Beats timing, each band takes the chosen number of beats to pass."},
     {"Searchlights", 5,
@@ -650,13 +654,15 @@ const EffectDef EFFECTS[] = {
       {"Angle (deg)", -180, 180, 0, 1, "Which way the beam points, in degrees: 0 = along the bars (towards their far end), 90 = across them (towards the last bar), -90 = towards the first bar, 180 = back along the bars. With Speed at 0 the beam stays there; while it turns, this sets where the turn starts, so it can also line a turn up with the beat. With several beams it is the first one's direction."}},
      lighthouse, false, "revolution", 0,
      "A beam turning around a point, like a lighthouse. The point can sit inside the ceiling, at its edge or beyond it. In Beats timing, one revolution takes the chosen number of beats."},
-    {"Clouds", 6,
+    {"Clouds", 8,
      {{"Coverage", 0, 1, 0.5f, 0.01f, "How much of the sky is cloud: 0 = clear, 0.5 = half cloudy, 1 = overcast."},
       {"Cloud size (m)", 1, 8, 3, 0.1f, "The typical size of a cloud in metres. Smaller clouds still keep their detail coarse enough for the bar spacing."},
       {"Wind (m/s)", 0, 1, 0.15f, 0.01f, "How fast the clouds drift, in metres per second. 0 = they stay in place (they can still evolve)."},
       {"Wind turn (deg/s)", -5, 5, 0.5f, 0.1f, "How fast the wind direction turns, in degrees per second; negative turns the other way. 0 = a steady wind."},
       {"Evolve", 0, 1, 0.2f, 0.01f, "How fast the cloud shapes change as they drift. 0 = rigid shapes sliding past, 1 = clouds forming and dissolving quickly."},
-      {"Softness", 0, 1, 0.4f, 0.01f, "How gradually a cloud fades into the sky. 0 = crisp edges, 1 = hazy."}},
+      {"Softness", 0, 1, 0.4f, 0.01f, "How gradually a cloud fades into the sky. 0 = crisp edges, 1 = hazy."},
+      {"Offset X (m)", -20, 20, 0, 0.01f, "Shifts the clouds along the bars by this many metres, on top of the wind. With Wind at 0 they stay put, so a Motion on Offset X moves them back and forth. 0 = no shift."},
+      {"Offset Y (m)", -20, 20, 0, 0.01f, "Shifts the clouds across the bars by this many metres, on top of the wind. With Wind at 0 they stay put, so a Motion on Offset Y moves them back and forth. 0 = no shift."}},
      clouds, false, nullptr, -1,
      "Soft clouds drifting on a slowly turning wind. The palette is used as a ramp: its first colour is the sky, its last colour the clouds."},
     {"Sparkle", 4,
@@ -677,23 +683,25 @@ const EffectDef EFFECTS[] = {
       {"Softness", 0, 1, 0.2f, 0.01f, "How soft the bar's edges are, as a part of its width. 0 = crisp (still softened where they cross the bars)."}},
      sweeps, false, "sweep", 1,
      "Bars sweeping across the ceiling one after another, each pass at a new angle, with a fading trail. Each new pass takes the next palette colour."},
-    {"Plaid", 6,
+    {"Plaid", 7,
      {{"Stripe period (m)", 1, 6, 2.5f, 0.1f, "The distance from one stripe to the next, in metres."},
       {"Speed (m/s)", 0, 1, 0.1f, 0.01f, "How fast the stripes move, in metres per second; the two sets move opposite ways. In Beats timing this slider is replaced by beats per stripe."},
       {"Turn (deg/s)", -10, 10, 1, 0.1f, "How fast the whole pattern turns, in degrees per second; negative turns the other way."},
       {"Cross angle (deg)", 0, 90, 60, 1, "The angle between the two stripe sets. 90 = square checks, smaller = stretched diamonds, 0 = both sets parallel."},
       {"Contrast", 0, 1, 0.6f, 0.01f, "How dark it gets between the stripes. 0 = even brightness, only the colours change, 1 = deep dark gaps."},
-      {"Colour drift", 0, 1, 0.2f, 0.01f, H_DRIFT}},
+      {"Colour drift", 0, 1, 0.2f, 0.01f, H_DRIFT},
+      {"Offset (m)", -10, 10, 0, 0.01f, "Shifts the pattern by this many metres, the way Speed moves the stripes (the second set goes the other way). With Speed at 0 it stays put, so a Motion on Offset moves it back and forth (with easing). 0 = no shift."}},
      plaid, false, "stripe", 1,
      "Two sets of broad stripes crossing at an angle, moving and slowly turning. The colour shows which of the two sets is stronger at each spot."},
-    {"Rings", 7,
+    {"Rings", 8,
      {{"Ring spacing (m)", 0.8f, 4, 1.5f, 0.1f, "The distance from one ring to the next, in metres."},
       {"Speed (m/s, - = inward)", -1, 1, 0.2f, 0.01f, "How fast the rings flow, in metres per second: positive outward from the centre, negative inward. In Beats timing this slider is replaced by beats per ring."},
       {"Softness", 0, 1, 0.6f, 0.01f, H_SOFT_BANDS},
       {"Dark gaps", 0, 1, 0.4f, 0.01f, H_GAPS},
       {"Centre wander", 0, 1, 0.4f, 0.01f, "How far the centre roams. 0 = fixed in the middle of the ceiling, 1 = all the way to the edges."},
       {"Wander speed", 0, 1, 0.2f, 0.01f, "How fast the centre roams."},
-      {"Colour step", 0, 1, 0.2f, 0.01f, H_STEP}},
+      {"Colour step", 0, 1, 0.2f, 0.01f, H_STEP},
+      {"Offset (m)", -10, 10, 0, 0.01f, "Shifts the pattern by this many metres, the way Speed moves the rings (positive outward). With Speed at 0 it stays put, so a Motion on Offset moves it back and forth (with easing). 0 = no shift."}},
      rings, false, "ring", 1,
      "Concentric rings flowing out of (or into) a centre that slowly wanders over the ceiling."},
     {"Drops", 5,
@@ -704,13 +712,14 @@ const EffectDef EFFECTS[] = {
       {"Background", 0, 0.3f, 0.03f, 0.01f, H_BG}},
      dropsFx, false, "drop", 0,
      "Big rings spreading from random points and fading out, like raindrops on a pond. Each drop takes a random palette colour."},
-    {"Interference", 6,
+    {"Interference", 7,
      {{"Wavelength (m)", 0.8f, 5, 1.8f, 0.1f, "The distance from one wave to the next, in metres."},
       {"Speed (m/s)", -1, 1, 0.15f, 0.01f, "How fast the waves travel, in metres per second: positive outward, negative inward. In Beats timing this slider is replaced by beats per wave."},
       {"Centre distance", 0, 1, 0.5f, 0.01f, "How far apart the two wave centres are. 0 = the same point (plain rings), 1 = about the ceiling's size apart."},
       {"Rotate (deg/s)", -10, 10, 2, 0.1f, "How fast the two centres circle each other, in degrees per second; negative the other way."},
       {"Contrast", 0, 1, 0.7f, 0.01f, "How dark the troughs get where the waves cancel. 0 = even brightness, 1 = black."},
-      {"Colour drift", 0, 1, 0.2f, 0.01f, H_DRIFT}},
+      {"Colour drift", 0, 1, 0.2f, 0.01f, H_DRIFT},
+      {"Offset (m)", -10, 10, 0, 0.01f, "Shifts the pattern by this many metres, the way Speed moves the waves (positive outward). With Speed at 0 it stays put, so a Motion on Offset moves it back and forth (with easing). 0 = no shift."}},
      interference, false, "wave", 1,
      "Two sets of ring waves around centres that slowly circle each other. Where the waves meet they reinforce or cancel, forming large moving patterns."},
 };const int NUM_EFFECTS = sizeof(EFFECTS) / sizeof(EFFECTS[0]);
