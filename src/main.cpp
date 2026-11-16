@@ -299,7 +299,7 @@ static void buildOutLut() {
 
 // ---------------------------------------------------------------- button
 
-// Short press: next preset (or on). Double press: Auto on/off (on also switches the ceiling on).
+// Short press: Auto off, and next preset (or on). Double press: Auto on (and the ceiling on).
 // Long press: on/off. A short press waits DOUBLE_MS to see whether a second one follows.
 static void pollButton() {
     static bool down = false, longDone = false;
@@ -316,11 +316,13 @@ static void pollButton() {
         } else if (!longDone) {  // a short press
             if (shortWaiting && t - shortAt <= DOUBLE_MS) {  // the second one: double press
                 shortWaiting = false;
-                autoSettings.enabled = !autoSettings.enabled;
-                if (autoSettings.enabled) engineSetOn(true);
-                storeMarkDirty();
-                webChanged();
-                Serial.printf("Auto %s\n", autoSettings.enabled ? "on" : "off");
+                engineSetOn(true);
+                if (!autoSettings.enabled) {
+                    autoSettings.enabled = 1;
+                    storeMarkDirty();
+                    webChanged();
+                    Serial.println("Auto on");
+                }
             } else {
                 shortWaiting = true;
                 shortAt = t;
@@ -329,6 +331,12 @@ static void pollButton() {
     }
     if (shortWaiting && !down && t - shortAt > DOUBLE_MS) {  // no second press came: a single one
         shortWaiting = false;
+        if (autoSettings.enabled) {  // picking by hand ends Auto
+            autoSettings.enabled = 0;
+            storeMarkDirty();
+            webChanged();
+            Serial.println("Auto off");
+        }
         if (!isOn) engineSetOn(true);
         else engineSelect(((pending >= 0 ? pending : settings.current) + 1) % presetCount);
     }

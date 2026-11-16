@@ -35,8 +35,8 @@ for this kind of installation (see [docs/background.md](docs/background.md)):
 - **Auto**: the presets change by themselves every so many seconds, or every so many bars on the
   beat, in order or shuffled, among the presets you choose.
 - **Presets**: up to 32, each an effect with its settings and a palette. The button on the board
-  steps through them (short press: next, double press: Auto on/off, long press: on/off); the one
-  playing survives a power cut.
+  steps through them (short press: next and Auto off, double press: Auto on, long press:
+  on/off); the one playing survives a power cut.
   Edits play at once and are kept with **Save**, or dropped with **Revert**. Rename a saved preset\n  and Save, and it becomes a new preset.
 - **Motions**: up to two per preset, each moving one slider back and forth by itself (a beam
   swinging, bands scrolling to and fro, a width breathing) along a shape, in seconds or in beats.
@@ -155,7 +155,7 @@ Preset changes over OSC play at once and, like changes on the page, are kept wit
 ## Hardware
 
 - **Board**: WT32-ETH01 (ESP32, LAN8720 Ethernet, 4 MB flash).
-- **Button**: GPIO4 to GND (internal pull-up). Short press: next preset; double press: Auto on/off; long press: on/off.
+- **Button**: GPIO4 to GND (internal pull-up). Short press: next preset, Auto off; double press: Auto on; long press: on/off.
 - **Output**: Art-Net to the pixel controller. Each row starts at its own universe and fills 170 RGB
   pixels per universe. By default row n (counting from 0) starts at universe 2n, so a row of up to
   340 LEDs fits; set the start universes on the page to match how the controller is patched.
