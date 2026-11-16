@@ -44,9 +44,13 @@ select,input[type=text],input[type=password],input[type=number]{flex:1;min-width
 .unis input{flex:0 0 72px;width:72px}
 .row input[type=number]{flex:0 0 90px}
 [data-tip] label,label[data-tip],h2[data-tip]{cursor:help;text-decoration:underline dotted #555;text-underline-offset:3px}
+#elsewhere{position:fixed;inset:0;z-index:20;display:none;align-items:center;justify-content:center;background:#121212e8;padding:16px}
+#elsewhere .card{max-width:360px;text-align:center}
+#elsewhere p{margin:6px 0 14px}
 #tip{position:fixed;z-index:9;display:none;max-width:min(380px,calc(100vw - 24px));background:#2b2b2b;color:#eee;
   border:1px solid #555;border-radius:8px;padding:8px 10px;font-size:13px;line-height:1.45;box-shadow:0 4px 16px #000a;pointer-events:none}
 </style></head><body><main id="app">Loading...</main><div id="tip"></div>
+<div id="elsewhere"><div class="card"><p id="elsewhere-text"></p><button class="on" id="elsewhere-go">Continue here</button></div></div>
 <script>
 let S, N;
 const h = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; };
@@ -506,17 +510,38 @@ function oscValue(addr, v) {
 }
 const reload = () => { reloadDue = true; settle(); };
 
-function live() {
-  const ws = new WebSocket('ws://' + location.hostname + ':8010/');
+// One page at a time. This page's id lasts as long as the page, so reconnecting (after a board
+// restart, say) isn't "another page". When another page has beamLED, this one asks before taking
+// over; a page that loses it to another shows the same question and lets go of its connection.
+const pageId = Math.random().toString(36).slice(2, 12) + Date.now().toString(36);
+let sock = null, away = false;
+function elsewhere(text) {
+  away = true;
+  hideTip();
+  document.getElementById('elsewhere-text').textContent = text;
+  document.getElementById('elsewhere').style.display = 'flex';
+}
+document.getElementById('elsewhere-go').onclick = () => {
+  document.getElementById('elsewhere').style.display = 'none';
+  away = false;
+  load().then(() => live(true));
+};
+
+function live(take = false) {
+  const ws = sock = new WebSocket('ws://' + location.hostname + ':8010/');
   ws.binaryType = 'arraybuffer';
-  ws.onopen = () => {
-    ws.send(JSON.stringify({COMMAND: 'PAGE'}));
-    ws.send(JSON.stringify({COMMAND: 'LISTEN', DATA: '/'}));
-  };
+  ws.onopen = () => ws.send(JSON.stringify({COMMAND: 'PAGE', ID: pageId, TAKE: take}));
   ws.onmessage = e => {
     if (typeof e.data != 'string') { for (const [addr, v] of oscMessages(e.data)) oscValue(addr, v); return; }
     const m = JSON.parse(e.data);
-    if (m.COMMAND == 'STATUS') {
+    if (m.COMMAND == 'BUSY') {
+      elsewhere('beamLED is open in another window or on another device. Continue to use it here?');
+      ws.close();
+    } else if (m.COMMAND == 'TAKEN') {
+      elsewhere('beamLED is now open in another window or on another device. Continue to use it here?');
+      ws.close();
+    } else if (m.COMMAND == 'STATUS') {
+      if (!ws.accepted) { ws.accepted = true; ws.send(JSON.stringify({COMMAND: 'LISTEN', DATA: '/'})); }
       const st = m.DATA;
       if (!S) return;
       if (st.rev != S.rev || st.presetCount != S.presets.length) { S.rev = st.rev; reload(); }
@@ -529,8 +554,12 @@ function live() {
       reload();
     }
   };
-  // The board restarted or the network dropped: connect again (and reload, things may differ)
-  ws.onclose = () => setTimeout(() => { reloadDue = true; settle(); live(); }, 3000);
+  // The board restarted or the network dropped: connect again (and reload, things may differ).
+  // Not when another page has it: this one waits for "Continue here".
+  ws.onclose = () => {
+    if (away || ws != sock) return;
+    setTimeout(() => { if (away) return; reloadDue = true; settle(); live(); }, 3000);
+  };
 }
 load().then(live);
 </script></body></html>)HTML";

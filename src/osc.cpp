@@ -639,6 +639,7 @@ static const int MAX_LISTENERS = 4;  // MIMa and a few web pages
 struct Listener {
     int fd = -1;
     bool page = false;  // the web page: also gets the status, the change counter and scan results
+    char pageId[24] = "";  // which browser tab (it reconnects under the same id)
     uint32_t bits[WORDS];
 };
 static Listener listeners[MAX_LISTENERS];
@@ -808,8 +809,27 @@ static void command(int fd, const char* text) {
     const char* path = d["DATA"] | "";
     Listener* l = listenerFor(fd);
     if (!l) return;
-    if (!strcmp(cmd, "PAGE")) {  // beamLED's own web page
+    // beamLED's own web page. One page at a time: another one gets BUSY (it asks "continue here?")
+    // unless it says TAKE, and then the page that had it gets TAKEN. The same tab reconnecting
+    // (same ID) simply takes its place again.
+    if (!strcmp(cmd, "PAGE")) {
+        const char* id = d["ID"] | "";
+        const bool take = d["TAKE"] | false;
+        for (Listener& o : listeners) {
+            if (o.fd < 0 || &o == l || !o.page) continue;
+            if (!take && strcmp(o.pageId, id) != 0) {
+                static const char busy[] = "{\"COMMAND\":\"BUSY\"}";
+                sendFrame(fd, HTTPD_WS_TYPE_TEXT, (const uint8_t*)busy, sizeof(busy) - 1);
+                return;
+            }
+            static const char taken[] = "{\"COMMAND\":\"TAKEN\"}";
+            sendFrame(o.fd, HTTPD_WS_TYPE_TEXT, (const uint8_t*)taken, sizeof(taken) - 1);
+            o.page = false;
+            memset(o.bits, 0, sizeof(o.bits));
+            httpd_sess_trigger_close(server, o.fd);
+        }
         l->page = true;
+        strlcpy(l->pageId, id, sizeof(l->pageId));
         sendStatus(fd);
         return;
     }
@@ -844,6 +864,7 @@ static esp_err_t onRequest(httpd_req_t* req) {
                 if (!slot) return ESP_FAIL;  // full: the connection is closed
                 slot->fd = fd;
                 slot->page = false;
+                slot->pageId[0] = 0;
                 memset(slot->bits, 0, sizeof(slot->bits));
                 listenerCount = listenerCount + 1;
             }
