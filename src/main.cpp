@@ -42,12 +42,17 @@ static SemaphoreHandle_t engineMutex = nullptr;  // created first thing in setup
 void engineLock() { xSemaphoreTakeRecursive(engineMutex, portMAX_DELAY); }
 void engineUnlock() { xSemaphoreGiveRecursive(engineMutex); }
 
+static bool pendingByAuto = false;  // the change under way is Auto's: not one to remember
+
 static void activate(int i) {
     settings.current = i;
     memset(effState, 0, sizeof(effState));
     memset(motionAcc, 0, sizeof(motionAcc));
     memset(motionCycles, 0, sizeof(motionCycles));
-    storeMarkDirty();
+    // Remembered for a power cut when picked by hand; Auto's changes are not saved (each save would
+    // wear the flash, and Auto carries on from the preset picked last anyway)
+    if (!pendingByAuto) storeMarkDirty();
+    pendingByAuto = false;
     Serial.printf("Preset %d: %s\n", i + 1, presets[i].name);
 }
 
@@ -58,6 +63,7 @@ static float autoLeft = -1;        // until the next change, in seconds or bars 
 
 void engineSelect(int i) {
     if (i < 0 || i >= presetCount) return;
+    pendingByAuto = false;  // by hand (Auto sets it again right after, for its own)
     autoAcc = 0;
     autoSlot = -1;
     isOn = true;
@@ -132,7 +138,10 @@ static void updateAuto(float dt) {
     }
     if (!due) return;
     const int next = autoPick();
-    if (next >= 0) engineSelect(next);  // also starts the count again
+    if (next >= 0) {
+        engineSelect(next);  // also starts the count again
+        pendingByAuto = true;
+    }
     else autoAcc = 0, autoSlot = -1;
 }
 bool engineOn() { return isOn; }

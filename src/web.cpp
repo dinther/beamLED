@@ -3,6 +3,7 @@
 #include <ArduinoJson.h>
 #include <esp_http_server.h>
 #include <lwip/sockets.h>
+#include <nvs.h>
 
 #include "engine.h"
 #include "link_clock.h"
@@ -542,6 +543,15 @@ static void handleBench() {
     while (n < 16 && (fds[n] = socket(AF_INET, SOCK_DGRAM, 0)) >= 0) n++;
     for (int k = 0; k < n; k++) close(fds[k]);
     d["socketsFree"] = n;
+    nvs_stats_t ns;  // the settings store: entries of 32 bytes, 126 to a 4 KB page
+    if (nvs_get_stats(nullptr, &ns) == ESP_OK) {
+        d["nvsUsed"] = ns.used_entries;
+        d["nvsFree"] = ns.free_entries;
+        d["nvsTotal"] = ns.total_entries;
+    }
+    d["saves"] = storeSaves();
+    d["marks"] = storeMarks();
+    d["dirtyMs"] = storeDirtyMs();
     d["effect"] = e < NUM_EFFECTS && e >= 0 ? EFFECTS[e].name : "?";
     d["ms"] = effectsBenchmark(e, lw, ll, frames);
     sendJson(d);

@@ -27,7 +27,8 @@ static const uint32_t SCHEMA = 1;  // bump when a struct above changes
 static const uint32_t SAVE_DELAY_MS = 3000;
 static Preferences prefs;
 static bool dirty = false;
-static uint32_t dirtyAt = 0;
+static uint32_t dirtyAt = 0, firstDirtyAt = 0;
+static const uint32_t SAVE_LATEST_MS = 15000;  // a change waits at most this long, however busy it gets
 
 static void setPalette(int i, const char* name, std::initializer_list<uint32_t> cols) {
     Palette& p = palettes[i];
@@ -128,16 +129,62 @@ void storeSaveLayout() {
 // always 10, under "pre" and "sync". Those are read once and then removed.
 static const int OLD_PRESETS = 10;
 
+static uint32_t saves = 0;  // since power-up
+uint32_t storeSaves() { return saves; }
+static uint32_t marks = 0;  // storeMarkDirty calls since power-up
+uint32_t storeMarks() { return marks; }
+int32_t storeDirtyMs() { return dirty ? (int32_t)(millis() - dirtyAt) : -1; }
+
+// Flash wears with every page NVS erases, and NVS erases a page each time a save fills one. So a
+// save writes only what changed since the last: each part is fingerprinted, and a part with the
+// same fingerprint is not written again. Selecting a preset then writes 12 bytes, not 3 KB.
+enum SavePart { PART_PALS, PART_PRES, PART_SET, PART_SYNCS, PART_LINK, PART_AUTO, PART_MOTS, NUM_PARTS };
+static uint32_t partPrint[NUM_PARTS];
+static bool partKnown[NUM_PARTS];
+static bool verWritten = false;
+
+static uint32_t fingerprint(const void* data, size_t len) {
+    uint32_t h = 2166136261u ^ (uint32_t)len;  // FNV-1a
+    for (size_t i = 0; i < len; i++) h = (h ^ ((const uint8_t*)data)[i]) * 16777619u;
+    return h;
+}
+
+// Writes the part unless it is what was written (or loaded) last
+static void putPart(SavePart part, const char* key, const void* data, size_t len) {
+    const uint32_t h = fingerprint(data, len);
+    if (partKnown[part] && partPrint[part] == h) return;
+    prefs.putBytes(key, data, len);
+    partPrint[part] = h;
+    partKnown[part] = true;
+}
+
+// After loading: what is in RAM is what is in flash
+static void rememberSaved() {
+    partPrint[PART_PALS] = fingerprint(palettes, paletteCount * sizeof(Palette));
+    partPrint[PART_PRES] = fingerprint(savedPresets, presetCount * sizeof(Preset));
+    partPrint[PART_SET] = fingerprint(&settings, sizeof(settings));
+    partPrint[PART_SYNCS] = fingerprint(savedSync, presetCount * sizeof(PresetSync));
+    partPrint[PART_LINK] = fingerprint(&linkSettings, sizeof(linkSettings));
+    partPrint[PART_AUTO] = fingerprint(&autoSettings, sizeof(autoSettings));
+    partPrint[PART_MOTS] = fingerprint(savedMotion, presetCount * sizeof(Motion) * MOTIONS);
+    for (bool& k : partKnown) k = true;
+    verWritten = true;
+}
+
 static void save() {
+    saves++;
     prefs.begin("beamled", false);
-    prefs.putUInt("ver", SCHEMA);
-    prefs.putBytes("pals", palettes, paletteCount * sizeof(Palette));  // a list, as the presets
-    prefs.putBytes("pres", savedPresets, presetCount * sizeof(Preset));
-    prefs.putBytes("set", &settings, sizeof(settings));
-    prefs.putBytes("syncs", savedSync, presetCount * sizeof(PresetSync));
-    prefs.putBytes("link", &linkSettings, sizeof(linkSettings));
-    prefs.putBytes("auto", &autoSettings, sizeof(autoSettings));
-    prefs.putBytes("mots", savedMotion, presetCount * sizeof(Motion) * MOTIONS);
+    if (!verWritten) {
+        prefs.putUInt("ver", SCHEMA);
+        verWritten = true;
+    }
+    putPart(PART_PALS, "pals", palettes, paletteCount * sizeof(Palette));  // a list, as the presets
+    putPart(PART_PRES, "pres", savedPresets, presetCount * sizeof(Preset));
+    putPart(PART_SET, "set", &settings, sizeof(settings));
+    putPart(PART_SYNCS, "syncs", savedSync, presetCount * sizeof(PresetSync));
+    putPart(PART_LINK, "link", &linkSettings, sizeof(linkSettings));
+    putPart(PART_AUTO, "auto", &autoSettings, sizeof(autoSettings));
+    putPart(PART_MOTS, "mots", savedMotion, presetCount * sizeof(Motion) * MOTIONS);
     if (prefs.isKey("pal")) prefs.remove("pal");
     if (prefs.isKey("pre")) prefs.remove("pre");
     if (prefs.isKey("sync")) prefs.remove("sync");
@@ -254,7 +301,9 @@ void storeLoad() {
         savedSync[i] = presetSync[i];
         for (int m = 0; m < MOTIONS; m++) savedMotion[i][m] = presetMotion[i][m];
     }
-    if (!ok || old || palOld) save();
+    // Saved as loaded: later saves write only what changes. Anything converted or new is written now.
+    if (ok && !old && !palOld) rememberSaved();
+    else save();
 }
 
 // ---- Save / Revert per preset
@@ -494,12 +543,15 @@ bool paletteDelete(int k) {
 }
 
 void storeMarkDirty() {
+    marks++;
+    if (!dirty) firstDirtyAt = millis();
     dirty = true;
     dirtyAt = millis();
 }
 
 void storePoll() {
-    if (dirty && millis() - dirtyAt >= SAVE_DELAY_MS) {
+    // A few seconds after the last change, but never later than SAVE_LATEST_MS after the first
+    if (dirty && (millis() - dirtyAt >= SAVE_DELAY_MS || millis() - firstDirtyAt >= SAVE_LATEST_MS)) {
         dirty = false;
         save();
     }

@@ -88,6 +88,9 @@ inline bool presetInAuto(int i) { return !(autoSettings.skip >> i & 1); }
 void storeLoad();
 void storeMarkDirty();
 void storePoll();
+uint32_t storeSaves();  // saves since power-up (for wear checks)
+uint32_t storeMarks();  // changes marked for saving since power-up
+int32_t storeDirtyMs(); // ms since the last change waiting to be saved, -1 = nothing waiting
 void storeSaveLayout();
 void presetSetEffect(Preset& p, uint8_t effect);
 // Editing the list (saved a few seconds later). The engine has to follow: see engine.h.
