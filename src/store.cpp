@@ -4,7 +4,8 @@
 #include <IPAddress.h>
 #include <Preferences.h>
 
-Palette palettes[NUM_PALETTES];
+Palette palettes[MAX_PALETTES];
+int paletteCount = 0;
 Preset presets[MAX_PRESETS];
 int presetCount = 0;
 Settings settings;
@@ -31,6 +32,7 @@ static void setPalette(int i, const char* name, std::initializer_list<uint32_t> 
     p.n = 0;
     for (uint32_t c : cols)
         if (p.n < PAL_MAX) p.c[p.n++] = CRGB(c);
+    paletteEvenStops(p);
 }
 
 void presetSetEffect(Preset& p, uint8_t effect) {
@@ -61,6 +63,7 @@ static void defaults() {
     setPalette(5, "Warm white", {0x301000, 0xff8020, 0xffc070});
     setPalette(6, "Sky", {0x0040c0, 0x4090ff, 0xe0f0ff});
     setPalette(7, "Rainbow", {0xff0000, 0xffc000, 0x00ff40, 0x0040ff, 0xc000ff});
+    paletteCount = 8;
 
     // effect: 0 Rolling bars, 1 Searchlights, 2 Lighthouse, 3 Clouds, 4 Sparkle
     setPreset(0, "Ocean rolls", 0, 0, 0);
@@ -125,12 +128,13 @@ static const int OLD_PRESETS = 10;
 static void save() {
     prefs.begin("beamled", false);
     prefs.putUInt("ver", SCHEMA);
-    prefs.putBytes("pal", palettes, sizeof(palettes));
+    prefs.putBytes("pals", palettes, paletteCount * sizeof(Palette));  // a list, as the presets
     prefs.putBytes("pres", savedPresets, presetCount * sizeof(Preset));
     prefs.putBytes("set", &settings, sizeof(settings));
     prefs.putBytes("syncs", savedSync, presetCount * sizeof(PresetSync));
     prefs.putBytes("link", &linkSettings, sizeof(linkSettings));
     prefs.putBytes("mots", savedMotion, presetCount * sizeof(Motion) * MOTIONS);
+    if (prefs.isKey("pal")) prefs.remove("pal");
     if (prefs.isKey("pre")) prefs.remove("pre");
     if (prefs.isKey("sync")) prefs.remove("sync");
     prefs.end();
@@ -148,11 +152,28 @@ void storeLoad() {
                       listLen / sizeof(Preset) <= MAX_PRESETS;
     const bool old = !list && prefs.isKey("pre") &&
                      prefs.getBytesLength("pre") == OLD_PRESETS * sizeof(Preset);
+    // Palettes: a list under "pals", or the fixed 8 under "pal" from before they could be added
+    const size_t palLen = prefs.isKey("pals") ? prefs.getBytesLength("pals") : 0;
+    const bool palList = palLen >= sizeof(Palette) && palLen % sizeof(Palette) == 0 && palLen / sizeof(Palette) <= MAX_PALETTES;
+    const bool palOld = !palList && prefs.isKey("pal") && prefs.getBytesLength("pal") == 8 * sizeof(PaletteV1);
     const bool ok = prefs.getUInt("ver", 0) == SCHEMA &&
-                    prefs.getBytesLength("pal") == sizeof(palettes) &&
+                    (palList || palOld) &&
                     prefs.getBytesLength("set") == sizeof(settings) && (list || old);
     if (ok) {
-        prefs.getBytes("pal", palettes, sizeof(palettes));
+        if (palList) {
+            paletteCount = palLen / sizeof(Palette);
+            prefs.getBytes("pals", palettes, palLen);
+        } else {  // saved before colours had positions: evenly spaced, as they looked
+            PaletteV1 v1[8];
+            prefs.getBytes("pal", v1, sizeof(v1));
+            paletteCount = 8;
+            for (int k = 0; k < 8; k++) {
+                memcpy(palettes[k].name, v1[k].name, sizeof(v1[k].name));
+                palettes[k].n = v1[k].n;
+                memcpy(palettes[k].c, v1[k].c, sizeof(v1[k].c));
+                paletteEvenStops(palettes[k]);
+            }
+        }
         prefs.getBytes("set", &settings, sizeof(settings));
         presetCount = list ? listLen / sizeof(Preset) : OLD_PRESETS;
         prefs.getBytes(list ? "pres" : "pre", presets, presetCount * sizeof(Preset));
@@ -162,15 +183,17 @@ void storeLoad() {
     }
     prefs.end();
     // Repair anything out of range
-    for (Palette& p : palettes) {
+    for (int k = 0; k < paletteCount; k++) {
+        Palette& p = palettes[k];
         p.name[sizeof(p.name) - 1] = 0;
         p.n = constrain(p.n, 2, PAL_MAX);
+        paletteSanitizeStops(p);
     }
     for (int i = 0; i < presetCount; i++) {
         Preset& p = presets[i];
         p.name[sizeof(p.name) - 1] = 0;
         if (p.effect >= NUM_EFFECTS) presetSetEffect(p, 0);
-        if (p.palette >= NUM_PALETTES) p.palette = 0;
+        if (p.palette >= paletteCount) p.palette = 0;
     }
     for (PresetSync& y : presetSync) {
         if (y.timing > TIMING_BEATS) y.timing = TIMING_TIME;
@@ -219,7 +242,7 @@ void storeLoad() {
         savedSync[i] = presetSync[i];
         for (int m = 0; m < MOTIONS; m++) savedMotion[i][m] = presetMotion[i][m];
     }
-    if (!ok || old) save();
+    if (!ok || old || palOld) save();
 }
 
 // ---- Save / Revert per preset
@@ -228,7 +251,7 @@ static bool samePreset(const Preset& a, const Preset& b) {
     if (a.effect != b.effect || a.palette != b.palette || a.sparkle != b.sparkle) return false;
     for (int j = 0; j < MAXP; j++)
         if (a.p[j] != b.p[j]) return false;
-    return true;  // the name is saved at once, so it never differs
+    return strncmp(a.name, b.name, sizeof(a.name)) == 0;  // a new name is an edit too
 }
 
 static bool sameMotion(const Motion& a, const Motion& b) {
@@ -248,16 +271,30 @@ bool presetChanged(int i) {
     return false;
 }
 
-void presetSave(int i) {
-    if (i < 0 || i >= presetCount) return;
+// Save. With a new name, the edits become a new preset of that name (added at the end), and
+// preset i goes back to what was saved: its index is returned. Otherwise i itself is saved.
+// inPlace: always save i itself (the new name too).
+int presetSave(int i, bool inPlace) {
+    if (i < 0 || i >= presetCount) return -1;
+    if (!inPlace && strncmp(presets[i].name, savedPresets[i].name, sizeof(presets[i].name)) != 0) {
+        char name[sizeof(presets[i].name)];
+        strlcpy(name, presets[i].name, sizeof(name));
+        const int k = presetAdd(i);  // a copy of what plays, edits and motions included
+        if (k < 0) return -1;
+        strlcpy(presets[k].name, name, sizeof(presets[k].name));
+        strlcpy(savedPresets[k].name, name, sizeof(savedPresets[k].name));
+        presetRevert(i);
+        return k;
+    }
     savedPresets[i] = presets[i];
     savedSync[i] = presetSync[i];
     for (int m = 0; m < MOTIONS; m++) savedMotion[i][m] = presetMotion[i][m];
     storeMarkDirty();
+    return i;
 }
 
 void presetSaveAll() {
-    for (int i = 0; i < presetCount; i++) presetSave(i);
+    for (int i = 0; i < presetCount; i++) presetSave(i, true);
 }
 
 void presetRevert(int i) {
@@ -273,12 +310,13 @@ void presetChangeEffect(int i, uint8_t effect) {
     for (int m = 0; m < MOTIONS; m++) presetMotion[i][m] = MOTION_OFF;  // their sliders are gone
 }
 
+// A new name is an edit: saved with Save (as a new preset), dropped with Revert
 void presetRename(int i, const char* name) {
     if (i < 0 || i >= presetCount) return;
     strlcpy(presets[i].name, name, sizeof(presets[i].name));
-    strlcpy(savedPresets[i].name, name, sizeof(savedPresets[i].name));
-    storeMarkDirty();
 }
+
+const char* presetSavedName(int i) { return i >= 0 && i < presetCount ? savedPresets[i].name : ""; }
 
 // Adds a copy of preset `from` after the last one. Returns its index, or -1 when full.
 int presetAdd(int from) {
@@ -373,6 +411,39 @@ float motionShape(uint8_t shape, float ph) {
         }
     }
     return x;
+}
+
+// ---- The palette list
+
+// Adds a copy of palette rom at the end. Its index, or -1 when full.
+int paletteAdd(int from) {
+    if (paletteCount >= MAX_PALETTES) return -1;
+    if (from < 0 || from >= paletteCount) from = 0;
+    const int k = paletteCount++;
+    palettes[k] = palettes[from];
+    char name[sizeof(palettes[k].name)];
+    snprintf(name, sizeof(name), "%.10s copy", palettes[from].name);
+    strlcpy(palettes[k].name, name, sizeof(palettes[k].name));
+    storeMarkDirty();
+    return k;
+}
+
+// Removes palette k; the last one stays. Presets that used it take the first palette, and the
+// numbers of the palettes after it move down by one (in the saved presets too).
+bool paletteDelete(int k) {
+    if (paletteCount <= 1 || k < 0 || k >= paletteCount) return false;
+    for (int j = k; j < paletteCount - 1; j++) palettes[j] = palettes[j + 1];
+    paletteCount--;
+    auto fix = [&](Preset& p) {
+        if (p.palette == k) p.palette = 0;
+        else if (p.palette > k) p.palette--;
+    };
+    for (int i = 0; i < presetCount; i++) {
+        fix(presets[i]);
+        fix(savedPresets[i]);
+    }
+    storeMarkDirty();
+    return true;
 }
 
 void storeMarkDirty() {

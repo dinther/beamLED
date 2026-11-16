@@ -33,7 +33,11 @@ select,input[type=text],input[type=password],input[type=number]{flex:1;min-width
 .pal:last-child{border-bottom:0}
 .pal input[type=text]{flex:0 1 140px}
 .pal input[type=color]{width:38px;height:32px;border:1px solid #444;border-radius:6px;background:none;padding:2px}
-.pal .sw{flex:1 0 100%;height:12px;border-radius:4px}
+.pal .sw{flex:1 0 100%;height:16px;border-radius:4px;position:relative;margin:4px 0 10px;touch-action:none}
+.pal .stop{position:absolute;top:-4px;width:14px;height:24px;margin-left:-7px;border-radius:4px;border:2px solid #fff;box-shadow:0 0 0 1px #000a;cursor:ew-resize}
+.pal .stop:hover,.pal .stop.drag{border-color:var(--acc)}
+.pal .del{margin-left:auto}
+.pal-add{margin-top:8px}
 .pal button{padding:4px 10px}
 .status{color:var(--dim);font-size:13px;margin-top:6px}
 .nets button{display:block;width:100%;text-align:left;margin:3px 0}
@@ -66,7 +70,7 @@ function markChanged(i) {
   if (saveBtn && i == S.current) { saveBtn.disabled = false; saveBtn.className = 'on'; saveBtn.textContent = 'Save •'; }
 }
 const post = (u, o) => {
-  if (u == '/api/preset' && !o.save && !o.revert && o.name == null) markChanged(o.index);
+  if (u == '/api/preset' && !o.save && !o.revert) markChanged(o.index);
   return fetch(u, {method: 'POST', body: JSON.stringify(o)}).then(r => r.ok ? r.json() : r.text().then(t => { throw new Error(t); }));
 };
 
@@ -168,6 +172,10 @@ const H = {
   palColour: 'A colour of this palette. Effects blend between the colours in this order. Click to change it; the ceiling follows as you pick.',
   palAdd: 'Adds a colour at the end, a copy of the last one. Up to 5 colours.',
   palRemove: 'Removes the last colour. At least 2 colours stay.',
+  palStops: 'The palette as effects use it, first colour on the left. Drag a marker to move its colour along the palette: bunch colours together for a quick change, spread them for a long blend. A marker stays between its neighbours. New palettes start evenly spaced.',
+  palAddPalette: 'Adds a new palette at the end, a copy of the last one, to change as you like. Up to 16 palettes.',
+  palDelete: 'Deletes this palette: click once, then again within 3 seconds to confirm. Presets that use it switch to the first palette. The last palette can\u2019t be deleted.',
+  saveAsNew: 'You renamed this preset, so Save makes a new preset with the new name and your changes, and plays it. This preset goes back to how it was saved. To keep this preset\u2019s name, change the name back.',
   target: 'Where the Art-Net goes: the PixLite (192.168.0.50) for the ceiling, or a PC running Beam for testing. Use the device’s own address.',
   gamma: 'The brightness curve, so fades look even to the eye. 2.2 suits most LEDs; lower makes dark parts brighter and flatter, higher gives deeper darks.',
   link: 'Ableton Link. Enabled: tempo and beat are shared with Ableton Live and other Link apps on the same network (the Live laptop joins the board’s network or its hotspot). Disabled: the board keeps its own tempo.',
@@ -270,7 +278,11 @@ function draw() {
   app.append(heading('Preset ' + (S.current + 1), H.presets));
   const card = h('div', {className: 'card'});
   const nm = h('input', {type: 'text', value: p.name, maxLength: 19});
-  nm.onchange = () => { p.name = nm.value; post('/api/preset', {index: S.current, name: nm.value}); draw(); };
+  nm.onchange = () => {
+    if (p.savedName == null && nm.value != p.name) p.savedName = p.name;
+    if (nm.value == p.savedName) delete p.savedName;
+    p.name = nm.value; post('/api/preset', {index: S.current, name: nm.value}); draw();
+  };
   card.append(field('Name', nm, H.name));
   const earlier = button('◀ Earlier', H.earlier, {disabled: S.current == 0});
   earlier.onclick = () => presetList({move: S.current, to: S.current - 1});
@@ -324,8 +336,13 @@ function draw() {
   motions.forEach((mo, m) => card.append(motionEditor(p, ef, mo, m)));
   const reset = button('Reset parameters', H.reset);
   reset.onclick = () => { p.params = ef.params.map(d => d.def); p.changed = true; post('/api/preset', {index: S.current, params: p.params}); draw(); };
-  const save = button(p.changed ? 'Save •' : 'Saved', H.save, {className: p.changed ? 'on' : '', disabled: !p.changed});
-  save.onclick = () => post('/api/preset', {index: S.current, save: true}).then(np => { S.presets[S.current] = np; draw(); });
+  const asNew = p.savedName != null;
+  const save = button(asNew ? 'Save as new •' : p.changed ? 'Save •' : 'Saved', asNew ? H.saveAsNew : H.save,
+    {className: p.changed || asNew ? 'on' : '', disabled: !p.changed && !asNew});
+  save.onclick = () => post('/api/preset', {index: S.current, save: true}).then(np => {
+    if (np.savedAs != null) { S.current = np.savedAs; load(); return; }  // a new preset: the list changed
+    S.presets[S.current] = np; draw();
+  });
   saveBtn = save;
   const revert = button('Revert', H.revert, {disabled: !p.changed});
   revert.onclick = () => post('/api/preset', {index: S.current, revert: true}).then(np => { S.presets[S.current] = np; draw(); });
@@ -335,6 +352,11 @@ function draw() {
   app.append(heading('Palettes', H.palettes));
   const pc = h('div', {className: 'card'});
   S.palettes.forEach((q, i) => pc.append(paletteEditor(q, i)));
+  if (S.palettes.length < (S.maxPalettes || 16)) {
+    const add = button('+ Add palette', H.palAddPalette, {className: 'pal-add'});
+    add.onclick = () => post('/api/palettes', {add: S.palettes.length - 1}).then(st => { S = Object.assign(st, {effects: S.effects}); draw(); });
+    pc.append(add);
+  }
   app.append(pc);
 
   app.append(h('h2', {textContent: 'Output'}));
@@ -435,30 +457,75 @@ function animateMotions() {
 }
 requestAnimationFrame(animateMotions);
 
+// Where each colour sits, 0..1: the palette's own, or evenly spaced
+const evenStops = n => Array.from({length: n}, (_, j) => n > 1 ? j / (n - 1) : 0);
+const isEven = s => s.every((v, j) => Math.abs(v - (s.length > 1 ? j / (s.length - 1) : 0)) < 1e-3);
 function paletteEditor(q, i) {
+  if (!q.stops || q.stops.length != q.colors.length) q.stops = evenStops(q.colors.length);
   const box = h('div', {className: 'pal'});
-  const sw = h('div', {className: 'sw'});
-  const paint = () => sw.style.background = 'linear-gradient(90deg,' + q.colors.join(',') + ')';
-  const send = () => throttle('pal' + i, () => post('/api/palette', {index: i, name: q.name, colors: q.colors}));
+  const sw = tip(h('div', {className: 'sw'}), H.palStops);
+  const paint = () => sw.style.background = 'linear-gradient(90deg,' + q.colors.map((c, j) => c + ' ' + (q.stops[j] * 100).toFixed(1) + '%').join(',') + ')';
+  const send = () => throttle('pal' + i, () => post('/api/palette', {index: i, name: q.name, colors: q.colors, stops: q.stops}));
   const nm = tip(h('input', {type: 'text', value: q.name, maxLength: 15}), H.palName);
   nm.onchange = () => { q.name = nm.value; send(); draw(); };
   box.append(nm);
   q.colors.forEach((c, j) => {
     const ci = tip(h('input', {type: 'color', value: c}), H.palColour + ' (colour ' + (j + 1) + ' of ' + q.colors.length + ')');
-    ci.oninput = () => { q.colors[j] = ci.value; paint(); send(); };
+    ci.oninput = () => { q.colors[j] = ci.value; paint(); markers(); send(); };
     box.append(ci);
   });
   if (q.colors.length < 5) {
     const b = button('+', H.palAdd);
-    b.onclick = () => { q.colors.push(q.colors[q.colors.length - 1]); send(); draw(); };
+    b.onclick = () => {
+      const even = isEven(q.stops);
+      q.colors.push(q.colors[q.colors.length - 1]);
+      if (even) q.stops = evenStops(q.colors.length);
+      else { const n = q.stops.length; q.stops[n - 1] = (q.stops[n - 2] || 0) / 2 + q.stops[n - 1] / 2; q.stops.push(1); }
+      send(); draw();
+    };
     box.append(b);
   }
   if (q.colors.length > 2) {
     const b = button('−', H.palRemove);
-    b.onclick = () => { q.colors.pop(); send(); draw(); };
+    b.onclick = () => {
+      const even = isEven(q.stops);
+      q.colors.pop(); q.stops.pop();
+      if (even) q.stops = evenStops(q.colors.length);
+      send(); draw();
+    };
     box.append(b);
   }
+  if (S.palettes.length > 1) {
+    const del = button('Delete', H.palDelete, {className: 'del'});
+    let armed = null;
+    del.onclick = () => {
+      if (armed) { clearTimeout(armed); post('/api/palettes', {delete: i}).then(st => { S = Object.assign(st, {effects: S.effects}); draw(); }); return; }
+      del.textContent = 'Really delete?'; del.className = 'del warn';
+      armed = setTimeout(() => { armed = null; del.textContent = 'Delete'; del.className = 'del'; }, 3000);
+    };
+    box.append(del);
+  }
+  // The stop markers: drag along the bar, each kept between its neighbours
+  const markers = () => {
+    sw.replaceChildren(...q.colors.map((c, j) => {
+      const mk = h('div', {className: 'stop'});
+      mk.style.left = (q.stops[j] * 100) + '%';
+      mk.style.background = c;
+      mk.onpointerdown = e => {
+        e.preventDefault(); mk.setPointerCapture(e.pointerId); mk.classList.add('drag');
+        mk.onpointermove = ev => {
+          const r = sw.getBoundingClientRect();
+          const lo = j > 0 ? q.stops[j - 1] : 0, hi = j < q.stops.length - 1 ? q.stops[j + 1] : 1;
+          q.stops[j] = Math.round(Math.min(hi, Math.max(lo, (ev.clientX - r.left) / r.width)) * 1000) / 1000;
+          mk.style.left = (q.stops[j] * 100) + '%'; paint(); send();
+        };
+        mk.onpointerup = () => { mk.onpointermove = null; mk.classList.remove('drag'); };
+      };
+      return mk;
+    }));
+  };
   paint();
+  markers();
   box.append(sw);
   return box;
 }
@@ -668,6 +735,11 @@ function oscValue(addr, v) {
     const q = S.palettes[n];
     if (!q) return;
     if (key == 'colours') { if (q.colors.length != v) reload(); return; }
+    if (key.startsWith('position')) {
+      const j = +key.slice(8) - 1;
+      if (q.stops && j < q.stops.length && Math.abs(q.stops[j] - v) > 1e-4) { q.stops[j] = v; redraw(); }
+      return;
+    }
     const j = +key.slice(6) - 1;
     if (j < q.colors.length && q.colors[j] != v) { q.colors[j] = v; redraw(); }
   }

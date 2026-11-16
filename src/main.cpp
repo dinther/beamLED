@@ -170,7 +170,7 @@ static float beatPulse() {
 static void renderFrame(float dt) {
     Preset& p = presets[settings.current];
     const PresetSync& y = presetSync[settings.current];
-    const Palette& pal = palettes[p.palette < NUM_PALETTES ? p.palette : 0];
+    const Palette& pal = palettes[p.palette < paletteCount ? p.palette : 0];
     // The palette tables are rebuilt only when the palette changes
     static Palette built;
     static bool have = false;

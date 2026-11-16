@@ -7,7 +7,7 @@
 #include "config.h"
 
 constexpr int MAX_PRESETS = 32;  // presets can be added up to this many
-constexpr int NUM_PALETTES = 8;
+constexpr int MAX_PALETTES = 16;  // palettes can be added up to this many
 
 struct Preset {
     char name[20];
@@ -60,7 +60,8 @@ struct LinkSettings {
     float latencyMs;  // frames are rendered this much ahead, to land on the beat at the LEDs
 };
 
-extern Palette palettes[NUM_PALETTES];
+extern Palette palettes[MAX_PALETTES];
+extern int paletteCount;  // 1..MAX_PALETTES
 extern Preset presets[MAX_PRESETS];
 extern PresetSync presetSync[MAX_PRESETS];
 extern int presetCount;  // 1..MAX_PRESETS
@@ -78,11 +79,16 @@ int presetAdd(int from);          // a copy of preset 'from' at the end; its ind
 bool presetDelete(int i);         // never the last one
 bool presetMove(int from, int to);
 // Edits to a preset (sliders, effect, palette, timing, OSC) play at once but aren't saved until
-// presetSave; presetRevert goes back to the saved version. A name is saved at once.
+// presetSave; presetRevert goes back to the saved version. A new name is an edit too: saving it
+// makes a new preset of that name, and the original goes back to what was saved.
 bool presetChanged(int i);   // differs from its saved version
-void presetSave(int i);
+int presetSave(int i, bool inPlace = false);  // the index that was saved (a new one for a new name), or -1
 void presetSaveAll();
 void presetRevert(int i);
-void presetRename(int i, const char* name);
+void presetRename(int i, const char* name);  // an edit, until Save
+const char* presetSavedName(int i);
 // Another effect for preset i: its parameters to that effect's defaults, its motions off
 void presetChangeEffect(int i, uint8_t effect);
+// The palette list (saved a few seconds later)
+int paletteAdd(int from);   // a copy of palette 'from' at the end; its index, or -1 when full
+bool paletteDelete(int k);  // never the last one; presets using it take the first palette

@@ -105,6 +105,7 @@ static void presetJson(JsonObject o, int i) {
     const Preset& p = presets[i];
     o["name"] = p.name;
     o["changed"] = presetChanged(i);  // unsaved edits
+    if (strcmp(p.name, presetSavedName(i)) != 0) o["savedName"] = presetSavedName(i);  // renamed: Save makes a new preset
     o["timing"] = presetSync[i].timing;
     o["beatsExp"] = presetSync[i].beatsExp;
     o["reverse"] = presetSync[i].reverse != 0;
@@ -132,6 +133,8 @@ static void paletteJson(JsonObject o, const Palette& p) {
     o["name"] = p.name;
     JsonArray a = o["colors"].to<JsonArray>();
     for (int j = 0; j < p.n; j++) a.add(hexColour(p.c[j]));
+    JsonArray s = o["stops"].to<JsonArray>();  // where each colour sits, 0..1
+    for (int j = 0; j < p.n; j++) s.add(roundf(p.pos[j] * 1000) / 1000);
 }
 
 static void statusJson(JsonObject o) {
@@ -221,10 +224,11 @@ static void handleState() {
     lay["measuredRows"] = cfg::CEILING_ROWS;
     d["build"] = BUILD;  // the page gets the effects from /api/effects?v=<build>, cached
     JsonArray pl = d["palettes"].to<JsonArray>();
-    for (const Palette& p : palettes) paletteJson(pl.add<JsonObject>(), p);
+    for (int k = 0; k < paletteCount; k++) paletteJson(pl.add<JsonObject>(), palettes[k]);
     JsonArray pr = d["presets"].to<JsonArray>();
     for (int i = 0; i < presetCount; i++) presetJson(pr.add<JsonObject>(), i);
     d["maxPresets"] = MAX_PRESETS;
+    d["maxPalettes"] = MAX_PALETTES;
     d["linkLatency"] = linkSettings.latencyMs;
     sendJson(d);
 }
@@ -287,11 +291,20 @@ static void handlePreset() {
         return;
     }
     if (d["name"].is<const char*>()) {
-        presetRename(i, d["name"].as<const char*>());  // a name is saved at once
+        presetRename(i, d["name"].as<const char*>());  // an edit: Save makes it a new preset
         webChanged();
     }
     // Save: what plays becomes the preset. Revert: back to the saved version.
-    if (d["save"] | false) presetSave(i);
+    int savedAs = -1;  // Save with a new name: the new preset's index
+    if (d["save"] | false) {
+        const int k = presetSave(i);
+        if (k >= 0 && k != i) {
+            savedAs = k;
+            webChanged();
+            if (i == settings.current) engineResetEffect();  // it went back to what was saved
+            engineSelect(k);                                  // the edits play on, as the new preset
+        }
+    }
     if (d["revert"] | false) {
         const uint8_t was = p.effect;
         presetRevert(i);
@@ -306,7 +319,7 @@ static void handlePreset() {
             if (i == settings.current) engineResetEffect();
         }
     }
-    if (d["palette"].is<int>()) p.palette = constrain(d["palette"].as<int>(), 0, NUM_PALETTES - 1);
+    if (d["palette"].is<int>()) p.palette = constrain(d["palette"].as<int>(), 0, paletteCount - 1);
     if (d["sparkle"].is<float>()) p.sparkle = constrain(d["sparkle"].as<float>(), 0.f, 1.f);
     if (d["params"].is<JsonArray>()) {
         JsonArray a = d["params"].as<JsonArray>();
@@ -320,7 +333,8 @@ static void handlePreset() {
     if (d["pulse"].is<float>()) presetSync[i].pulse = constrain(d["pulse"].as<float>(), 0.f, 1.f);
     // Edits play at once and stay unsaved until Save: nothing to write to flash here
     JsonDocument r;
-    presetJson(r.to<JsonObject>(), i);
+    presetJson(r.to<JsonObject>(), savedAs >= 0 ? savedAs : i);
+    if (savedAs >= 0) r["savedAs"] = savedAs;
     sendJson(r);
 }
 
@@ -344,11 +358,24 @@ static void handlePresetList() {
     handleState();
 }
 
+// The palette list: {"add": from} copies palette rom to the end, {"delete": k}. Answers with the
+// whole state.
+static void handlePaletteList() {
+    JsonDocument d;
+    if (!readBody(d)) return;
+    bool ok = false;
+    if (d["add"].is<int>()) ok = paletteAdd(d["add"].as<int>()) >= 0;
+    else if (d["delete"].is<int>()) ok = paletteDelete(d["delete"].as<int>());
+    if (!ok) { reply(400, "text/plain", "not possible"); return; }
+    webChanged();
+    handleState();
+}
+
 static void handlePalette() {
     JsonDocument d;
     if (!readBody(d)) return;
     const int i = d["index"] | -1;
-    if (i < 0 || i >= NUM_PALETTES) { reply(400, "text/plain", "bad index"); return; }
+    if (i < 0 || i >= paletteCount) { reply(400, "text/plain", "bad index"); return; }
     Palette& p = palettes[i];
     if (d["name"].is<const char*>()) {
         strlcpy(p.name, d["name"].as<const char*>(), sizeof(p.name));
@@ -360,7 +387,14 @@ static void handlePalette() {
             if (p.n != min((int)a.size(), PAL_MAX)) webChanged();
             p.n = min((int)a.size(), PAL_MAX);
             for (int j = 0; j < p.n; j++) p.c[j] = parseColour(a[j].as<const char*>());
+            paletteEvenStops(p);  // unless stops come with them
         }
+    }
+    // stops: where each colour sits along the palette, 0..1 (kept in order)
+    if (d["stops"].is<JsonArray>()) {
+        JsonArray s = d["stops"].as<JsonArray>();
+        for (int j = 0; j < p.n && j < (int)s.size(); j++) p.pos[j] = s[j].as<float>();
+        paletteSanitizeStops(p);
     }
     storeMarkDirty();
     JsonDocument r;
@@ -490,7 +524,8 @@ static const Route ROUTES[] = {
     {"/api/state", HTTP_GET, handleState},       {"/api/effects", HTTP_GET, handleEffects},
     {"/api/status", HTTP_GET, handleStatus},     {"/api/set", HTTP_POST, handleSet},
     {"/api/preset", HTTP_POST, handlePreset},    {"/api/presets", HTTP_POST, handlePresetList},
-    {"/api/palette", HTTP_POST, handlePalette},  {"/api/layout", HTTP_POST, handleLayout},
+    {"/api/palette", HTTP_POST, handlePalette},  {"/api/palettes", HTTP_POST, handlePaletteList},
+     {"/api/layout", HTTP_POST, handleLayout},
     {"/api/link", HTTP_POST, handleLink},        {"/api/net", HTTP_GET, handleNetGet},
     {"/api/net", HTTP_POST, handleNetSet},       {"/api/scan", -1, handleScan},
     {"/api/bench", HTTP_GET, handleBench},

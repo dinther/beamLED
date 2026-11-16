@@ -18,7 +18,7 @@
 // ---------------------------------------------------------------- the address space
 // Every address has a fixed number (node id), so feedback can remember values and
 // subscriptions in small arrays: the globals, then MAX_PRESETS blocks of PSLOTS, then
-// NUM_PALETTES blocks of CSLOTS. A preset's parameters take the slots after its fixed ones.
+// MAX_PALETTES blocks of CSLOTS. A preset's parameters take the slots after its fixed ones.
 
 enum Global : uint8_t { G_PRESET, G_NEXT, G_PREV, G_ON, G_BRIGHTNESS, G_LINK, G_SAVE, NUM_GLOBALS };
 static const char* const GLOBAL_NAME[NUM_GLOBALS] = {"preset", "next", "prev", "on", "brightness", "link", "save"};
@@ -30,11 +30,11 @@ enum MSlot : uint8_t { M_TARGET, M_SHAPE, M_FROM, M_TO, M_SECONDS, M_BEATS, M_PH
 static const char* const MSLOT_NAME[MSLOTS] = {"target", "shape", "from", "to", "seconds", "beats", "phase"};
 static const int M_BASE = P_FIXED + MAXP;
 static const int PSLOTS = M_BASE + MOTIONS * MSLOTS;
-static const int CSLOTS = 1 + PAL_MAX;  // the colour count, then the colours
+static const int CSLOTS = 1 + 2 * PAL_MAX;  // the colour count, the colours, their positions
 
 static const int PRESET_BASE = NUM_GLOBALS;
 static const int PALETTE_BASE = PRESET_BASE + MAX_PRESETS * PSLOTS;
-static const int NUM_NODES = PALETTE_BASE + NUM_PALETTES * CSLOTS;
+static const int NUM_NODES = PALETTE_BASE + MAX_PALETTES * CSLOTS;
 static const int WORDS = (NUM_NODES + 31) / 32;
 
 struct NodeInfo {
@@ -119,7 +119,7 @@ static bool nodeInfo(int id, NodeInfo& n, char* path, size_t len) {
         switch (slot) {
             case P_PLAY: n = {'T', 3, false, 0, 1, "True while this preset is the one playing (or being faded to). Send true to play it; false is ignored."}; break;
             case P_EFFECT: n = {'i', 3, true, 1, (float)NUM_EFFECTS, effectList}; break;
-            case P_PALETTE: n = {'i', 3, true, 1, NUM_PALETTES, "The palette, by its number in the Palettes list on the web page (1 = the first)."}; break;
+            case P_PALETTE: n = {'i', 3, true, 1, (float)paletteCount, "The palette, by its number in the Palettes list on the web page (1 = the first)."}; break;
             case P_SPARKLE: n = {'f', 3, true, 0, 1, "Sparkle overlay: white twinkles on top of the effect. 0 = none, 1 = about 8% of the LEDs lit at a time."}; break;
             case P_TIMING: n = {'i', 3, true, 0, 2, "0 = time (speeds in their own units), 1 = follow the tempo (the set speed at 120 BPM, scaled with the tempo), 2 = beats (the effect's cycle takes a whole number of beats and lands on the bar; only for effects with a cycle)."}; break;
             case P_BEATS: n = {'i', 3, true, 1, 64, "With timing 2 (beats): how many beats one cycle takes: 1, 2, 4, 8, 16, 32 or 64 (other numbers go to the nearest of these)."}; break;
@@ -129,6 +129,12 @@ static bool nodeInfo(int id, NodeInfo& n, char* path, size_t len) {
         return true;
     }
     const int k = (id - PALETTE_BASE) / CSLOTS, slot = (id - PALETTE_BASE) % CSLOTS;
+    if (k >= paletteCount) return false;
+    if (slot > PAL_MAX) {
+        snprintf(path, len, "/beamled/palettes/%d/position%d", k + 1, slot - PAL_MAX);
+        n = {'f', 3, true, 0, 1, "Where this colour sits along the palette, 0..1 (0 = the start, 1 = the end). The colours stay in order: a position is kept between its neighbours'."};
+        return true;
+    }
     if (slot == 0) {
         snprintf(path, len, "/beamled/palettes/%d/colours", k + 1);
         n = {'i', 3, true, 2, PAL_MAX, "How many colours the palette uses, 2..5. Colours beyond the count keep their value for when it grows again."};
@@ -187,6 +193,7 @@ static bool nodeValue(int id, char type, uint32_t& v) {
     const int k = (id - PALETTE_BASE) / CSLOTS, slot = (id - PALETTE_BASE) % CSLOTS;
     const Palette& pal = palettes[k];
     if (slot == 0) return i(pal.n);
+    if (slot > PAL_MAX) return f(pal.pos[slot - PAL_MAX - 1]);
     const CRGB& c = pal.c[slot - 1];
     v = (uint32_t)c.r << 24 | (uint32_t)c.g << 16 | (uint32_t)c.b << 8 | 0xff;
     return true;
@@ -219,9 +226,14 @@ static int findNode(const char* path) {
     }
     if (!strncmp(r, "palettes/", 9)) {
         const long k = strtol(r + 9, &e, 10) - 1;
-        if (*e != '/' || k < 0 || k >= NUM_PALETTES) return -1;
+        if (*e != '/' || k < 0 || k >= paletteCount) return -1;
         const int base = PALETTE_BASE + k * CSLOTS;
         if (!strcmp(e + 1, "colours")) return base;
+        if (!strncmp(e + 1, "position", 8)) {
+            char* e2;
+            const long j = strtol(e + 9, &e2, 10);
+            if (*e2 == 0 && j >= 1 && j <= PAL_MAX) return base + PAL_MAX + j;
+        }
         if (!strncmp(e + 1, "colour", 6)) {
             char* e2;
             const long j = strtol(e + 7, &e2, 10);
@@ -379,8 +391,19 @@ static void apply(const char* path, const Arg* a, int n) {
     const int k = (id - PALETTE_BASE) / CSLOTS, slot = (id - PALETTE_BASE) % CSLOTS;
     Palette& pal = palettes[k];
     if (slot == 0) {
-        if (pal.n != (int)v) webChanged();  // colours come or go on the page
-        pal.n = (int)v;
+        if (pal.n != (int)v) {
+            webChanged();  // colours come or go on the page
+            const bool even = paletteHasEvenStops(pal);
+            pal.n = (int)v;
+            if (even) paletteEvenStops(pal);
+            else paletteSanitizeStops(pal);
+        }
+        return;
+    }
+    if (slot > PAL_MAX) {
+        const int j = slot - PAL_MAX - 1;
+        const float lo = j > 0 ? pal.pos[j - 1] : 0.f, hi = j < pal.n - 1 ? pal.pos[j + 1] : 1.f;
+        pal.pos[j] = constrain(v, lo, hi);
         return;
     }
     CRGB c;
@@ -389,7 +412,12 @@ static void apply(const char* path, const Arg* a, int n) {
         return;
     }
     pal.c[slot - 1] = c;
-    if (slot > pal.n) pal.n = slot;
+    if (slot > pal.n) {
+        const bool even = paletteHasEvenStops(pal);
+        pal.n = slot;
+        if (even) paletteEvenStops(pal);
+        else paletteSanitizeStops(pal);
+    }
 }
 
 static bool readString(const uint8_t* d, size_t size, size_t& pos, const char*& out) {
@@ -602,7 +630,7 @@ static bool isContainer(const char* path) {
     }
     if (!strncmp(path, "/beamled/palettes/", 18)) {
         const long k = strtol(path + 18, &e, 10);
-        return e != path + 18 && *e == 0 && k >= 1 && k <= NUM_PALETTES;
+        return e != path + 18 && *e == 0 && k >= 1 && k <= paletteCount;
     }
     return false;
 }
@@ -624,7 +652,7 @@ static void writeTree(Out& o, const char* path) {
     } else if (!strcmp(path, "/beamled/presets")) {
         writeContainer(o, path, "The presets, numbered as on the web page", 0, 0, numPtrs, presetCount, "/beamled/presets/%s");
     } else if (!strcmp(path, "/beamled/palettes")) {
-        writeContainer(o, path, "The palettes, numbered as on the web page", 0, 0, numPtrs, NUM_PALETTES, "/beamled/palettes/%s");
+        writeContainer(o, path, "The palettes, numbered as on the web page", 0, 0, numPtrs, paletteCount, "/beamled/palettes/%s");
     } else if (!strncmp(path, "/beamled/presets/", 17)) {
         const int i = atoi(path + 17) - 1;
         snprintf(help, sizeof(help), "%s: %s", presets[i].name, EFFECTS[presets[i].effect].name);
@@ -722,6 +750,7 @@ static uint32_t* lastValue = nullptr;  // NUM_NODES, from the heap (static DRAM 
 static uint32_t known[WORDS];  // lastValue holds what listeners were last sent
 static uint8_t treeEffect[MAX_PRESETS];
 static int treeCount = -1;     // the presets listeners know about (-1: none yet)
+static int treePalettes = -1;  // and the palettes
 
 static inline bool hasBit(const uint32_t* b, int id) { return b[id >> 5] >> (id & 31) & 1; }
 static inline void setBit(uint32_t* b, int id, bool on) {
@@ -772,6 +801,18 @@ static void forget(int from, int to) {
 
 // Tells listeners about presets added, removed, or given another effect (other parameters)
 static void updateTree() {
+    if (treePalettes < 0) treePalettes = paletteCount;
+    if (treePalettes != paletteCount) {
+        char q[48];
+        for (int k = 0; k < max(treePalettes, paletteCount); k++) {
+            const bool was = k < treePalettes, is = k < paletteCount;
+            if (was == is) continue;
+            snprintf(q, sizeof(q), "/beamled/palettes/%d", k + 1);
+            notifyPath(is ? "PATH_ADDED" : "PATH_REMOVED", q);
+            forget(PALETTE_BASE + k * CSLOTS, PALETTE_BASE + (k + 1) * CSLOTS);
+        }
+        treePalettes = paletteCount;
+    }
     if (treeCount < 0) {
         treeCount = presetCount;
         for (int i = 0; i < MAX_PRESETS; i++) treeEffect[i] = presets[i].effect;
