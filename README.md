@@ -2,7 +2,7 @@
 
 A standalone LED ceiling renderer on a WT32-ETH01 (ESP32). It draws big, bold effects for a ceiling
 of LED bars, from a slow drift of colour to beams and bars that snap and sweep on every beat, and
-sends them as Art-Net to a pixel controller such as an Advatek PixLite. There is no PC in the
+sends them as Art-Net to a pixel controller. There is no PC in the
 chain: the board steps through presets on a single button or by itself, locks to the beat of
 Ableton Live over Ableton Link, and takes live control over OSC (made for
 [MIMa](https://beatline.xyz)).
@@ -156,18 +156,18 @@ Preset changes over OSC play at once and, like changes on the page, are kept wit
 - **Board**: WT32-ETH01 (ESP32, LAN8720 Ethernet, 4 MB flash).
 - **Button**: GPIO4 to GND (internal pull-up). Short press: next preset; long press: on/off.
 - **Output**: Art-Net to the pixel controller. Each row starts at its own universe and fills 170 RGB
-  pixels per universe. The ceiling's PixLite expects bar n (counting from 0) at universe 2n: pixels
-  1-170 there, 171-180 in channels 1-30 of universe 2n+1. That is the default layout.
+  pixels per universe. By default row n (counting from 0) starts at universe 2n, so a row of up to
+  340 LEDs fits; set the start universes on the page to match how the controller is patched.
 - **Power**: the WT32-ETH01's 3.3 V regulator gets warm when it is fed 5 V; give it some air.
 
 ## Network
 
 - **Ethernet with DHCP.** With no answer within 10 s the board takes a fallback address (default
-  192.168.0.10/24, the PixLite's subnet; empty = automatic 169.254.x.x). A DHCP server that turns up
+  192.168.0.10/24; empty = automatic 169.254.x.x). A DHCP server that turns up
   within 2 minutes still wins.
 - **WiFi only when the board can't be reached otherwise.** Cable unplugged: it joins the backup WiFi
   network, or opens a hotspot named after the board. On the fallback address (the cable goes only to
-  the PixLite) the hotspot opens too, since it is then the only way to the page.
+  the pixel controller) the hotspot opens too, since it is then the only way to the page.
 - `http://<name>.local` over mDNS; firmware updates over the network.
 
 ## Building and flashing

@@ -59,7 +59,7 @@ void ArtNetOut::sendUniverse(uint16_t universe, const uint8_t* data, uint16_t le
 }
 
 // Each row starts at its own universe (layout.rowUni) and fills 170 RGB pixels per universe. The
-// ceiling's PixLite: 180 LEDs per row, row n = universe 2n (pixels 1-170) + 2n+1 (pixels 171-180).
+// default: row n at universe 2n, so a row of up to 340 LEDs fits (pixels 1-170, then 171-340 in 2n+1).
 void ArtNetOut::sendAll() {
     const int upr = (nx + 169) / 170;
     for (int b = 0; b < ny; b++) {

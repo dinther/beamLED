@@ -115,7 +115,7 @@ static void layoutDefaults() {
     // Mean measured row spacing / LED spacing: (7.42 m / 14) / (5 m / 180)
     layout.aspect = 19.1f;
     layout.measured = 1;
-    layoutFillUniverses(layout, 0, 0);  // the PixLite: row n at universe 2n
+    layoutFillUniverses(layout, 0, 0);  // row n at universe 2n
 }
 
 // The layout has its own key, so changing it never resets presets or palettes

@@ -11,9 +11,9 @@ extern const float CEILING_Y[CEILING_ROWS];
 
 constexpr int FPS = 40;
 
-// Default fallback address when no DHCP server answers (the cable goes only to the PixLite)
+// Default fallback address when no DHCP server answers (connected directly to the pixel controller)
 constexpr uint8_t ETH_IP[4] = {192, 168, 0, 10};
-constexpr uint8_t DEFAULT_TARGET[4] = {192, 168, 0, 20};  // Beam; PixLite is 192.168.0.50
+constexpr uint8_t DEFAULT_TARGET[4] = {192, 168, 0, 20};  // where Art-Net goes until it is set on the page
 
 constexpr int BUTTON_PIN = 4;          // to GND; short press next preset, long press on/off
 

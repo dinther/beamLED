@@ -305,7 +305,7 @@ static void updateWifi() {
     if (linkUp) {
         // Cable in a network with DHCP (or still asking): reachable over the cable
         if (!usingFallback) { stopWifi(); return; }
-        // Cable on the fallback address leads only to the PixLite: hotspot for the web page
+        // Cable on the fallback address leads only to the pixel controller: hotspot for the web page
         if (wifiState != WIFI_HOTSPOT || hotspotWithSta) {
             stopWifi();
             startHotspot(false);

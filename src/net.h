@@ -1,12 +1,12 @@
 // Network access, ported from ArtSwitch (same author, MIT):
 // - Ethernet with DHCP. No answer within 10 s: fall back to a fixed address (default
-//   192.168.0.10/24, the PixLite's subnet; empty = automatic 169.254.x.x from the MAC). A DHCP
+//   192.168.0.10/24, the pixel controller's subnet; empty = automatic 169.254.x.x from the MAC). A DHCP
 //   server that shows up within 2 minutes still wins; after that the address is held.
 // - http://<name>.local (mDNS), firmware updates over the network (ArduinoOTA).
 // - WiFi only when the board is otherwise unreachable:
 //     cable unplugged      -> join the backup WiFi network, else a hotspot named after the
 //                             board (as ArtSwitch)
-//     cable on fallback IP -> hotspot (the cable leads only to the PixLite). The backup WiFi is
+//     cable on fallback IP -> hotspot (the cable leads only to the pixel controller). The backup WiFi is
 //                             not joined then: its subnet could clash with the cable's.
 //     cable with DHCP      -> WiFi off
 //   On the hotspot the board answers every DNS name with its own address.

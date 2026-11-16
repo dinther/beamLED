@@ -1,4 +1,4 @@
-// beamLED: standalone LED ceiling renderer (WT32-ETH01 -> Art-Net -> PixLite).
+// beamLED: standalone LED ceiling renderer (WT32-ETH01 -> Art-Net -> pixel controller).
 // Effects work in real coordinates (metres) on the LEDs that exist, never on a dense grid.
 #include <Arduino.h>
 
