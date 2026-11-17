@@ -12,7 +12,11 @@ static const char WEB_PAGE[] PROGMEM = R"HTML(<!doctype html>
 body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.4 system-ui,sans-serif}
 main{max-width:640px;margin:auto;padding:12px 16px 40px}
 h1{font-size:20px;margin:0;flex:1}
-h2{font-size:14px;text-transform:uppercase;letter-spacing:.06em;color:var(--dim);margin:22px 0 8px}
+h2{font-size:14px;text-transform:uppercase;letter-spacing:.06em;color:var(--dim);margin:22px 0 8px;cursor:pointer;user-select:none}
+h2::before{content:'BE';display:inline-block;width:1.2em;transition:transform .15s}
+h2.folded::before{transform:rotate(-90deg)}
+[hidden]{display:none!important}
+@media (prefers-reduced-motion:reduce){h2::before{transition:none}}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
 button{background:#2a2a2a;color:var(--fg);border:1px solid #444;border-radius:7px;padding:7px 12px;font:inherit;cursor:pointer}
 button.on{background:var(--acc);border-color:var(--acc);color:#000}
@@ -137,7 +141,7 @@ document.addEventListener('mouseover', e => {
 });
 document.addEventListener('click', e => {
   const t = e.target.closest('[data-tip]');
-  if (touch && t && (e.target.tagName == 'LABEL' || e.target.tagName == 'H2')) showTip(t);
+  if (touch && t && e.target.tagName == 'LABEL') showTip(t);  // headings fold; their help: long press
   else if (touch) hideTip();
 }, true);
 document.addEventListener('contextmenu', e => {
@@ -409,7 +413,38 @@ function draw() {
     post('/api/restart', {});
   };
   app.append(h('div', {className: 'card'}, stats, h('div', {className: 'btns'}, rs)));
+  applyFolds(app);
   showStatus();
+}
+
+// Each section folds under its heading; this browser remembers which (a convenience: the page
+// works the same without storage). The key is the heading without numbers ("Preset 3" -> "Preset").
+const FOLD_KEY = 'beamled.folded';
+let folded = {};
+try { folded = JSON.parse(localStorage.getItem(FOLD_KEY) || '{}') || {}; } catch (e) { folded = {}; }
+function applyFolds(app) {
+  let key = null, head = null;
+  for (const el of [...app.children]) {
+    if (el.tagName == 'H2') {
+      head = el;
+      key = el.textContent.replace(/[0-9]+/g, '').trim();
+      el.classList.toggle('folded', !!folded[key]);
+      el.setAttribute('role', 'button');
+      el.tabIndex = 0;
+      el.setAttribute('aria-expanded', folded[key] ? 'false' : 'true');
+      const k = key;
+      const toggle = () => {
+        folded[k] = !folded[k];
+        if (!folded[k]) delete folded[k];
+        try { localStorage.setItem(FOLD_KEY, JSON.stringify(folded)); } catch (e) {}
+        applyFolds(app);
+      };
+      el.onclick = toggle;
+      el.onkeydown = e => { if (e.key == 'Enter' || e.key == ' ') { e.preventDefault(); toggle(); } };
+    } else if (key) {
+      el.hidden = !!folded[key];
+    }
+  }
 }
 
 // ---- Motions: the same shapes as the board (store.cpp, motionShape)
