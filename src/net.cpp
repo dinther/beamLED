@@ -163,18 +163,34 @@ static void onNetworkEvent(WiFiEvent_t event) {
         case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
             wifiGotIp = false;
             break;
-        case ARDUINO_EVENT_WIFI_AP_STACONNECTED:
-            Serial.printf("Hotspot: a client joined (%d now)\n", WiFi.softAPgetStationNum());
-            break;
-        case ARDUINO_EVENT_WIFI_AP_STADISCONNECTED:
-            Serial.printf("Hotspot: a client left (%d now)\n", WiFi.softAPgetStationNum());
-            break;
-        case ARDUINO_EVENT_WIFI_AP_STAIPASSIGNED:
-            Serial.println("Hotspot: a client got an address");
-            break;
         default:
             break;
     }
+}
+
+// Hotspot clients with their MAC and address: what to look for when a phone can't reach the page
+static void onHotspotEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
+    const uint8_t* m = nullptr;
+    const char* what = nullptr;
+    switch (event) {
+        case ARDUINO_EVENT_WIFI_AP_STACONNECTED:
+            m = info.wifi_ap_staconnected.mac;
+            what = "joined";
+            break;
+        case ARDUINO_EVENT_WIFI_AP_STADISCONNECTED:
+            m = info.wifi_ap_stadisconnected.mac;
+            what = "left";
+            break;
+        case ARDUINO_EVENT_WIFI_AP_STAIPASSIGNED:
+            Serial.printf("Hotspot: client got %s, board is %s\n",
+                          IPAddress(info.wifi_ap_staipassigned.ip.addr).toString().c_str(),
+                          WiFi.softAPIP().toString().c_str());
+            return;
+        default:
+            return;
+    }
+    Serial.printf("Hotspot: %02x:%02x:%02x:%02x:%02x:%02x %s (%d now)\n", m[0], m[1], m[2], m[3], m[4], m[5],
+                  what, WiFi.softAPgetStationNum());
 }
 
 static void checkDhcpFallback() {
@@ -501,6 +517,7 @@ static void startServicesOnce() {
 
 void netBegin() {
     WiFi.onEvent(onNetworkEvent);
+    WiFi.onEvent(onHotspotEvent);
     WiFi.persistent(false);  // the network lives in our own settings
     WiFi.mode(WIFI_OFF);
     ETH.begin();  // pins and PHY come from the wt32-eth01 board variant
