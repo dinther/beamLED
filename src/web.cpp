@@ -91,19 +91,22 @@ static void sendJson(JsonDocument& d) {
     replyJson = true;
 }
 
-// Serialised JSON straight into the HTTP reply, 1 KB at a time
+// Serialised JSON straight into the HTTP reply, 4 KB at a time (the server's shared buffer):
+// each piece goes out as a few packets, and over the hotspot 1 KB pieces made big replies stall
 struct ChunkOut {
     httpd_req_t* req;
-    char buf[1024];
+    char* buf;
+    size_t size;
     size_t n = 0;
     esp_err_t err = ESP_OK;
+    ChunkOut(httpd_req_t* r) : req(r) { buf = oscReplyBuffer(size); }
     void flush() {
         if (n && err == ESP_OK) err = httpd_resp_send_chunk(req, buf, n);
         n = 0;
     }
     size_t write(uint8_t c) {
         buf[n++] = (char)c;
-        if (n == sizeof(buf)) flush();
+        if (n == size) flush();
         return 1;
     }
     size_t write(const uint8_t* s, size_t len) {
@@ -679,7 +682,7 @@ bool webApi(httpd_req_t* req, esp_err_t& result) {
     httpd_resp_set_type(req, replyType);
     if (replyCache) httpd_resp_set_hdr(req, "Cache-Control", "public, max-age=31536000, immutable");
     if (replyJson) {
-        ChunkOut out{req};
+        ChunkOut out(req);
         serializeJson(replyDoc, out);
         out.flush();
         result = out.err == ESP_OK ? httpd_resp_send_chunk(req, nullptr, 0) : out.err;

@@ -511,6 +511,11 @@ static httpd_handle_t server = nullptr;
 // make the tree come down much faster (each chunk is a TCP round trip).
 static const size_t CHUNK = 4096;
 static char* chunkBuf = nullptr;  // CHUNK bytes from the heap (static DRAM is full)
+// The web API's JSON replies use it too: they run on the same server task, never at the same time
+char* oscReplyBuffer(size_t& size) {
+    size = CHUNK;
+    return chunkBuf;
+}
 struct Out {
     httpd_req_t* req;
     char* buf;  // the shared chunk buffer: only the server's task writes replies

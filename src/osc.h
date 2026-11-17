@@ -21,6 +21,10 @@
 // Values are in real units, as the web page shows them. Preset changes from OSC play at once but,
 // as edits on the web page, aren't saved until Save on the page or /beamled/save (all presets).
 #pragma once
+
+#include <stddef.h>
+
+char* oscReplyBuffer(size_t& size);  // the HTTP server's reply buffer (its task only)
 #include <Arduino.h>
 
 void oscLoop();          // from loop(): starts once the network is up, then takes OSC in
