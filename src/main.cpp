@@ -208,7 +208,7 @@ static void updateFade(float dt) {
 static void updateLink() {
     // A Link that is never enabled is never created: no threads, no sockets, nothing on the
     // hotspot. Until then the board keeps its own beat at its own tempo.
-    if (!linkClock && linkSettings.enabled) {
+    if (!linkClock && linkSettings.enabled && !netConfigMode()) {  // no Link in config mode
         const double from = beat.beat;
         linkClock = new LinkClock(linkSettings.bpm);
         linkClock->setBeat(from);
@@ -331,6 +331,11 @@ static void pollButton() {
     static bool shortWaiting = false;
     const bool now = digitalRead(cfg::BUTTON_PIN) == LOW;
     const uint32_t t = millis();
+    static bool armed = false;  // a press only counts once the button was up: holding it at
+    if (!armed) {               // power-on (config mode) is not a long press
+        armed = !now;
+        return;
+    }
     if (now != down && t - changedAt > 30) {  // debounce
         changedAt = t;
         down = now;
@@ -378,10 +383,13 @@ void setup() {
     Serial.begin(115200);
     Serial.println("\nbeamLED starting");
     pinMode(cfg::BUTTON_PIN, INPUT_PULLUP);
+    delay(20);  // let the pull-up settle
+    // The button held at power-on: config mode (hotspot and web page only, no Art-Net)
+    const bool config = digitalRead(cfg::BUTTON_PIN) == LOW;
     storeLoad();
     netLoad();
     effectsInit();
-    netBegin();
+    netBegin(config);
     artnet.begin();
     webBegin();
     printLayout();
@@ -422,7 +430,7 @@ void loop() {
         else memset(leds, 0, layoutLeds() * sizeof(CRGB));
         buildOutLut();
         t1 = micros();
-        const IPAddress to = netArtNetTarget(IPAddress(settings.target));
+        const IPAddress to(settings.target);
         if (netCanSendTo(to)) artnet.send(to, leds, outLut);  // handed to its task
         else if (netCanSend()) artnet.skipped++;
     }

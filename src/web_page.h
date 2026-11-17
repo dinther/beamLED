@@ -49,7 +49,6 @@ select,input[type=text],input[type=password],input[type=number]{flex:1;min-width
 .stats{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:14px}
 .stats dt{color:var(--dim)}
 .stats dd{margin:0;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
-.nets button{display:block;width:100%;text-align:left;margin:3px 0}
 .hint{color:var(--dim);font-size:13px}
 .unis{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px 12px;margin:6px 0 10px}
 .unis label{display:flex;align-items:center;gap:6px;color:#bbb;font-size:13px}
@@ -150,6 +149,7 @@ addEventListener('scroll', () => { if (!touch) hideTip(); }, true);
 const H = {
   on: 'Switches the ceiling on or off with a one-second fade, the same as a long press of the button on the board. Off keeps the board running, so it comes back where it was.',
   brightness: 'Master brightness for every preset. It works after the gamma curve, so 50% looks about half as bright. Saved, and kept after a power cut.',
+  restart: 'Restarts the board, after a second tap to confirm. The lights go out for a few seconds. Hold the button on the board while it powers up for config mode (hotspot and this page only).',
   status: 'Frames per second (the target is 40) and the time one frame takes to draw (25 ms is the budget). Temperature: the chip’s own sensor, uncalibrated, so watch it change rather than trust the exact number; 60-70 °C is normal. Running: time since the board started, and why it started: power-on and restart (an update or a settings change) are normal; brown-out (the power supply dipped), watchdog or crash mean something went wrong. Then the network connection, WiFi, Ableton Link and the free memory.',
   auto: 'Auto: the presets change by themselves, every so many seconds, or every so many bars with Ableton Link (always on the bar line). Only the presets with In Auto ticked take part; the others are dimmed. Picking a preset by hand, here, with the button or over OSC, starts the count again from there. While the ceiling is off Auto waits. A double press of the button on the board turns Auto on, a short press turns it off.',
   autoEvery: 'How often Auto changes preset: a number of seconds, or a number of bars (4 beats each) on the beat grid of Ableton Link or the board\u2019s own tempo.',
@@ -205,10 +205,7 @@ const H = {
   apply: 'Applies the layout at once and saves it. Presets and palettes are kept.',
   netName: 'The board’s name: http://<name>.local, the hotspot’s name and the firmware update name. Takes effect after the restart.',
   fallback: 'The address the board takes when no DHCP server answers within 10 seconds, for example when it is connected directly to a pixel controller. Keep it in the same subnet as the devices it talks to. Empty: an automatic 169.254.x.x address.',
-  ssid: 'A WiFi network the board joins while the Ethernet cable is unplugged, for the web page and Ableton Link. Art-Net only goes out over the cable. Empty: it opens its own hotspot instead.',
-  wifiPass: 'The backup WiFi’s password. Leave it empty to keep the saved one.',
-  scan: 'Lists the WiFi networks in range; click one to fill in its name.',
-  apPass: 'A password for the board’s hotspot, 8 characters or more. Empty: an open hotspot. Type - to remove a saved password.',
+  apPass: 'A password for the config-mode hotspot (button held at power-on), 8 characters or more. Empty: an open hotspot. Type - to remove a saved password.',
   netSave: 'Saves the network settings and restarts the board; the lights go out for a few seconds.',
 };
 
@@ -269,6 +266,7 @@ function draw() {
   onb.onclick = () => { S.on = !S.on; post('/api/set', {on: S.on}); draw(); };
   app.append(h('div', {className: 'top'}, h('h1', {textContent: 'beamLED'}), onb));
   app.append(h('div', {className: 'conn', id: 'status'}));  // only when the board can't be reached
+  if (S.configMode) app.append(h('div', {className: 'conn', textContent: 'Config mode: hotspot and this page only, the lights get no data. Restart (at the bottom) to run normally.'}));
   app.append(h('div', {className: 'card'},
     slider('Brightness', 0, 255, 1, S.brightness, v => Math.round(v / 2.55) + '%',
       v => { S.brightness = v; liveSend('/beamled/brightness', v / 255, () => post('/api/set', {brightness: v}), true); }, H.brightness, 'brightness')));
@@ -399,7 +397,18 @@ function draw() {
   const stats = h('dl', {className: 'stats'});
   for (const [k, label] of [['frames', 'Frames'], ['temp', 'Temperature'], ['up', 'Running'], ['net', 'Network'], ['wifi', 'WiFi'], ['link', 'Ableton Link'], ['heap', 'Free memory']])
     stats.append(h('dt', {textContent: label}), h('dd', {id: 'st-' + k}));
-  app.append(h('div', {className: 'card'}, stats));
+  const rs = button('Restart', H.restart);
+  let rsArmed = 0;
+  rs.onclick = () => {
+    if (Date.now() - rsArmed > 3000) {  // first tap asks, a second within 3 s restarts
+      rsArmed = Date.now(); rs.textContent = 'Restart now?'; rs.className = 'warn';
+      setTimeout(() => { if (Date.now() - rsArmed >= 3000) { rs.textContent = 'Restart'; rs.className = ''; } }, 3100);
+      return;
+    }
+    rs.disabled = true; rs.textContent = 'Restarting…';
+    post('/api/restart', {});
+  };
+  app.append(h('div', {className: 'card'}, stats, h('div', {className: 'btns'}, rs)));
   showStatus();
 }
 
@@ -650,32 +659,16 @@ function layoutCard() {
 function networkCard() {
   const name = h('input', {type: 'text', value: N.name, maxLength: 31});
   const fb = h('input', {type: 'text', value: N.fallback, placeholder: 'automatic: ' + N.autoFallback});
-  const ssid = h('input', {type: 'text', value: N.ssid, placeholder: 'none: hotspot only'});
-  const wp = h('input', {type: 'password', placeholder: N.wifiPassSet ? 'saved (leave empty to keep)' : 'none'});
   const ap = h('input', {type: 'password', placeholder: N.apPassSet ? 'saved (leave empty to keep, - to remove)' : 'open hotspot'});
   const msg = h('div', {className: 'hint'});
-  const nets = h('div', {className: 'nets'});
-  const scan = button('Scan', H.scan);
-  scan.onclick = async () => {
-    scan.disabled = true; msg.textContent = 'Scanning...';
-    // The board pushes the results when the scan ends (live connection), no asking again
-    const done = new Promise(res => { scanDone = res; setTimeout(() => res({state: 3, nets: []}), 20000); });
-    let r = await post('/api/scan', {});
-    if (r.state == 1) r = await done;
-    scanDone = null;
-    scan.disabled = false;
-    msg.textContent = r.state == 2 ? '' : 'Scan failed';
-    nets.replaceChildren(...r.nets.map(n => { const b = h('button', {textContent: n.s + '  (' + n.r + ' dBm' + (n.l ? ', locked' : '') + ')'}); b.onclick = () => { ssid.value = n.s; wp.focus(); }; return b; }));
-  };
   const save = button('Save and restart', H.netSave, {className: 'on'});
-  save.onclick = () => post('/api/net', {name: name.value, fallback: fb.value, ssid: ssid.value, wifiPass: wp.value, apPass: ap.value})
+  save.onclick = () => post('/api/net', {name: name.value, fallback: fb.value, apPass: ap.value})
     .then(() => { msg.textContent = 'Restarting... reconnect at http://' + name.value + '.local in a few seconds.'; })
     .catch(e => { msg.textContent = e.message; });
   return h('div', {className: 'card'},
-    field('Name', name, H.netName), field('Fallback IP', fb, H.fallback), field('Backup WiFi', ssid, H.ssid), field('WiFi password', wp, H.wifiPass),
-    h('div', {className: 'row'}, h('label'), scan), nets, field('Hotspot password', ap, H.apPass),
+    field('Name', name, H.netName), field('Fallback IP', fb, H.fallback), field('Hotspot password', ap, H.apPass),
     h('div', {className: 'row'}, h('label'), save), msg,
-    h('p', {className: 'hint', textContent: 'DHCP first; with no answer after 10 s the fallback IP is used. On the fallback IP, or with the cable unplugged and no backup WiFi, the board opens a hotspot named after it: http://192.168.4.1.'}));
+    h('p', {className: 'hint', textContent: 'Ethernet only: DHCP first; with no answer after 10 s the fallback IP is used. No WiFi in normal running. Hold the button on the board while it powers up for config mode: a hotspot named after the board with this page at http://192.168.4.1, and no light output until the next restart.'}));
 }
 
 // Ableton's guidelines: name it "Ableton Link" in full, its state as Enabled / Disabled
@@ -720,8 +713,8 @@ function showStatus() {
 // ---- live: no polling. The board pushes over a WebSocket on its HTTP server (OSCQuery's too): every
 // change of a value as OSC (whoever made it: MIMa, the button, another browser), and as text
 // its status once a second, a change counter for what OSC doesn't carry (names, the preset
-// list, layout: the page reloads), and WiFi scan results.
-let scanDone = null, held = false, redrawDue = false, reloadDue = false;
+// list, layout: the page reloads).
+let held = false, redrawDue = false, reloadDue = false;
 // While a slider is dragged or a text field has the cursor, redraws wait
 addEventListener('pointerdown', () => { held = true; }, true);
 addEventListener('pointerup', () => { held = false; setTimeout(settle, 0); }, true);
@@ -860,8 +853,6 @@ function live(take = false) {
       motionClock = {t: performance.now(), m: st.motion || []};
       Object.assign(S, st);
       if (changed) redraw(); else showStatus();
-    } else if (m.COMMAND == 'SCAN') {
-      if (scanDone) scanDone(m.DATA);
     } else if (m.COMMAND == 'PATH_ADDED' || m.COMMAND == 'PATH_REMOVED') {
       reload();
     }

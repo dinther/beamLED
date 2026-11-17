@@ -49,8 +49,8 @@ for this kind of installation (see [docs/background.md](docs/background.md)):
 - **A web page** on the board: presets, sliders, motions, palettes, layout and network settings,
   with help on every control. It follows changes made anywhere (the button, OSC, another device)
   as they happen, without polling.
-- **Network** from ArtSwitch: DHCP, a fallback address, a WiFi hotspot when the board can't be
-  reached otherwise, `http://beamled.local`, and firmware updates over the network.
+- **Network** over Ethernet only: DHCP, a fallback address, `http://beamled.local`, and firmware
+  updates over the network. A WiFi hotspot for setting up comes on only in config mode.
 - **Any layout** up to 64 rows and 6144 LEDs, with a start universe per row.
 
 ## Effects
@@ -70,12 +70,13 @@ at 0, a Motion on it moves the pattern back and forth.
 
 ## The web page
 
-Open `http://beamled.local` (or the board's address). On the hotspot it is `http://192.168.4.1`,
-and any address a phone tries leads to it.
+Open `http://beamled.local` (or the board's address). In config mode it is `http://192.168.4.1`
+on the hotspot, and any address a phone tries leads to it.
 
 ![Brightness and presets](docs/images/ui_presets.png)
 
-The status line shows the frame rate and render time, the network, WiFi and Ableton Link. Click a
+The Status card shows the frame rate and render time, the temperature, how long the board has run
+and why it started, the network and Ableton Link, with a Restart button (tap twice). Click a
 preset to play it; **+ Add** copies the one playing. A dot after a name marks changes that aren't
 saved yet.
 
@@ -108,7 +109,7 @@ asks *Continue to use it here?* and the other one gets the same question back.
 ## Timing and Ableton Link
 
 Ableton Link is **Enabled** or **Disabled** on the page. Enabled, the board joins the Link session
-on its network (on site, the Live laptop joins the board's network or its hotspot); with no peers,
+on its network (on site, the Live laptop joins the board's network); with no peers,
 or disabled, it keeps its own tempo.
 
 Per preset, **Timing**:
@@ -155,7 +156,8 @@ Preset changes over OSC play at once and, like changes on the page, are kept wit
 ## Hardware
 
 - **Board**: WT32-ETH01 (ESP32, LAN8720 Ethernet, 4 MB flash).
-- **Button**: GPIO4 to GND (internal pull-up). Short press: next preset, Auto off; double press: Auto on; long press: on/off.
+- **Button**: GPIO4 to GND (internal pull-up). Short press: next preset, Auto off; double press: Auto on; long press: on/off. Held while
+  the board powers up: config mode.
 - **Output**: Art-Net to the pixel controller. Each row starts at its own universe and fills 170 RGB
   pixels per universe. By default row n (counting from 0) starts at universe 2n, so a row of up to
   340 LEDs fits; set the start universes on the page to match how the controller is patched.
@@ -166,10 +168,10 @@ Preset changes over OSC play at once and, like changes on the page, are kept wit
 - **Ethernet with DHCP.** With no answer within 10 s the board takes a fallback address (default
   192.168.0.10/24; empty = automatic 169.254.x.x). A DHCP server that turns up
   within 2 minutes still wins.
-- **WiFi only when the board can't be reached otherwise.** Cable unplugged: it joins the backup WiFi
-  network, or opens a hotspot named after the board. On the fallback address (the cable goes only to
-  the pixel controller) the hotspot opens too, since it is then the only way to the page.
-- **Art-Net only over the cable**, never over WiFi, so the stream can't crowd out the web page.
+- **No WiFi in normal running.** Hold the button while the board powers up for **config mode**: a
+  hotspot named after the board with the web page at `http://192.168.4.1`, and nothing else (no
+  Ethernet, no Art-Net, no Ableton Link). Restart from the page, or power it up again, to run.
+- **Art-Net only over the cable.**
 - `http://<name>.local` over mDNS; firmware updates over the network.
 
 ## Building and flashing

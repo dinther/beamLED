@@ -17,8 +17,6 @@
 struct NetSettings {
     String name;          // hostname, mDNS name, hotspot name
     IPAddress fallbackIp; // 0.0.0.0 = automatic 169.254.x.x
-    String wifiSsid;      // backup WiFi network, empty = hotspot only
-    String wifiPass;
     String apPass;        // hotspot password, empty = open (8+ characters otherwise)
 };
 
@@ -26,13 +24,13 @@ extern NetSettings netSettings;
 
 void netLoad();
 void netSave();
-void netBegin();
+void netBegin(bool config);  // config: hotspot + web page only (button held at power-on)
+bool netConfigMode();
 void netLoop();
 
 bool netOtaActive();        // a firmware update is running
 bool netCanSend();          // an interface with an address is up
 bool netServing();          // that, or the hotspot: the web server can start
-IPAddress netArtNetTarget(IPAddress to);  // 255.255.255.255 becomes the cable subnet's broadcast
 bool netCanSendTo(IPAddress to);  // Art-Net to `to` goes out over the cable (never WiFi)
 IPAddress netCurrentIp();
 IPAddress netAutoFallbackIp();
@@ -40,6 +38,3 @@ String netModeText();
 String netWifiText();
 
 // WiFi scan for the settings page: request, then poll. Results are JSON [{s,r,l}].
-void netRequestScan();
-int netScanState();         // 0 idle, 1 busy, 2 done, 3 failed
-String netScanResults();

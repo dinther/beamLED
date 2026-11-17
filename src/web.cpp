@@ -91,22 +91,19 @@ static void sendJson(JsonDocument& d) {
     replyJson = true;
 }
 
-// Serialised JSON straight into the HTTP reply, 4 KB at a time (the server's shared buffer):
-// each piece goes out as a few packets, and over the hotspot 1 KB pieces made big replies stall
+// Serialised JSON straight into the HTTP reply, 1 KB at a time
 struct ChunkOut {
     httpd_req_t* req;
-    char* buf;
-    size_t size;
+    char buf[1024];
     size_t n = 0;
     esp_err_t err = ESP_OK;
-    ChunkOut(httpd_req_t* r) : req(r) { buf = oscReplyBuffer(size); }
     void flush() {
         if (n && err == ESP_OK) err = httpd_resp_send_chunk(req, buf, n);
         n = 0;
     }
     size_t write(uint8_t c) {
         buf[n++] = (char)c;
-        if (n == size) flush();
+        if (n == sizeof(buf)) flush();
         return 1;
     }
     size_t write(const uint8_t* s, size_t len) {
@@ -203,6 +200,7 @@ static void statusJson(JsonObject o) {
     o["net"] = netModeText();
     o["wifi"] = netWifiText();
     o["heap"] = ESP.getFreeHeap();
+    o["configMode"] = netConfigMode();
     const BeatTime& b = engineBeat();
     JsonObject l = o["link"].to<JsonObject>();
     l["enabled"] = linkSettings.enabled != 0;
@@ -515,8 +513,6 @@ static void handleNetGet() {
     d["name"] = netSettings.name;
     d["fallback"] = (uint32_t)netSettings.fallbackIp ? netSettings.fallbackIp.toString() : String("");
     d["autoFallback"] = netAutoFallbackIp().toString();
-    d["ssid"] = netSettings.wifiSsid;
-    d["wifiPassSet"] = netSettings.wifiPass.length() > 0;
     d["apPassSet"] = netSettings.apPass.length() > 0;
     sendJson(d);
 }
@@ -535,17 +531,12 @@ static void handleNetSet() {
         else if (ip.fromString(s)) netSettings.fallbackIp = ip;
         else { reply(400, "text/plain", "bad fallback IP"); return; }
     }
-    if (d["ssid"].is<const char*>()) {
-        netSettings.wifiSsid = d["ssid"].as<const char*>();
-        if (!netSettings.wifiSsid.length()) netSettings.wifiPass = "";
-    }
     auto pass = [](JsonVariant v, String& into) {
         if (!v.is<const char*>()) return;
         String s = v.as<const char*>();
         if (s == "-") into = "";
         else if (s.length()) into = s;
     };
-    pass(d["wifiPass"], netSettings.wifiPass);
     pass(d["apPass"], netSettings.apPass);
     if (netSettings.apPass.length() && netSettings.apPass.length() < 8) {
         reply(400, "text/plain", "hotspot password needs 8 or more characters");
@@ -557,10 +548,11 @@ static void handleNetSet() {
     restartAt = millis();
 }
 
-static void handleScan() {
-    if (rq->method == HTTP_POST) netRequestScan();
-    String out = "{\"state\":" + String(netScanState()) + ",\"nets\":" + netScanResults() + "}";
-    reply(200, "application/json", out);
+// Restart button on the page (it asks first): a normal start, unless the button is held
+static void handleRestart() {
+    reply(200, "application/json", "{\"restarting\":true}");
+    restartRequested = true;
+    restartAt = millis();
 }
 
 // /api/bench?e=<effect>&frames=<n>: ms per frame to render it (palette 1, default parameters).
@@ -604,7 +596,8 @@ static const Route ROUTES[] = {
      {"/api/layout", HTTP_POST, handleLayout},
     {"/api/link", HTTP_POST, handleLink},        {"/api/auto", HTTP_POST, handleAuto},
            {"/api/net", HTTP_GET, handleNetGet},
-    {"/api/net", HTTP_POST, handleNetSet},       {"/api/scan", -1, handleScan},
+    {"/api/restart", HTTP_POST, handleRestart},
+    {"/api/net", HTTP_POST, handleNetSet},
     {"/api/bench", HTTP_GET, handleBench},
 };
 
@@ -682,7 +675,7 @@ bool webApi(httpd_req_t* req, esp_err_t& result) {
     httpd_resp_set_type(req, replyType);
     if (replyCache) httpd_resp_set_hdr(req, "Cache-Control", "public, max-age=31536000, immutable");
     if (replyJson) {
-        ChunkOut out(req);
+        ChunkOut out{req};
         serializeJson(replyDoc, out);
         out.flush();
         result = out.err == ESP_OK ? httpd_resp_send_chunk(req, nullptr, 0) : out.err;

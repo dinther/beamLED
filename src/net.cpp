@@ -23,22 +23,15 @@ static const uint32_t DHCP_TIMEOUT_MS = 10000;
 static const uint32_t DHCP_PROBE_INTERVAL_MS = 15000;
 // Once someone may have configured against the fallback address, it must not move
 static const uint32_t DHCP_GRACE_MS = 120000;
-// WiFi waits this long without an Ethernet link, so a link coming up at boot or a cable being
-// re-seated doesn't start WiFi
-static const uint32_t WIFI_START_DELAY_MS = 5000;
-static const uint32_t WIFI_JOIN_TIMEOUT_MS = 30000;  // then open the hotspot
-static const uint32_t WIFI_RETRY_MS = 10000;         // between join attempts
-// While the hotspot is up, joining is retried only when nobody is connected to it: a join
-// attempt scans all channels and would drop the phone using the hotspot
-static const uint32_t HOTSPOT_RETRY_MS = 30000;
-static const uint32_t SCAN_TIMEOUT_MS = 15000;
+// Config mode (button held at power-on): the hotspot and the web server only, no Ethernet.
+// Otherwise WiFi never starts at all: on this board the hotspot jammed while Ethernet ran.
+static bool configMode = false;
 
 static Preferences prefs;
 
 static volatile bool linkUp = false;
 static volatile bool gotIp = false;
 static uint32_t linkUpAt = 0;
-static volatile uint32_t linkDownAt = 0;  // boot counts as link down
 static bool usingFallback = false;
 static bool servicesStarted = false;
 static volatile bool otaActive = false;
@@ -52,19 +45,8 @@ static uint32_t dhcpProbeXid = 0;
 static uint32_t fallbackSince = 0;
 static uint32_t lastDhcpProbeAt = 0;
 
-enum WifiState { WIFI_STANDBY, WIFI_JOINING, WIFI_JOINED, WIFI_HOTSPOT };
-static volatile WifiState wifiState = WIFI_STANDBY;
-static volatile bool wifiGotIp = false;
-static uint32_t wifiStateAt = 0;
-static uint32_t lastJoinAt = 0;
-static bool hotspotWithSta = false;
+static bool hotspotUp = false;
 static DNSServer hotspotDns;
-
-enum ScanState { SCAN_IDLE, SCAN_REQUESTED, SCAN_RUNNING, SCAN_DONE, SCAN_FAILED };
-static volatile ScanState scanState = SCAN_IDLE;
-static String scanResults;
-static bool scanRadioOnly = false;
-static uint32_t scanStartedAt = 0;
 
 // ---------------------------------------------------------------- settings
 
@@ -80,22 +62,11 @@ static String sanitizeName(const String& in) {
     return out.length() ? out : String(DEFAULT_NAME);
 }
 
-static String jsonEscape(const String& in) {
-    String out;
-    for (char c : in) {
-        if (c == '"' || c == '\\') out += '\\';
-        if ((uint8_t)c >= 0x20) out += c;
-    }
-    return out;
-}
-
 void netLoad() {
     prefs.begin("net", true);
     netSettings.name = sanitizeName(prefs.getString("name", DEFAULT_NAME));
     const IPAddress def(cfg::ETH_IP[0], cfg::ETH_IP[1], cfg::ETH_IP[2], cfg::ETH_IP[3]);
     netSettings.fallbackIp = IPAddress(prefs.getUInt("fallback", (uint32_t)def));
-    netSettings.wifiSsid = prefs.getString("wssid", "");
-    netSettings.wifiPass = prefs.getString("wpass", "");
     netSettings.apPass = prefs.getString("appass", "");
     prefs.end();
 }
@@ -106,8 +77,6 @@ void netSave() {
     prefs.begin("net", false);
     prefs.putString("name", netSettings.name);
     prefs.putUInt("fallback", (uint32_t)netSettings.fallbackIp);
-    prefs.putString("wssid", netSettings.wifiSsid);
-    prefs.putString("wpass", netSettings.wifiPass);
     prefs.putString("appass", netSettings.apPass);
     prefs.end();
 }
@@ -151,17 +120,9 @@ static void onNetworkEvent(WiFiEvent_t event) {
         case ARDUINO_EVENT_ETH_DISCONNECTED:
             Serial.println("Ethernet link down");
             linkUp = false;
-            linkDownAt = millis();
             // A DHCP lease belongs to the network the cable was in: the next cable may lead
             // elsewhere (straight to a pixel controller), so ask again, then fall back
             if (!usingFallback) gotIp = false;
-            break;
-        case ARDUINO_EVENT_WIFI_STA_GOT_IP:
-            Serial.printf("WiFi IP address: %s\n", WiFi.localIP().toString().c_str());
-            wifiGotIp = true;
-            break;
-        case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
-            wifiGotIp = false;
             break;
         default:
             break;
@@ -266,257 +227,57 @@ static void probeForDhcpServer() {
     }
 }
 
-// ---------------------------------------------------------------- WiFi
+// ---------------------------------------------------------------- WiFi (config mode only)
 
-static void setWifiState(WifiState s) {
-    wifiState = s;
-    wifiStateAt = millis();
-}
-
-static void joinWifi() {
-    lastJoinAt = millis();
-    WiFi.begin(netSettings.wifiSsid.c_str(), netSettings.wifiPass.c_str());
-    WiFi.setTxPower(WIFI_POWER_8_5dBm);  // as WLED ran this board: at full power the hotspot link was poor
-}
-
-// WiFi joins with the Ethernet MAC, so the router hands out the same address (and name) as on
-// the cable. Set on the driver and on the IP interface, which keeps its own copy.
-static void useEthernetMacForWifi() {
-    uint8_t mac[6];
-    esp_read_mac(mac, ESP_MAC_ETH);
-    esp_wifi_set_mac(WIFI_IF_STA, mac);
-    esp_netif_set_mac(esp_netif_get_handle_from_ifkey("WIFI_STA_DEF"), mac);
-}
-
-// withSta: keep the station side so joining the backup network can be retried from the hotspot
-static void startHotspot(bool withSta) {
-    hotspotWithSta = withSta && netSettings.wifiSsid.length();
-    WiFi.mode(hotspotWithSta ? WIFI_AP_STA : WIFI_AP);
-    if (hotspotWithSta) useEthernetMacForWifi();
+static void startHotspot() {
+    WiFi.mode(WIFI_AP);
     const char* pass = netSettings.apPass.length() >= 8 ? netSettings.apPass.c_str() : nullptr;
     WiFi.softAP(netSettings.name.c_str(), pass);
-    WiFi.setTxPower(WIFI_POWER_8_5dBm);  // as WLED ran this board: at full power the hotspot link was poor
+    WiFi.setTxPower(WIFI_POWER_8_5dBm);  // as WLED ran this board: at full power the link was poor
     hotspotDns.start(53, "*", WiFi.softAPIP());
-    lastJoinAt = millis();
-    setWifiState(WIFI_HOTSPOT);
+    hotspotUp = true;
     Serial.printf("WiFi hotspot \"%s\" (%s), http://%s\n", netSettings.name.c_str(),
                   pass ? "password" : "open", WiFi.softAPIP().toString().c_str());
 }
 
-static void startWifi() {
-    WiFi.setHostname(netSettings.name.c_str());
-    WiFi.setAutoReconnect(false);  // retries are paced by updateWifi()
-    if (!netSettings.wifiSsid.length()) {
-        startHotspot(true);
-        return;
-    }
-    WiFi.mode(WIFI_STA);
-    useEthernetMacForWifi();
-    joinWifi();
-    setWifiState(WIFI_JOINING);
-    Serial.printf("No Ethernet link, joining WiFi \"%s\"\n", netSettings.wifiSsid.c_str());
-}
-
-static void stopWifi() {
-    if (wifiState == WIFI_STANDBY) return;
-    hotspotDns.stop();
-    WiFi.softAPdisconnect(true);
-    WiFi.disconnect(true);
-    WiFi.mode(WIFI_OFF);
-    wifiGotIp = false;
-    setWifiState(WIFI_STANDBY);
-    Serial.println("WiFi off");
-}
-
-static void updateWifi() {
-    if (scanRadioOnly) return;  // let a scan finish before WiFi takes over the radio
-    uint32_t now = millis();
-
-    if (linkUp) {
-        // Cable in a network with DHCP (or still asking): reachable over the cable
-        if (!usingFallback) { stopWifi(); return; }
-        // Cable on the fallback address leads only to the pixel controller: hotspot for the web page
-        if (wifiState != WIFI_HOTSPOT || hotspotWithSta) {
-            stopWifi();
-            startHotspot(false);
-        }
-        hotspotDns.processNextRequest();
-        return;
-    }
-
-    // Cable unplugged: backup WiFi as in ArtSwitch
-    if (dhcpProbing) {  // the fallback probe belongs to Ethernet; a re-plugged cable retries DHCP
-        dhcpProbe.stop();
-        dhcpProbing = false;
-    }
-    switch (wifiState) {
-        case WIFI_STANDBY:
-            if (now - linkDownAt >= WIFI_START_DELAY_MS) startWifi();
-            break;
-        case WIFI_JOINING:
-            if (wifiGotIp) {
-                setWifiState(WIFI_JOINED);
-                Serial.printf("Joined WiFi \"%s\"\n", netSettings.wifiSsid.c_str());
-            } else if (now - wifiStateAt >= WIFI_JOIN_TIMEOUT_MS) {
-                startHotspot(true);
-            } else if (now - lastJoinAt >= WIFI_RETRY_MS) {
-                joinWifi();
-            }
-            break;
-        case WIFI_JOINED:
-            if (!wifiGotIp) {
-                Serial.println("WiFi connection lost");
-                joinWifi();
-                setWifiState(WIFI_JOINING);
-            }
-            break;
-        case WIFI_HOTSPOT:
-            if (wifiGotIp) {
-                hotspotDns.stop();
-                WiFi.softAPdisconnect(true);
-                setWifiState(WIFI_JOINED);
-                Serial.printf("Joined WiFi \"%s\", hotspot closed\n", netSettings.wifiSsid.c_str());
-            } else if (hotspotWithSta && WiFi.softAPgetStationNum() == 0 &&
-                       now - lastJoinAt >= HOTSPOT_RETRY_MS) {
-                joinWifi();
-            } else {
-                hotspotDns.processNextRequest();
-            }
-            break;
-    }
-}
-
-void netRequestScan() {
-    if (scanState != SCAN_REQUESTED && scanState != SCAN_RUNNING) scanState = SCAN_REQUESTED;
-}
-
-int netScanState() {
-    switch (scanState) {
-        case SCAN_IDLE: return 0;
-        case SCAN_DONE: return 2;
-        case SCAN_FAILED: return 3;
-        default: return 1;
-    }
-}
-
-String netScanResults() { return scanState == SCAN_DONE ? scanResults : String("[]"); }
-
-static void updateScan() {
-    if (scanState == SCAN_REQUESTED) {
-        if (wifiState == WIFI_JOINING) return;  // can't scan during a join attempt; wait for it
-        if (wifiState == WIFI_STANDBY) {
-            WiFi.mode(WIFI_STA);
-            scanRadioOnly = true;
-        }
-        scanStartedAt = millis();
-        scanState = WiFi.scanNetworks(true) == WIFI_SCAN_FAILED ? SCAN_FAILED : SCAN_RUNNING;
-        if (scanState == SCAN_RUNNING) return;
-    } else if (scanState == SCAN_RUNNING) {
-        // Some scans outlast the 6 s after which WiFi.scanComplete() gives up, so wait for the
-        // scan-done flag with our own limit
-        bool done = WiFiGenericClass::getStatusBits() & WIFI_SCAN_DONE_BIT;
-        if (!done && millis() - scanStartedAt < SCAN_TIMEOUT_MS) return;
-        int n = done ? WiFi.scanComplete() : WIFI_SCAN_FAILED;
-        struct Net { String ssid; int rssi; bool locked; };
-        std::vector<Net> nets;  // one entry per name (strongest AP), strongest first, max 20
-        for (int i = 0; i < n; i++) {
-            String ssid = WiFi.SSID(i);
-            if (!ssid.length()) continue;
-            bool seen = false;
-            for (Net& net : nets) {
-                if (net.ssid != ssid) continue;
-                net.rssi = max(net.rssi, (int)WiFi.RSSI(i));
-                seen = true;
-            }
-            if (!seen) nets.push_back({ssid, WiFi.RSSI(i), WiFi.encryptionType(i) != WIFI_AUTH_OPEN});
-        }
-        std::sort(nets.begin(), nets.end(), [](const Net& a, const Net& b) { return a.rssi > b.rssi; });
-        String json = "[";
-        for (size_t i = 0; i < nets.size() && i < 20; i++) {
-            json += String(i ? "," : "") + "{\"s\":\"" + jsonEscape(nets[i].ssid) +
-                    "\",\"r\":" + nets[i].rssi + ",\"l\":" + (nets[i].locked ? "true" : "false") + "}";
-        }
-        scanResults = json + "]";
-        WiFi.scanDelete();
-        scanState = n < 0 ? SCAN_FAILED : SCAN_DONE;
-    } else {
-        return;
-    }
-    if (scanRadioOnly) {
-        scanRadioOnly = false;
-        if (wifiState == WIFI_STANDBY) WiFi.mode(WIFI_OFF);
-    }
-}
-
 // ---------------------------------------------------------------- status
-
-static bool onWifi() { return (!linkUp || usingFallback) && wifiState != WIFI_STANDBY; }
 
 bool netOtaActive() { return otaActive; }
 
-bool netCanSend() { return (linkUp && gotIp) || wifiGotIp; }
+bool netCanSend() { return linkUp && gotIp; }
 
-// Somewhere to serve the web page: an address on the cable or WiFi, or the board's own hotspot
-bool netServing() { return netCanSend() || wifiState == WIFI_HOTSPOT; }
+// Somewhere to serve the web page: an address on the cable, or the config-mode hotspot
+bool netServing() { return netCanSend() || hotspotUp; }
 
-// Art-Net only ever goes out over the cable, never over WiFi (hotspot or backup network): a
-// stream of 1200 packets a second fills the WiFi buffers until the web page can't load. On the
-// fallback address (no gateway) a target outside the cable's subnet would be routed to the
-// hotspot, so it is skipped. With DHCP (a gateway) everything goes over the cable as before.
-// 255.255.255.255 would leave by whichever interface lwIP picks, the hotspot too: send it to the
-// cable subnet's broadcast (x.x.x.255 for a /24) instead, which only the cable reaches
-IPAddress netArtNetTarget(IPAddress to) {
-    if ((uint32_t)to != 0xFFFFFFFFu || !linkUp || !gotIp) return to;
-    const uint32_t mask = (uint32_t)ETH.subnetMask();
-    return IPAddress(((uint32_t)ETH.localIP() & mask) | ~mask);
-}
-
-bool netCanSendTo(IPAddress to) {
-    if (!linkUp || !gotIp) return false;
-    if (!usingFallback) return true;  // WiFi is off while the cable has DHCP (updateWifi)
-    const uint32_t mask = (uint32_t)ETH.subnetMask();
-    if (((uint32_t)to & mask) != ((uint32_t)ETH.localIP() & mask)) return false;
-    // Never if the hotspot's subnet holds it too (a fallback set in 192.168.4.x): lwIP could pick WiFi
-    if (wifiState != WIFI_STANDBY) {
-        const uint32_t apMask = (uint32_t)WiFi.softAPSubnetMask();
-        if (apMask && ((uint32_t)to & apMask) == ((uint32_t)WiFi.softAPIP() & apMask)) return false;
-    }
-    return true;
-}
+// Art-Net only goes out over the cable: outside config mode there is no WiFi at all
+bool netCanSendTo(IPAddress) { return !configMode && linkUp && gotIp; }
 
 // Address the web page is reachable on right now
-IPAddress netCurrentIp() {
-    if (!onWifi()) return ETH.localIP();
-    if (wifiState == WIFI_HOTSPOT) return WiFi.softAPIP();
-    return WiFi.localIP();
-}
+IPAddress netCurrentIp() { return configMode ? WiFi.softAPIP() : ETH.localIP(); }
 
 String netModeText() {
-    if (!linkUp && wifiState == WIFI_STANDBY) return "no cable";
-    if (linkUp && usingFallback) return "Ethernet " + ETH.localIP().toString() + " (fallback) + hotspot";
-    if (linkUp) return gotIp ? "Ethernet " + ETH.localIP().toString() + " (DHCP)" : "Ethernet, asking DHCP";
-    if (wifiState == WIFI_HOTSPOT) return "hotspot";
-    if (wifiState == WIFI_JOINED) return "WiFi " + WiFi.localIP().toString();
-    return "joining WiFi";
+    if (configMode) return "config mode: hotspot only, no Art-Net (restart to run)";
+    if (!linkUp) return "no cable";
+    if (usingFallback) return "Ethernet " + ETH.localIP().toString() + " (fallback)";
+    return gotIp ? "Ethernet " + ETH.localIP().toString() + " (DHCP)" : "Ethernet, asking DHCP";
 }
 
 String netWifiText() {
-    const String& ssid = netSettings.wifiSsid;
-    switch (wifiState) {
-        case WIFI_JOINING: return "joining " + ssid + "...";
-        case WIFI_JOINED: return ssid + " (" + String(WiFi.RSSI()) + " dBm)";
-        case WIFI_HOTSPOT:
-            return "hotspot " + netSettings.name + " at " + WiFi.softAPIP().toString() + ", " +
-                   String(WiFi.softAPgetStationNum()) + " connected";
-        default: return ssid.length() ? "off, backup: " + ssid : "off, backup: hotspot";
-    }
+    if (!configMode) return "off (hold the button at power-on for the hotspot)";
+    return "hotspot " + netSettings.name + " at " + WiFi.softAPIP().toString() + ", " +
+           String(WiFi.softAPgetStationNum()) + " connected";
 }
 
 // ---------------------------------------------------------------- services
 
 static void startServicesOnce() {
-    if (servicesStarted || !(gotIp || wifiGotIp || wifiState == WIFI_HOTSPOT)) return;
+    if (servicesStarted || !(gotIp || hotspotUp)) return;
     servicesStarted = true;
+    if (configMode) {  // the web server only (osc.cpp starts it)
+        Serial.printf("Config mode: web interface on hotspot \"%s\", http://%s\n", netSettings.name.c_str(),
+                      WiFi.softAPIP().toString().c_str());
+        return;
+    }
     if (MDNS.begin(netSettings.name.c_str())) MDNS.addService("http", "tcp", 80);
     ArduinoOTA.setHostname(netSettings.name.c_str());
     ArduinoOTA.setMdnsEnabled(false);  // mDNS already started above
@@ -534,20 +295,31 @@ static void startServicesOnce() {
                   netCurrentIp().toString().c_str());
 }
 
-void netBegin() {
+void netBegin(bool config) {
+    configMode = config;
     WiFi.onEvent(onNetworkEvent);
     WiFi.onEvent(onHotspotEvent);
     WiFi.persistent(false);  // the network lives in our own settings
     WiFi.mode(WIFI_OFF);
+    if (configMode) {
+        Serial.println("Config mode (button held at power-on): hotspot and web page only");
+        startHotspot();
+        return;
+    }
     ETH.begin();  // pins and PHY come from the wt32-eth01 board variant
 }
 
+bool netConfigMode() { return configMode; }
+
 void netLoop() {
+    if (configMode) {
+        hotspotDns.processNextRequest();
+        startServicesOnce();
+        return;
+    }
     checkDhcpFallback();
     if (dhcpRestartRequested) restartDhcp();
     probeForDhcpServer();
-    updateWifi();
-    updateScan();
     startServicesOnce();
     if (servicesStarted) ArduinoOTA.handle();
 }
