@@ -1,11 +1,11 @@
 #pragma once
 #include <FastLED.h>
 
-constexpr int PAL_MAX = 5;
+constexpr int PAL_MAX = 7;
 
 struct Palette {
     char name[16];
-    uint8_t n;          // 2..5 colours
+    uint8_t n;          // 2..7 colours
     CRGB c[PAL_MAX];
     // Where each colour sits along the palette, 0..1, in order (first usually 0, last usually 1).
     // Evenly spaced by default: j / (n - 1).
@@ -16,7 +16,15 @@ struct Palette {
 struct PaletteV1 {
     char name[16];
     uint8_t n;
-    CRGB c[PAL_MAX];
+    CRGB c[5];
+};
+
+// The palette as saved with up to 5 colours (under "pals"; now 7, under "pals7")
+struct PaletteV2 {
+    char name[16];
+    uint8_t n;
+    CRGB c[5];
+    float pos[5];
 };
 
 void paletteEvenStops(Palette& p);           // positions j / (n - 1)

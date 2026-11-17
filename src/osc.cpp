@@ -139,7 +139,7 @@ static bool nodeInfo(int id, NodeInfo& n, char* path, size_t len) {
     }
     if (slot == 0) {
         snprintf(path, len, "/beamled/palettes/%d/colours", k + 1);
-        n = {'i', 3, true, 2, PAL_MAX, "How many colours the palette uses, 2..5. Colours beyond the count keep their value for when it grows again."};
+        n = {'i', 3, true, 2, PAL_MAX, "How many colours the palette uses, 2..7. Colours beyond the count keep their value for when it grows again."};
     } else {
         snprintf(path, len, "/beamled/palettes/%d/colour%d", k + 1, slot);
         n = {'r', 3, false, 0, 0, "A colour of the palette (RGBA; alpha is ignored). Also takes \"#RRGGBB\" or three numbers (0..1, or 0..255). Setting a colour beyond the count adds it."};

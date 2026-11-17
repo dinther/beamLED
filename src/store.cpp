@@ -178,7 +178,7 @@ static void save() {
         prefs.putUInt("ver", SCHEMA);
         verWritten = true;
     }
-    putPart(PART_PALS, "pals", palettes, paletteCount * sizeof(Palette));  // a list, as the presets
+    putPart(PART_PALS, "pals7", palettes, paletteCount * sizeof(Palette));  // a list, as the presets
     putPart(PART_PRES, "pres", savedPresets, presetCount * sizeof(Preset));
     putPart(PART_SET, "set", &settings, sizeof(settings));
     putPart(PART_SYNCS, "syncs", savedSync, presetCount * sizeof(PresetSync));
@@ -186,6 +186,7 @@ static void save() {
     putPart(PART_AUTO, "auto", &autoSettings, sizeof(autoSettings));
     putPart(PART_MOTS, "mots", savedMotion, presetCount * sizeof(Motion) * MOTIONS);
     if (prefs.isKey("pal")) prefs.remove("pal");
+    if (prefs.isKey("pals7") && prefs.isKey("pals")) prefs.remove("pals");  // up to 5 colours, moved to pals7
     if (prefs.isKey("pre")) prefs.remove("pre");
     if (prefs.isKey("sync")) prefs.remove("sync");
     prefs.end();
@@ -203,17 +204,36 @@ void storeLoad() {
                       listLen / sizeof(Preset) <= MAX_PRESETS;
     const bool old = !list && prefs.isKey("pre") &&
                      prefs.getBytesLength("pre") == OLD_PRESETS * sizeof(Preset);
-    // Palettes: a list under "pals", or the fixed 8 under "pal" from before they could be added
-    const size_t palLen = prefs.isKey("pals") ? prefs.getBytesLength("pals") : 0;
+    // Palettes: a list of up to 7 colours under "pals7"; before, up to 5 under "pals", or the fixed
+    // 8 under "pal" from before they could be added
+    const size_t palLen = prefs.isKey("pals7") ? prefs.getBytesLength("pals7") : 0;
     const bool palList = palLen >= sizeof(Palette) && palLen % sizeof(Palette) == 0 && palLen / sizeof(Palette) <= MAX_PALETTES;
-    const bool palOld = !palList && prefs.isKey("pal") && prefs.getBytesLength("pal") == 8 * sizeof(PaletteV1);
+    const size_t pal5Len = !palList && prefs.isKey("pals") ? prefs.getBytesLength("pals") : 0;
+    const bool pal5 = pal5Len >= sizeof(PaletteV2) && pal5Len % sizeof(PaletteV2) == 0 &&
+                      pal5Len / sizeof(PaletteV2) <= MAX_PALETTES;
+    const bool palOld = !palList && !pal5 && prefs.isKey("pal") && prefs.getBytesLength("pal") == 8 * sizeof(PaletteV1);
     const bool ok = prefs.getUInt("ver", 0) == SCHEMA &&
-                    (palList || palOld) &&
+                    (palList || pal5 || palOld) &&
                     prefs.getBytesLength("set") == sizeof(settings) && (list || old);
     if (ok) {
         if (palList) {
             paletteCount = palLen / sizeof(Palette);
-            prefs.getBytes("pals", palettes, palLen);
+            prefs.getBytes("pals7", palettes, palLen);
+        } else if (pal5) {  // saved with up to 5 colours: the same colours and stops
+            PaletteV2 v2[MAX_PALETTES];
+            paletteCount = pal5Len / sizeof(PaletteV2);
+            prefs.getBytes("pals", v2, pal5Len);
+            for (int k = 0; k < paletteCount; k++) {
+                Palette& p = palettes[k];
+                p = {};
+                memcpy(p.name, v2[k].name, sizeof(p.name));
+                p.n = v2[k].n;
+                for (int j = 0; j < 5; j++) {
+                    p.c[j] = v2[k].c[j];
+                    p.pos[j] = v2[k].pos[j];
+                }
+                for (int j = 5; j < PAL_MAX; j++) p.pos[j] = 1.f;
+            }
         } else {  // saved before colours had positions: evenly spaced, as they looked
             PaletteV1 v1[8];
             prefs.getBytes("pal", v1, sizeof(v1));
@@ -222,6 +242,7 @@ void storeLoad() {
                 memcpy(palettes[k].name, v1[k].name, sizeof(v1[k].name));
                 palettes[k].n = v1[k].n;
                 memcpy(palettes[k].c, v1[k].c, sizeof(v1[k].c));
+                for (int j = 5; j < PAL_MAX; j++) palettes[k].c[j] = CRGB::Black;
                 paletteEvenStops(palettes[k]);
             }
         }
@@ -303,6 +324,10 @@ void storeLoad() {
     }
     // Saved as loaded: later saves write only what changes. Anything converted or new is written now.
     if (ok && !old && !palOld) rememberSaved();
+    if (ok && pal5) {  // moved from up to 5 colours: write them under pals7 once
+        partKnown[PART_PALS] = false;
+        storeMarkDirty();
+    }
     else save();
 }
 

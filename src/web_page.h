@@ -192,7 +192,7 @@ const H = {
   palettes: 'Palettes are shared: each preset picks one. Effects blend smoothly between the colours in order; looping effects wrap from the last colour back to the first.',
   palName: 'The palette’s name, as listed in each preset’s Palette choice. Up to 15 characters.',
   palColour: 'A colour of this palette: tap it to change it (the ceiling follows as you pick), drag it along the bar to move it, drag it off the bar (or press Delete) to remove it.',
-  palStops: 'The palette as effects use it, first colour on the left. Click the bar to add a colour there (up to 5). Each marker is one colour: tap it to change the colour, drag it along the bar to move it (bunch colours together for a quick change, spread them for a long blend), drag it off the bar to remove it (at least 2 stay).',
+  palStops: 'The palette as effects use it, first colour on the left. Click the bar to add a colour there (up to 7). Each marker is one colour: tap it to change the colour, drag it along the bar to move it (bunch colours together for a quick change, spread them for a long blend), drag it off the bar to remove it (at least 2 stay).',
   palAddPalette: 'Adds a new palette at the end, a copy of the last one, to change as you like. Up to 16 palettes.',
   palDelete: 'Deletes this palette: click once, then again within 3 seconds to confirm. Presets that use it switch to the first palette. The last palette can\u2019t be deleted.',
   saveAsNew: 'You renamed this preset, so Save makes a new preset with the new name and your changes, and plays it. This preset goes back to how it was saved. To keep this preset\u2019s name, change the name back.',
@@ -606,7 +606,7 @@ function paletteEditor(q, i) {
     return '#' + a.map((v, n) => Math.round(v + (b[n] - v) * f).toString(16).padStart(2, '0')).join('');
   };
   sw.onpointerdown = e => {
-    if (e.target != sw || q.colors.length >= 5) return;
+    if (e.target != sw || q.colors.length >= 7) return;
     const r = sw.getBoundingClientRect();
     const t = Math.round(Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * 1000) / 1000;
     let j = 0;
