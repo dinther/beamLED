@@ -86,6 +86,15 @@ static inline float expNeg(float x) {
     f -= k;
     return expTab[k] + (expTab[k + 1] - expTab[k]) * f;
 }
+// 1/sqrt(x) for x > 0: the bit trick plus two Newton steps, relative error under 5e-6
+static inline float rsqrtFast(float x) {
+    union { float f; uint32_t i; } u{x};
+    u.i = 0x5f3759df - (u.i >> 1);
+    float y = u.f;
+    const float h = 0.5f * x;
+    y = y * (1.5f - h * y * y);
+    return y * (1.5f - h * y * y);
+}
 // atan2, max error about 1e-5 rad
 static inline float atan2Fast(float y, float x) {
     const float ax = fabsf(x), ay = fabsf(y), mx = fmaxf(ax, ay);
@@ -490,14 +499,16 @@ static void dropsFx(Ctx& c) {
                 // below exactly as before): no square root
                 const float lim = 3.f * sig + FY[b], outer = d.r + lim + 0.01f, inner = d.r - lim - 0.01f;
                 if (d2 > outer * outer || (inner > 0 && d2 < inner * inner)) continue;
-                const float dist = sqrtf(d2);
+                // No square root, divide or expf per LED (they held Drops to 15 fps): 1/sqrt and
+                // the exp table, within a tenth of a colour step of the exact maths
+                const float rd = d2 > 1e-12f ? rsqrtFast(d2) : 0.f;
+                const float dist = d2 * rd;
                 const float off = dist - d.r;
                 if (fabsf(off) > lim) continue;
                 // Widen by the row footprint along the ring's normal, keeping the light energy
-                const float fw = FY[b] * (dist > 1e-3f ? fabsf(dy) / dist : 1.f) * 0.29f;
-                const float se = sqrtf(sig * sig + fw * fw);
-                // exp from the table (expNeg, as the other effects): expf per LED held Drops to 15 fps
-                const float I = expNeg(-off * off / (2.f * se * se)) * (sig / se) * d.fade;
+                const float fw = FY[b] * (dist > 1e-3f ? fabsf(dy) * rd : 1.f) * 0.29f;
+                const float rse = rsqrtFast(sig * sig + fw * fw);  // 1 / se
+                const float I = expNeg(-0.5f * off * off * rse * rse) * (sig * rse) * d.fade;
                 const CRGB& k = c.lutWrap[d.col];
                 r += k.r * I;
                 g += k.g * I;
