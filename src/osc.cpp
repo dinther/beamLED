@@ -982,8 +982,21 @@ struct WsPacket {
 };
 static QueueHandle_t wsIn = nullptr;  // OSC packets from WebSocket clients, for the render loop
 
+// Connections from the hotspot (192.168.4.x) are logged: whether a phone's requests reach the board
+static bool fromHotspot(int fd, char* ip, size_t n) {
+    sockaddr_in a = {};
+    socklen_t len = sizeof(a);
+    if (getpeername(fd, (sockaddr*)&a, &len) != 0) return false;
+    const uint32_t h = ntohl(a.sin_addr.s_addr);
+    if ((h & 0xFFFFFF00u) != 0xC0A80400u) return false;  // 192.168.4.0/24
+    inet_ntoa_r(a.sin_addr, ip, n);
+    return true;
+}
+
 static esp_err_t onRequest(httpd_req_t* req) {
     const int fd = httpd_req_to_sockfd(req);
+    char ip[16];
+    if (fromHotspot(fd, ip, sizeof(ip))) Serial.printf("Hotspot: %s GET %.60s\n", ip, req->uri);
     if (req->method == HTTP_GET) {
         // The handshake of a new WebSocket comes here as a GET too
         if (httpd_ws_get_fd_info(req->handle, fd) == HTTPD_WS_CLIENT_WEBSOCKET ||
@@ -1030,6 +1043,8 @@ static esp_err_t onRequest(httpd_req_t* req) {
 static esp_err_t onOpen(httpd_handle_t, int fd) {
     const int one = 1;
     setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
+    char ip[16];
+    if (fromHotspot(fd, ip, sizeof(ip))) Serial.printf("Hotspot: HTTP connection from %s\n", ip);
     return ESP_OK;
 }
 
@@ -1114,7 +1129,7 @@ static void start() {
 
 void oscLoop() {
     if (!started) {
-        if (!netCanSend()) return;
+        if (!netServing()) return;  // the hotspot counts: with no cable it is the only way in
         start();
     }
     EngineLock lock;  // the web API changes the same things from the HTTP server's task

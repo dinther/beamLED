@@ -454,6 +454,9 @@ bool netOtaActive() { return otaActive; }
 
 bool netCanSend() { return (linkUp && gotIp) || wifiGotIp; }
 
+// Somewhere to serve the web page: an address on the cable or WiFi, or the board's own hotspot
+bool netServing() { return netCanSend() || wifiState == WIFI_HOTSPOT; }
+
 // Art-Net only ever goes out over the cable, never over WiFi (hotspot or backup network): a
 // stream of 1200 packets a second fills the WiFi buffers until the web page can't load. On the
 // fallback address (no gateway) a target outside the cable's subnet would be routed to the
