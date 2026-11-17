@@ -748,6 +748,7 @@ static esp_err_t serveHttp(httpd_req_t* req) {
 static const int MAX_LISTENERS = 4;  // MIMa and a few web pages
 struct Listener {
     int fd = -1;
+    bool closing = false;  // a send failed: closed, and skipped until onClose frees the slot
     bool page = false;  // the web page: also gets the status, the change counter and scan results
     char pageId[24] = "";  // which browser tab (it reconnects under the same id)
     uint32_t bits[WORDS];
@@ -768,13 +769,24 @@ static inline void setBit(uint32_t* b, int id, bool on) {
     else b[id >> 5] &= ~(1u << (id & 31));
 }
 
+// A listener that can't take a frame (a phone asleep or gone) is closed at once: sending on would
+// block the server's only task for the whole send timeout, every push, and nobody else gets an
+// answer. The page reconnects by itself when it can.
 static void sendFrame(int fd, httpd_ws_type_t type, const uint8_t* data, size_t len) {
+    if (fd < 0) return;
+    for (const Listener& l : listeners)
+        if (l.fd == fd && l.closing) return;
     httpd_ws_frame_t f = {};
     f.final = true;
     f.type = type;
     f.payload = (uint8_t*)data;
     f.len = len;
-    httpd_ws_send_frame_async(server, fd, &f);
+    if (httpd_ws_send_frame_async(server, fd, &f) != ESP_OK) {
+        Serial.printf("WebSocket %d not taking frames, closed\n", fd);
+        for (Listener& l : listeners)
+            if (l.fd == fd) l.closing = true;
+        httpd_sess_trigger_close(server, fd);
+    }
 }
 
 // A new subscription gets no value straight away: only changes from now on. MIMa's Learn takes
@@ -1005,6 +1017,7 @@ static esp_err_t onRequest(httpd_req_t* req) {
                 Listener* slot = listenerFor(-1);
                 if (!slot) return ESP_FAIL;  // full: the connection is closed
                 slot->fd = fd;
+                slot->closing = false;
                 slot->page = false;
                 slot->pageId[0] = 0;
                 memset(slot->bits, 0, sizeof(slot->bits));
@@ -1107,6 +1120,7 @@ static void start() {
     c.close_fn = onClose;
     c.core_id = 0;  // with the network stack; the render loop has core 1
     c.stack_size = 8192;  // the web API's JSON too
+    c.send_wait_timeout = 2;  // s: a client that stops reading can't hold the server long
     if (chunkBuf && bundle && lastValue && httpd_start(&server, &c) == ESP_OK) {
         httpd_uri_t u = {};
         u.uri = "/*";
