@@ -23,8 +23,10 @@
 enum Global : uint8_t { G_PRESET, G_NEXT, G_PREV, G_ON, G_BRIGHTNESS, G_LINK, G_SAVE, G_AUTO, NUM_GLOBALS };
 static const char* const GLOBAL_NAME[NUM_GLOBALS] = {"preset", "next", "prev", "on", "brightness", "link", "save", "auto"};
 
-enum PSlot : uint8_t { P_PLAY, P_EFFECT, P_PALETTE, P_SPARKLE, P_TIMING, P_BEATS, P_REVERSE, P_PULSE, P_AUTO, P_FIXED };
-static const char* const PSLOT_NAME[P_FIXED] = {"play", "effect", "palette", "sparkle", "timing", "beats", "reverse", "pulse", "auto"};
+enum PSlot : uint8_t { P_PLAY, P_EFFECT, P_PALETTE, P_SPARKLE, P_TIMING, P_BEATS, P_REVERSE, P_PULSE, P_AUTO,
+                       P_SPARKLE_COLOUR, P_FIXED };
+static const char* const PSLOT_NAME[P_FIXED] = {"play",  "effect", "palette", "sparkle", "timing",
+                                                "beats", "reverse", "pulse",  "auto",    "sparkle_colour"};
 // After a preset's parameters: its motions' settings
 enum MSlot : uint8_t { M_TARGET, M_SHAPE, M_FROM, M_TO, M_SECONDS, M_BEATS, M_PHASE, MSLOTS };
 static const char* const MSLOT_NAME[MSLOTS] = {"target", "shape", "from", "to", "seconds", "beats", "phase"};
@@ -121,7 +123,8 @@ static bool nodeInfo(int id, NodeInfo& n, char* path, size_t len) {
             case P_PLAY: n = {'T', 3, false, 0, 1, "True while this preset is the one playing (or being faded to). Send true to play it; false is ignored."}; break;
             case P_EFFECT: n = {'i', 3, true, 1, (float)NUM_EFFECTS, effectList}; break;
             case P_PALETTE: n = {'i', 3, true, 1, (float)paletteCount, "The palette, by its number in the Palettes list on the web page (1 = the first)."}; break;
-            case P_SPARKLE: n = {'f', 3, true, 0, 1, "Sparkle overlay: white twinkles on top of the effect. 0 = none, 1 = about 8% of the LEDs lit at a time."}; break;
+            case P_SPARKLE: n = {'f', 3, true, 0, 1, "Sparkle overlay: twinkles on top of the effect (their colours: sparkle_colour). 0 = none, 1 = about 8% of the LEDs lit at a time."}; break;
+            case P_SPARKLE_COLOUR: n = {'i', 3, true, 0, (float)(1 + paletteCount), "Sparkle overlay colours: 0 = white, 1 = this preset's own palette, 2 = palette 1, 3 = palette 2, and so on (palette n = n + 1)."}; break;
             case P_TIMING: n = {'i', 3, true, 0, 2, "0 = time (speeds in their own units), 1 = follow the tempo (the set speed at 120 BPM, scaled with the tempo), 2 = beats (the effect's cycle takes a whole number of beats and lands on the bar; only for effects with a cycle)."}; break;
             case P_BEATS: n = {'i', 3, true, 1, 64, "With timing 2 (beats): how many beats one cycle takes: 1, 2, 4, 8, 16, 32 or 64 (other numbers go to the nearest of these)."}; break;
             case P_REVERSE: n = {'T', 3, false, 0, 1, "With timing 2 (beats): run the cycle backwards. No argument toggles."}; break;
@@ -191,6 +194,7 @@ static bool nodeValue(int id, char type, uint32_t& v) {
             case P_REVERSE: return i(y.reverse != 0);
             case P_PULSE: return f(y.pulse);
             case P_AUTO: return i(presetInAuto(k));
+            case P_SPARKLE_COLOUR: return i(y.sparkleColour);
         }
         return false;
     }
@@ -390,6 +394,7 @@ static void apply(const char* path, const Arg* a, int n) {
             case P_BEATS: y.beatsExp = constrain((int)lroundf(log2f(fmaxf(v, 1.f))), 0, 6); break;
             case P_REVERSE: y.reverse = on; break;
             case P_PULSE: y.pulse = v; break;
+            case P_SPARKLE_COLOUR: y.sparkleColour = (int)v; break;
             case P_AUTO:
                 if (on) autoSettings.skip &= ~(1u << i);
                 else autoSettings.skip |= 1u << i;

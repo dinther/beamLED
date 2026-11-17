@@ -1000,6 +1000,7 @@ function oscValue(addr, v) {
     if (key == 'palette') p.palette = v - 1;
     else if (key == 'sparkle') { p.sparkle = v; if (mine) return moveSlider('sparkle', v); }
     else if (key == 'pulse') { p.pulse = v; if (mine) return moveSlider('pulse', v); }
+    else if (key == 'sparkle_colour') p.sparkleColour = v;
     else if (key == 'timing') p.timing = v;
     else if (key == 'beats') p.beatsExp = Math.round(Math.log2(v));
     else if (key == 'reverse') p.reverse = v;

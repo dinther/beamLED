@@ -14,7 +14,8 @@
 //   /beamled/link T, /beamled/save (no tempo: Ableton Link moves it by fractions of a BPM all the
 //   time, which would reach every listener as a stream of changes; set it on the web page or in Live)
 //   /beamled/presets/<n>/play T | effect i | palette i | sparkle f | timing i | beats i |
-//                        reverse T | pulse f | <parameter> (named after it: speed, bars, ...)
+//                        reverse T | pulse f | sparkle_colour i (0 white, 1 own palette, 1 + n palette n) |
+//                        <parameter> (named after it: speed, bars, ...)
 //                        motion1_target i | motion1_shape i | motion1_from f | motion1_to f |
 //                        motion1_seconds f | motion1_beats i | motion1_phase f (and motion2_...)
 //   /beamled/palettes/<k>/colours i 2..7 | colour1 .. colour7 r
