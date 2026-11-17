@@ -42,8 +42,10 @@ select,input[type=text],input[type=password],input[type=number]{flex:1;min-width
 .pal:last-child{border-bottom:0}
 .pal input[type=text]{flex:0 1 140px}
 .pal input[type=color]{width:38px;height:32px;border:1px solid #444;border-radius:6px;background:none;padding:2px}
-.pal .sw{flex:1 0 100%;height:16px;border-radius:4px;position:relative;margin:4px 0 10px;touch-action:none}
-.pal .stop{position:absolute;top:-4px;width:14px;height:24px;margin-left:-7px;border-radius:4px;border:2px solid #fff;box-shadow:0 0 0 1px #000a;cursor:ew-resize}
+.pal .sw{flex:1 0 100%;height:16px;border-radius:4px;position:relative;margin:8px 0 14px;touch-action:none}
+.pal .stop{position:absolute;top:-6px;width:20px;height:28px;margin-left:-10px;border-radius:5px;border:2px solid #fff;box-shadow:0 0 0 1px #000a;cursor:pointer;touch-action:none}
+.pal .stop:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.pal .stop input{position:absolute;left:0;top:100%;width:1px;height:1px;opacity:0;pointer-events:none;border:0;padding:0}
 .pal .stop:hover,.pal .stop.drag{border-color:var(--acc)}
 .pal .del{margin-left:auto}
 .pal-add{margin-top:8px}
@@ -187,10 +189,10 @@ const H = {
   phase: 'Where in its cycle the motion is: 0 = at From at the start (or on the bar), 0.5 = at To. Give a second motion 0.25 or 0.5 to run it out of step with the first.',
   palettes: 'Palettes are shared: each preset picks one. Effects blend smoothly between the colours in order; looping effects wrap from the last colour back to the first.',
   palName: 'The palette’s name, as listed in each preset’s Palette choice. Up to 15 characters.',
-  palColour: 'A colour of this palette. Effects blend between the colours in this order. Click to change it; the ceiling follows as you pick.',
+  palColour: 'A colour of this palette: tap it to change it (the ceiling follows as you pick), drag it to move it along the palette.',
   palAdd: 'Adds a colour at the end, a copy of the last one. Up to 5 colours.',
   palRemove: 'Removes the last colour. At least 2 colours stay.',
-  palStops: 'The palette as effects use it, first colour on the left. Drag a marker to move its colour along the palette: bunch colours together for a quick change, spread them for a long blend. A marker stays between its neighbours. New palettes start evenly spaced.',
+  palStops: 'The palette as effects use it, first colour on the left. Each marker is one colour: tap it to change the colour, drag it to move it along the palette (bunch colours together for a quick change, spread them for a long blend). A marker stays between its neighbours. New palettes start evenly spaced.',
   palAddPalette: 'Adds a new palette at the end, a copy of the last one, to change as you like. Up to 16 palettes.',
   palDelete: 'Deletes this palette: click once, then again within 3 seconds to confirm. Presets that use it switch to the first palette. The last palette can\u2019t be deleted.',
   saveAsNew: 'You renamed this preset, so Save makes a new preset with the new name and your changes, and plays it. This preset goes back to how it was saved. To keep this preset\u2019s name, change the name back.',
@@ -580,11 +582,6 @@ function paletteEditor(q, i) {
   const nm = tip(h('input', {type: 'text', value: q.name, maxLength: 15}), H.palName);
   nm.onchange = () => { q.name = nm.value; send(); draw(); };
   box.append(nm);
-  q.colors.forEach((c, j) => {
-    const ci = tip(h('input', {type: 'color', value: c}), H.palColour + ' (colour ' + (j + 1) + ' of ' + q.colors.length + ')');
-    ci.oninput = () => { q.colors[j] = ci.value; paint(); markers(); send(); };
-    box.append(ci);
-  });
   if (q.colors.length < 5) {
     const b = button('+', H.palAdd);
     b.onclick = () => {
@@ -616,21 +613,38 @@ function paletteEditor(q, i) {
     };
     box.append(del);
   }
-  // The stop markers: drag along the bar, each kept between its neighbours
+  // The colour markers on the bar: tap one for its colour picker, drag it to move its colour
+  // along the palette (kept between its neighbours)
   const markers = () => {
     sw.replaceChildren(...q.colors.map((c, j) => {
-      const mk = h('div', {className: 'stop'});
+      const mk = tip(h('div', {className: 'stop', tabIndex: 0, role: 'button'}), H.palColour + ' (colour ' + (j + 1) + ' of ' + q.colors.length + ')');
+      mk.setAttribute('aria-label', 'Colour ' + (j + 1) + ' of ' + q.colors.length);
       mk.style.left = (q.stops[j] * 100) + '%';
       mk.style.background = c;
+      // The picker belongs to the marker and opens next to it; picking repaints in place, so
+      // the open picker stays open
+      const ci = h('input', {type: 'color', value: c, tabIndex: -1});
+      ci.oninput = () => { q.colors[j] = ci.value; mk.style.background = ci.value; paint(); send(); };
+      mk.append(ci);
+      const pick = () => { try { if (ci.showPicker) ci.showPicker(); else ci.click(); } catch (e) { ci.click(); } };
+      mk.onkeydown = e => { if (e.key == 'Enter' || e.key == ' ') { e.preventDefault(); pick(); } };
       mk.onpointerdown = e => {
-        e.preventDefault(); mk.setPointerCapture(e.pointerId); mk.classList.add('drag');
+        if (e.target == ci) return;
+        e.preventDefault(); mk.setPointerCapture(e.pointerId);
+        const x0 = e.clientX;
+        let moved = false;
         mk.onpointermove = ev => {
+          if (!moved && Math.abs(ev.clientX - x0) < 4) return;  // a tap, not a drag (yet)
+          moved = true; mk.classList.add('drag');
           const r = sw.getBoundingClientRect();
           const lo = j > 0 ? q.stops[j - 1] : 0, hi = j < q.stops.length - 1 ? q.stops[j + 1] : 1;
           q.stops[j] = Math.round(Math.min(hi, Math.max(lo, (ev.clientX - r.left) / r.width)) * 1000) / 1000;
           mk.style.left = (q.stops[j] * 100) + '%'; paint(); send();
         };
-        mk.onpointerup = () => { mk.onpointermove = null; mk.classList.remove('drag'); };
+        mk.onpointerup = () => {
+          mk.onpointermove = null; mk.classList.remove('drag');
+          if (!moved) pick();
+        };
       };
       return mk;
     }));
