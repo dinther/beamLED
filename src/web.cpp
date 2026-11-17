@@ -219,6 +219,30 @@ String webStatusJson() {
 
 static const char BUILD[] = __DATE__ " " __TIME__;
 
+// A fingerprint of the effect table (names, sliders, ranges, help): the page caches /api/effects
+// under it. BUILD alone isn't enough: it only changes when this file is compiled.
+static uint32_t effectsVersion() {
+    static uint32_t h = 0;
+    if (h) return h;
+    h = 2166136261u;
+    auto add = [](const void* p, size_t n) {
+        for (size_t k = 0; k < n; k++) h = (h ^ ((const uint8_t*)p)[k]) * 16777619u;
+    };
+    auto str = [&](const char* s) { if (s) add(s, strlen(s) + 1); else add("", 1); };
+    for (int i = 0; i < NUM_EFFECTS; i++) {
+        const EffectDef& e = EFFECTS[i];
+        str(e.name); str(e.cycle); str(e.help);
+        add(&e.n, 1); add(&e.speedParam, 1); add(&e.ownSparkle, 1);
+        for (int j = 0; j < e.n; j++) {
+            const ParamDef& p = e.params[j];
+            str(p.name); str(p.help);
+            add(&p.min, 4); add(&p.max, 4); add(&p.def, 4); add(&p.step, 4);
+        }
+    }
+    if (!h) h = 1;
+    return h;
+}
+
 static void handleEffects() {
     JsonDocument d;
     JsonArray ef = d.to<JsonArray>();
@@ -263,7 +287,8 @@ static void handleState() {
     for (int b = 0; b < layout.ny; b++) ro.add(rowOrder[b]);
     lay["maxLeds"] = MAX_LEDS;
     lay["measuredRows"] = cfg::CEILING_ROWS;
-    d["build"] = BUILD;  // the page gets the effects from /api/effects?v=<build>, cached
+    d["build"] = BUILD;
+    d["effectsVersion"] = effectsVersion();  // the page gets /api/effects?v=<this>, cached
     JsonArray pl = d["palettes"].to<JsonArray>();
     for (int k = 0; k < paletteCount; k++) paletteJson(pl.add<JsonObject>(), palettes[k]);
     JsonArray pr = d["presets"].to<JsonArray>();

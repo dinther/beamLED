@@ -248,8 +248,8 @@ async function loadOnce() {
   for (;;) {
     try {
       const st = await getJson('/api/state');
-      // The effects (names, ranges, help) are fixed per firmware build: cached by the browser
-      st.effects = await getJson('/api/effects?v=' + encodeURIComponent(st.build));
+      // The effects (names, ranges, help): cached by the browser under the table's fingerprint
+      st.effects = await getJson('/api/effects?v=' + encodeURIComponent(st.effectsVersion || st.build));
       N = await getJson('/api/net');
       S = st;
       draw();
