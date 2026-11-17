@@ -187,6 +187,16 @@ static void statusJson(JsonObject o) {
     o["fps"] = roundf(engineFps() * 10) / 10;
     o["renderMs"] = roundf(engineRenderMs() * 10) / 10;
     o["sendMs"] = roundf(engineSendMs() * 10) / 10;
+    {
+        uint32_t sent, failed, skipped;
+        int err;
+        engineArtNetStats(sent, failed, err, skipped);
+        JsonObject a = o["artnet"].to<JsonObject>();
+        a["sent"] = sent;      // packets
+        a["failed"] = failed;  // packets sendto refused
+        a["errno"] = err;      // why the last one failed
+        a["skipped"] = skipped;  // frames: target out of reach
+    }
     o["net"] = netModeText();
     o["wifi"] = netWifiText();
     o["heap"] = ESP.getFreeHeap();

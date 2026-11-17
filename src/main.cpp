@@ -150,6 +150,12 @@ void engineResetEffect() { memset(effState, 0, sizeof(effState)); }
 float engineFps() { return fps; }
 float engineRenderMs() { return renderMs; }
 float engineSendMs() { return artnet.sendMs(); }
+void engineArtNetStats(uint32_t& sent, uint32_t& failed, int& err, uint32_t& skipped) {
+    sent = artnet.sent;
+    failed = artnet.failed;
+    err = artnet.lastErrno;
+    skipped = artnet.skipped;
+}
 int engineCurrent() { return pending >= 0 ? pending : settings.current; }
 const BeatTime& engineBeat() { return beat; }
 void engineMotion(int m, float& phase, float& rate, uint32_t& cycle) {
@@ -417,6 +423,7 @@ void loop() {
         buildOutLut();
         t1 = micros();
         if (netCanSendTo(IPAddress(settings.target))) artnet.send(IPAddress(settings.target), leds, outLut);  // handed to its task
+        else if (netCanSend()) artnet.skipped++;
     }
 
     // Stats, smoothed

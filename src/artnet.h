@@ -15,6 +15,9 @@ public:
     // dropped rather than queued.
     bool send(IPAddress to, const CRGB* leds, const uint8_t* lut);
     float sendMs() const { return ms; }  // time the task takes per frame, smoothed
+    uint32_t sent = 0, failed = 0;  // packets; failed: sendto refused them
+    int lastErrno = 0;               // why the last one failed
+    uint32_t skipped = 0;            // frames not sent: target out of reach (see netCanSendTo)
 
 private:
     static void task(void* self);

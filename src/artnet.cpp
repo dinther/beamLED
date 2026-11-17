@@ -55,7 +55,12 @@ void ArtNetOut::sendUniverse(uint16_t universe, const uint8_t* data, uint16_t le
     to.sin_family = AF_INET;
     to.sin_port = htons(6454);
     to.sin_addr.s_addr = (uint32_t)target;
-    sendto(s, buf, 18 + len, 0, (sockaddr*)&to, sizeof(to));
+    if (sendto(s, buf, 18 + len, 0, (sockaddr*)&to, sizeof(to)) < 0) {
+        failed++;
+        lastErrno = errno;
+    } else {
+        sent++;
+    }
 }
 
 // Each row starts at its own universe (layout.rowUni) and fills 170 RGB pixels per universe. The
