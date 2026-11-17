@@ -15,9 +15,20 @@ bool ArtNetOut::send(IPAddress to, const CRGB* leds, const uint8_t* lut) {
     nx = layout.nx;
     ny = layout.ny;
     memcpy(rowUni, layout.rowUni, sizeof(rowUni));
+    memcpy(order, rowOrder, sizeof(order));
     const uint8_t* in = (const uint8_t*)leds;
-    const int n = nx * ny * 3;
-    for (int i = 0; i < n; i++) frame[i] = lut[in[i]];
+    // The output curve, and each row's colour order (where R, G and B go in the packet)
+    static const uint8_t SLOT[NUM_ORDERS][3] = {{0, 1, 2}, {0, 2, 1}, {1, 0, 2}, {2, 0, 1}, {1, 2, 0}, {2, 1, 0}};
+    for (int b = 0; b < ny; b++) {
+        const uint8_t* s = SLOT[order[b] < NUM_ORDERS ? order[b] : 0];
+        const int base = b * nx * 3;
+        for (int i = 0; i < nx; i++) {
+            const int k = base + i * 3;
+            frame[k + s[0]] = lut[in[k]];
+            frame[k + s[1]] = lut[in[k + 1]];
+            frame[k + s[2]] = lut[in[k + 2]];
+        }
+    }
     busy = true;
     xTaskNotifyGive(handle);
     return true;

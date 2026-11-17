@@ -259,6 +259,8 @@ static void handleState() {
     lay["measured"] = layout.measured != 0;
     JsonArray ru = lay["rowUni"].to<JsonArray>();
     for (int b = 0; b < layout.ny; b++) ru.add(layout.rowUni[b]);
+    JsonArray ro = lay["rowOrder"].to<JsonArray>();  // colour order per row, 0 RGB .. 5 BGR
+    for (int b = 0; b < layout.ny; b++) ro.add(rowOrder[b]);
     lay["maxLeds"] = MAX_LEDS;
     lay["measuredRows"] = cfg::CEILING_ROWS;
     d["build"] = BUILD;  // the page gets the effects from /api/effects?v=<build>, cached
@@ -474,6 +476,11 @@ static void handleLayout() {
         return;
     }
     layout = l;
+    // rowOrder: colour order per row (0 RGB, 1 RBG, 2 GRB, 3 GBR, 4 BRG, 5 BGR)
+    if (d["rowOrder"].is<JsonArray>()) {
+        JsonArray a = d["rowOrder"].as<JsonArray>();
+        for (int b = 0; b < (int)a.size() && b < MAX_Y; b++) rowOrder[b] = constrain(a[b].as<int>(), 0, NUM_ORDERS - 1);
+    }
     engineLayoutChanged();
     webChanged();
     handleState();
@@ -581,6 +588,8 @@ static void handleBackup() {
     y["measured"] = layout.measured != 0;
     JsonArray ru = y["rowUni"].to<JsonArray>();
     for (int b = 0; b < layout.ny; b++) ru.add(layout.rowUni[b]);
+    JsonArray ro = y["rowOrder"].to<JsonArray>();
+    for (int b = 0; b < layout.ny; b++) ro.add(rowOrder[b]);
     JsonObject n = d["network"].to<JsonObject>();
     n["name"] = netSettings.name;
     n["fallback"] = (uint32_t)netSettings.fallbackIp ? netSettings.fallbackIp.toString() : String("");
@@ -696,6 +705,8 @@ static void handleRestore() {
         const int n = min((int)ru.size(), MAX_Y);
         for (int b = 0; b < n; b++) lay.rowUni[b] = constrain(ru[b].as<int>(), 0, 32767);
         layoutFillUniverses(lay, n, n ? lay.rowUni[0] : 0);
+        JsonArray ro = y["rowOrder"].as<JsonArray>();
+        for (int b = 0; b < MAX_Y; b++) rowOrder[b] = b < (int)ro.size() ? constrain(ro[b].as<int>(), 0, NUM_ORDERS - 1) : 0;
         layout = lay;
         storeSaveLayout();
     }

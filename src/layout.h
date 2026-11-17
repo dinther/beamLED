@@ -21,6 +21,11 @@ struct Layout {
 
 extern Layout layout;
 
+// Colour order of each row's LEDs as the pixel controller expects them: 0 RGB, 1 RBG, 2 GRB,
+// 3 GBR, 4 BRG, 5 BGR. Kept apart from Layout (its own key), so stored layouts stay as they are.
+constexpr int NUM_ORDERS = 6;
+extern uint8_t rowOrder[MAX_Y];
+
 inline int layoutLeds() { return layout.nx * layout.ny; }
 inline int universesPerRow() { return (layout.nx + 169) / 170; }
 void layoutSanitize(Layout& l);

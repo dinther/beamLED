@@ -58,7 +58,9 @@ select,input[type=text],input[type=password],input[type=number]{flex:1;min-width
 .stats dt{color:var(--dim)}
 .stats dd{margin:0;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
 .hint{color:var(--dim);font-size:13px}
-.unis{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px 12px;margin:6px 0 10px}
+.unis{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:6px 12px;margin:6px 0 10px}
+.unis select.ord{flex:0 0 72px;width:72px}
+.row select.ord{flex:0 0 72px}
 .unis label{display:flex;align-items:center;gap:6px;color:#bbb;font-size:13px}
 .unis label span:first-child{flex:0 0 46px}
 .unis input{flex:0 0 72px;width:72px}
@@ -158,6 +160,7 @@ const H = {
   on: 'Switches the ceiling on or off with a one-second fade, the same as a long press of the button on the board. Off keeps the board running, so it comes back where it was.',
   brightness: 'Master brightness for every preset. It works after the gamma curve, so 50% looks about half as bright. Saved, and kept after a power cut.',
   backup: 'Everything this board keeps in one file: presets (as they play now), palettes, Auto, Ableton Link, output, layout and network, the hotspot password too. Load it on another beamLED, or on this one later, to set it up in one go.',
+  rowOrder: 'The colour order the LEDs of a row expect: RGB for most, GRB for many strips (red shows as green otherwise). Set it per row, or for all rows at once, then Apply.',
   restart: 'Restarts the board, after a second tap to confirm. The lights go out for a few seconds. Hold the button on the board while it powers up for config mode (hotspot and this page only).',
   status: 'Frames per second (the target is 40) and the time one frame takes to draw (25 ms is the budget). Temperature: the chip’s own sensor, uncalibrated, so watch it change rather than trust the exact number; 60-70 °C is normal. Running: time since the board started, and why it started: power-on and restart (an update or a settings change) are normal; brown-out (the power supply dipped), watchdog or crash mean something went wrong. Then the network connection, WiFi, Ableton Link and the free memory.',
   auto: 'Auto: the presets change by themselves, every so many seconds, or every so many bars with Ableton Link (always on the bar line). Only the presets with In Auto ticked take part; the others are dimmed. Picking a preset by hand, here, with the button or over OSC, starts the count again from there. While the ceiling is off Auto waits. A double press of the button on the board turns Auto on, a short press turns it off.',
@@ -678,11 +681,20 @@ function layoutCard() {
   const info = h('div', {className: 'hint'});
   // Start universe per row; a row uses ceil(LEDs per row / 170) universes from there
   const uni = L.rowUni.slice();
+  const ORDERS = ['RGB', 'RBG', 'GRB', 'GBR', 'BRG', 'BGR'];
+  const ord = (L.rowOrder || []).slice();
+  const orderSel = (v, onch) => {
+    const s = tip(h('select', {className: 'ord'}), H.rowOrder);
+    ORDERS.forEach((o, k) => s.append(h('option', {value: k, textContent: o, selected: (v || 0) == k})));
+    s.onchange = () => onch(+s.value);
+    return s;
+  };
   const upr = () => Math.max(1, Math.ceil(+nx.value / 170));
   const grid = tip(h('div', {className: 'unis'}), H.rowUni);
   const table = () => {
     const rows = Math.max(1, Math.min(64, +ny.value || 1));
     while (uni.length < rows) uni.push(uni.length ? uni[uni.length - 1] + upr() : 0);
+    while (ord.length < rows) ord.push(0);
     grid.replaceChildren();
     for (let b = 0; b < rows; b++) {
       const range = h('span', {className: 'hint'});
@@ -690,12 +702,13 @@ function layoutCard() {
       const inp = h('input', {type: 'number', min: 0, max: 32767, step: 1, value: uni[b]});
       inp.oninput = () => { uni[b] = Math.max(0, Math.round(+inp.value)); showRange(); upd(); };
       showRange();
-      grid.append(h('label', {}, h('span', {textContent: 'Row ' + (b + 1)}), inp, range));
+      grid.append(h('label', {}, h('span', {textContent: 'Row ' + (b + 1)}), inp, range, orderSel(ord[b], v => { ord[b] = v; })));
     }
   };
   const fillFrom = num(uni[0] || 0, 1);
   const fill = button('Fill', H.fill);
   fill.onclick = () => { for (let b = 0; b < uni.length; b++) uni[b] = +fillFrom.value + b * upr(); table(); upd(); };
+  const allOrd = orderSel(0, v => { for (let b = 0; b < ord.length; b++) ord[b] = v; table(); });
   const upd = () => {
     const pitch = +len.value / Math.max(1, +nx.value), leds = +nx.value * +ny.value;
     const m = meas.checked && +ny.value == L.measuredRows;
@@ -712,7 +725,7 @@ function layoutCard() {
   const apply = button('Apply', H.apply, {className: 'on'});
   const msg = h('div', {className: 'hint'});
   apply.onclick = () => post('/api/layout', {nx: +nx.value, ny: +ny.value, length: +len.value, aspect: +asp.value,
-      measured: meas.checked, rowUni: uni.slice(0, +ny.value)})
+      measured: meas.checked, rowUni: uni.slice(0, +ny.value), rowOrder: ord.slice(0, +ny.value)})
     .then(st => { S = st; draw(); }).catch(e => { msg.textContent = e.message; });
   table();
   upd();
@@ -721,6 +734,7 @@ function layoutCard() {
     field('Aspect', asp, H.aspect), h('div', {className: 'row'}, h('label'), h('span', {className: 'hint', textContent: 'row spacing ÷ LED spacing'})),
     field('Measured rows', meas, H.measured),
     tip(h('div', {className: 'row'}, h('label', {textContent: 'Row universes'}), h('span', {className: 'hint', textContent: 'consecutive from'}), fillFrom, fill), H.rowUni),
+    tip(h('div', {className: 'row'}, h('label', {textContent: 'Colour order'}), h('span', {className: 'hint', textContent: 'all rows'}), allOrd), H.rowOrder),
     grid, info, h('div', {className: 'row'}, h('label'), apply), msg);
 }
 

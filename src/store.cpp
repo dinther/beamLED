@@ -10,6 +10,7 @@ Preset presets[MAX_PRESETS];
 int presetCount = 0;
 Settings settings;
 Layout layout;
+uint8_t rowOrder[MAX_Y];  // all RGB until set
 PresetSync presetSync[MAX_PRESETS];
 // The presets as saved: presets[] is what plays (edits land there at once), these are what Save
 // stores and Revert goes back to. From the heap: static DRAM is full.
@@ -122,6 +123,7 @@ static void layoutDefaults() {
 void storeSaveLayout() {
     prefs.begin("beamled", false);
     prefs.putBytes("lay", &layout, sizeof(layout));
+    prefs.putBytes("ord", rowOrder, sizeof(rowOrder));
     prefs.end();
 }
 
@@ -283,6 +285,10 @@ void storeLoad() {
     prefs.begin("beamled", true);
     if (prefs.isKey("lay") && prefs.getBytesLength("lay") == sizeof(layout))
         prefs.getBytes("lay", &layout, sizeof(layout));
+    if (prefs.isKey("ord") && prefs.getBytesLength("ord") == sizeof(rowOrder))
+        prefs.getBytes("ord", rowOrder, sizeof(rowOrder));
+    for (uint8_t& o : rowOrder)
+        if (o >= NUM_ORDERS) o = 0;
     if (prefs.isKey("link") && prefs.getBytesLength("link") == sizeof(linkSettings))
         prefs.getBytes("link", &linkSettings, sizeof(linkSettings));
     if (prefs.isKey("auto") && prefs.getBytesLength("auto") == sizeof(autoSettings))
