@@ -276,6 +276,7 @@ static void setWifiState(WifiState s) {
 static void joinWifi() {
     lastJoinAt = millis();
     WiFi.begin(netSettings.wifiSsid.c_str(), netSettings.wifiPass.c_str());
+    WiFi.setTxPower(WIFI_POWER_8_5dBm);  // as WLED ran this board: at full power the hotspot link was poor
 }
 
 // WiFi joins with the Ethernet MAC, so the router hands out the same address (and name) as on
@@ -294,6 +295,7 @@ static void startHotspot(bool withSta) {
     if (hotspotWithSta) useEthernetMacForWifi();
     const char* pass = netSettings.apPass.length() >= 8 ? netSettings.apPass.c_str() : nullptr;
     WiFi.softAP(netSettings.name.c_str(), pass);
+    WiFi.setTxPower(WIFI_POWER_8_5dBm);  // as WLED ran this board: at full power the hotspot link was poor
     hotspotDns.start(53, "*", WiFi.softAPIP());
     lastJoinAt = millis();
     setWifiState(WIFI_HOTSPOT);
