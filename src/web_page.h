@@ -13,7 +13,7 @@ body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.4 system-ui,sans-
 main{max-width:640px;margin:auto;padding:12px 16px 40px}
 h1{font-size:20px;margin:0;flex:1}
 h2{font-size:14px;text-transform:uppercase;letter-spacing:.06em;color:var(--dim);margin:22px 0 8px;cursor:pointer;user-select:none}
-h2::before{content:'BE';display:inline-block;width:1.2em;transition:transform .15s}
+h2::before{content:'▾';display:inline-block;width:1.2em;transition:transform .15s}
 h2.folded::before{transform:rotate(-90deg)}
 [hidden]{display:none!important}
 @media (prefers-reduced-motion:reduce){h2::before{transition:none}}
