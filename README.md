@@ -31,8 +31,8 @@ for this kind of installation (see [docs/background.md](docs/background.md)):
 
 - **12 effects**, each with its own sliders and a palette: Rolling bars, Searchlights, Lighthouse,
   Clouds, Sparkle, Sweeps, Plaid, Rings, Drops, Interference, Gradient and Shapes, plus a sparkle
-  overlay on any of them: white or in palette colours, twinkling freely or in bursts on the beat,
-  on eighth or on sixteenth notes.
+  overlay on any of them: white or in palette colours, twinkling freely or starting on quarter,
+  eighth, sixteenth or 32nd notes, as single twinkles or in bursts.
 - **Auto**: the presets change by themselves every so many seconds, or every so many bars on the
   beat, in order or shuffled, among the presets you choose.
 - **Presets**: up to 32, each an effect with its settings and a palette. The button on the board
@@ -144,7 +144,7 @@ browsed, sent to (a group's *Sends to* can name the OSCQuery application) and fo
 | `/beamled/presets/<n>/play` | T/F | true while preset n plays; true plays it |
 | `/beamled/presets/<n>/effect`, `palette` | i | by number, as on the page |
 | `/beamled/presets/<n>/sparkle`, `pulse` | f 0..1 | sparkle overlay, beat pulse |
-| `/beamled/presets/<n>/sparkle_timing` | i 0..3 | sparkle overlay: 0 free, 1 bursts on each beat, 2 on eighths, 3 on sixteenths |
+| `/beamled/presets/<n>/sparkle_timing`, `sparkle_burst` | i 0..4, T/F | sparkle overlay: 0 free, 1..4 twinkles start on 1/4, 1/8, 1/16, 1/32 notes; bursts or single twinkles |
 | `/beamled/presets/<n>/sparkle_colour` | i | sparkle overlay colours: 0 white, 1 the preset's palette, 1 + k palette k |
 | `/beamled/presets/<n>/timing`, `beats`, `reverse` | i, i, T/F | 0 time, 1 follow tempo, 2 beats; beats per cycle |
 | `/beamled/presets/<n>/<slider>` | f or i | each slider of the preset's effect, named after it (`speed`, `band_width`, `angle`, `offset`, ...), in its own units |

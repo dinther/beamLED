@@ -268,7 +268,8 @@ void storeLoad() {
         p.name[sizeof(p.name) - 1] = 0;
         if (p.effect >= NUM_EFFECTS) presetSetEffect(p, 0);
         if (p.palette >= paletteCount) p.palette = 0;
-        if (p.sparkleBeat > 3) p.sparkleBeat = 0;
+        if ((p.sparkleBeat & SPARKLE_GRID) > 4 || (p.sparkleBeat & ~(SPARKLE_GRID | SPARKLE_BURST)))
+            p.sparkleBeat = 0;
     }
     for (PresetSync& y : presetSync) {
         if (y.timing > TIMING_BEATS) y.timing = TIMING_TIME;

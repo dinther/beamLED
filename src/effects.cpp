@@ -251,12 +251,43 @@ static void burstStep(float density, double beat, float bpm, int div, float dt) 
     }
 }
 
-void sparkleOverlay(CRGB* out, float density, float dt, const CRGB* lut, double beat, float bpm, int div) {
-    if (div > 0) burstStep(density, beat, bpm, div, dt);
+// Twinkles as in free sparkle, but each starts on a tick: the ones that would have started at
+// random since the last tick all start on it
+static void gridStep(float density, double beat, int div, float dt) {
+    const float life = 1.2f;
+    static int64_t lastTick = INT64_MIN;
+    static float due = 0;  // twinkles owed since the last tick
+    const uint32_t inc = (uint32_t)fmaxf(1.f, 65535.f * dt / life);
+    for (int i = 0; i < NL; i++) {
+        if (!spPhase[i]) continue;
+        const uint32_t n = spPhase[i] + inc;
+        spPhase[i] = n >= 65535 ? 0 : n;
+    }
+    due += density * 0.08f / life * dt * NL;  // what free sparkle starts on average (on dark LEDs)
+    const int64_t tick = (int64_t)floor(beat * div);
+    if (tick == lastTick) return;
+    const bool first = lastTick == INT64_MIN || tick < lastTick || tick - lastTick > 64;
+    lastTick = tick;
+    if (first) { due = 0; return; }  // just started (or the beat jumped): from the next tick on
+    const int n = (int)due;
+    due -= n;
+    for (int k = 0; k < n; k++) {
+        const int i = random16() % NL;
+        if (spPhase[i]) continue;  // already twinkling (free sparkle only starts dark ones too)
+        spPhase[i] = 1;
+        spColour[i] = random8();
+    }
+}
+
+void sparkleOverlay(CRGB* out, float density, float dt, const CRGB* lut, double beat, float bpm, int div,
+                    bool burst) {
+    burst = burst && div > 0;
+    if (burst) burstStep(density, beat, bpm, div, dt);
+    else if (div > 0) gridStep(density, beat, div, dt);
     else sparkleStep(density, 1.2f, dt);
     for (int i = 0; i < NL; i++) {
         if (!spPhase[i]) continue;
-        uint8_t a = (uint8_t)((div > 0 ? burstLevel(spPhase[i]) : sparkleLevel(spPhase[i])) * 255.f);
+        uint8_t a = (uint8_t)((burst ? burstLevel(spPhase[i]) : sparkleLevel(spPhase[i])) * 255.f);
         if (!lut) {
             out[i] += CRGB(a, a, a);
             continue;

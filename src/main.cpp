@@ -327,8 +327,9 @@ static void renderFrame(float dt) {
                 lut = spLut;
             }
         }
-        const int div = p.sparkleBeat == 1 ? 1 : p.sparkleBeat == 2 ? 2 : p.sparkleBeat == 3 ? 4 : 0;
-        sparkleOverlay(leds, p.sparkle, dt, lut, beat.beat, (float)beat.bpm, div);
+        const int grid = p.sparkleBeat & SPARKLE_GRID;  // 1/4, 1/8, 1/16, 1/32: 1, 2, 4, 8 per beat
+        const int div = grid >= 1 && grid <= 4 ? 1 << (grid - 1) : 0;
+        sparkleOverlay(leds, p.sparkle, dt, lut, beat.beat, (float)beat.bpm, div, (p.sparkleBeat & SPARKLE_BURST) != 0);
     }
 }
 

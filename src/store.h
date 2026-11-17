@@ -13,13 +13,15 @@ struct Preset {
     char name[20];
     uint8_t effect;
     uint8_t palette;
-    uint8_t sparkleBeat;  // the Sparkle overlay: 0 = free twinkles, 1 = bursts on each beat,
-                          // 2 = on eighth notes, 3 = on sixteenths (in what was padding: older
+    uint8_t sparkleBeat;  // the Sparkle overlay's timing, low bits: 0 = free, 1..4 = new twinkles
+                          // start only on 1/4, 1/8, 1/16 or 1/32 notes; bit 7 (SPARKLE_BURST):
+                          // short flashes, gone before the next tick (in what was padding: older
                           // saves read as 0)
     float p[MAXP];
     float sparkle;  // overlay density 0..1
 };
 static_assert(sizeof(Preset) == 60, "Preset is saved as is: its size must not change");
+constexpr uint8_t SPARKLE_GRID = 0x07, SPARKLE_BURST = 0x80;
 
 struct Settings {
     uint8_t brightness;  // 0..255
