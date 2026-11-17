@@ -434,7 +434,7 @@ static void rings(Ctx& c) {
 // ---------------------------------------------------------------- Drops
 // Big rings expanding from random points and fading out, like raindrops on a pond.
 
-struct Drop { float x, y, r; uint8_t col; bool live; };
+struct Drop { float x, y, r, fade; uint8_t col; bool live; };
 static Drop drops[10];
 
 static void dropsFx(Ctx& c) {
@@ -467,7 +467,7 @@ static void dropsFx(Ctx& c) {
     for (; spawn > 0; spawn--) {
         for (Drop& d : drops) {
             if (d.live) continue;
-            d = {frand() * W, Y[0] + frand() * H, 0, random8(), true};
+            d = {frand() * W, Y[0] + frand() * H, 0, 0, random8(), true};
             break;
         }
     }
@@ -475,6 +475,7 @@ static void dropsFx(Ctx& c) {
         if (!d.live) continue;
         d.r += speed * c.dt;
         if (d.r > maxR) d.live = false;
+        d.fade = (1.f - d.r / maxR) * fminf(1.f, d.r / width);  // once per drop, not per LED
     }
     const CRGB back = c.lutLin[0];
     const float sig = width * 0.5f;
@@ -495,8 +496,8 @@ static void dropsFx(Ctx& c) {
                 // Widen by the row footprint along the ring's normal, keeping the light energy
                 const float fw = FY[b] * (dist > 1e-3f ? fabsf(dy) / dist : 1.f) * 0.29f;
                 const float se = sqrtf(sig * sig + fw * fw);
-                const float fade = (1.f - d.r / maxR) * fminf(1.f, d.r / width);
-                const float I = expf(-off * off / (2.f * se * se)) * (sig / se) * fade;
+                // exp from the table (expNeg, as the other effects): expf per LED held Drops to 15 fps
+                const float I = expNeg(-off * off / (2.f * se * se)) * (sig / se) * d.fade;
                 const CRGB& k = c.lutWrap[d.col];
                 r += k.r * I;
                 g += k.g * I;
