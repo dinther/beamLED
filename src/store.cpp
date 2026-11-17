@@ -358,6 +358,8 @@ int presetSave(int i, bool inPlace) {
 
 bool presetFresh(int i) { return i >= 0 && i < presetCount && fresh[i]; }
 
+void storeSaveNow() { save(); }
+
 void presetSaveAll() {
     for (int i = 0; i < presetCount; i++) presetSave(i, true);
 }

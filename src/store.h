@@ -92,6 +92,7 @@ uint32_t storeSaves();  // saves since power-up (for wear checks)
 uint32_t storeMarks();  // changes marked for saving since power-up
 int32_t storeDirtyMs(); // ms since the last change waiting to be saved, -1 = nothing waiting
 void storeSaveLayout();
+void storeSaveNow();  // write what changed straight away (before a restart)
 void presetSetEffect(Preset& p, uint8_t effect);
 // Editing the list (saved a few seconds later). The engine has to follow: see engine.h.
 int presetAdd(int from);          // a copy of preset 'from' at the end; its index, or -1 when full

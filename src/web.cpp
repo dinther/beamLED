@@ -548,6 +548,174 @@ static void handleNetSet() {
     restartAt = millis();
 }
 
+// Settings file: everything the board keeps (presets as they play, palettes, Auto, Link, output,
+// layout, network with the hotspot password) as one JSON document. The page saves it to a file.
+static void handleBackup() {
+    JsonDocument d;
+    d["beamled"] = 1;  // file format
+    d["build"] = BUILD;
+    d["current"] = settings.current;
+    JsonArray pr = d["presets"].to<JsonArray>();
+    for (int i = 0; i < presetCount; i++) presetJson(pr.add<JsonObject>(), i);
+    JsonArray pl = d["palettes"].to<JsonArray>();
+    for (int k = 0; k < paletteCount; k++) paletteJson(pl.add<JsonObject>(), palettes[k]);
+    JsonObject o = d["output"].to<JsonObject>();
+    o["target"] = IPAddress(settings.target).toString();
+    o["brightness"] = settings.brightness;
+    o["gamma"] = settings.gamma;
+    JsonObject l = d["link"].to<JsonObject>();
+    l["enabled"] = linkSettings.enabled != 0;
+    l["bpm"] = linkSettings.bpm;
+    l["latency"] = linkSettings.latencyMs;
+    JsonObject a = d["auto"].to<JsonObject>();
+    a["enabled"] = autoSettings.enabled != 0;
+    a["inBars"] = autoSettings.inBars != 0;
+    a["barsExp"] = autoSettings.barsExp;
+    a["seconds"] = autoSettings.seconds;
+    a["shuffle"] = autoSettings.shuffle != 0;
+    JsonObject y = d["layout"].to<JsonObject>();
+    y["nx"] = layout.nx;
+    y["ny"] = layout.ny;
+    y["length"] = layout.length;
+    y["aspect"] = layout.aspect;
+    y["measured"] = layout.measured != 0;
+    JsonArray ru = y["rowUni"].to<JsonArray>();
+    for (int b = 0; b < layout.ny; b++) ru.add(layout.rowUni[b]);
+    JsonObject n = d["network"].to<JsonObject>();
+    n["name"] = netSettings.name;
+    n["fallback"] = (uint32_t)netSettings.fallbackIp ? netSettings.fallbackIp.toString() : String("");
+    n["hotspotPassword"] = netSettings.apPass;
+    sendJson(d);
+}
+
+// Loads a settings file: replaces everything, saves it all (no unsaved edits) and restarts.
+// Checked first: a file that doesn't fit changes nothing.
+static void handleRestore() {
+    JsonDocument d;
+    if (!readBody(d)) return;
+    if ((d["beamled"] | 0) != 1 || !d["presets"].is<JsonArray>() || !d["palettes"].is<JsonArray>()) {
+        reply(400, "text/plain", "not a beamLED settings file");
+        return;
+    }
+    JsonArray pr = d["presets"].as<JsonArray>(), pl = d["palettes"].as<JsonArray>();
+    if (pr.size() < 1 || pr.size() > MAX_PRESETS || pl.size() < 1 || pl.size() > MAX_PALETTES) {
+        reply(400, "text/plain", "1-" + String(MAX_PRESETS) + " presets and 1-" + String(MAX_PALETTES) + " palettes");
+        return;
+    }
+    if (d["layout"].is<JsonObject>()) {
+        JsonObject y = d["layout"];
+        const int nx = constrain(y["nx"] | (int)layout.nx, 1, MAX_X), ny = constrain(y["ny"] | (int)layout.ny, 1, MAX_Y);
+        if (nx * ny > MAX_LEDS) {
+            reply(400, "text/plain", "at most " + String(MAX_LEDS) + " LEDs");
+            return;
+        }
+    }
+    // Palettes
+    paletteCount = pl.size();
+    for (int k = 0; k < paletteCount; k++) {
+        JsonObject q = pl[k];
+        Palette& p = palettes[k];
+        strlcpy(p.name, q["name"] | "Palette", sizeof(p.name));
+        JsonArray cs = q["colors"].as<JsonArray>();
+        p.n = constrain((int)cs.size(), 2, PAL_MAX);
+        for (int j = 0; j < p.n; j++) p.c[j] = parseColour(j < (int)cs.size() ? cs[j].as<const char*>() : "#000000");
+        paletteEvenStops(p);
+        JsonArray st = q["stops"].as<JsonArray>();
+        if ((int)st.size() == p.n) {
+            for (int j = 0; j < p.n; j++) p.pos[j] = st[j].as<float>();
+            paletteSanitizeStops(p);
+        }
+    }
+    // Presets, then each one saved as it is
+    presetCount = pr.size();
+    autoSettings.skip = 0;
+    for (int i = 0; i < presetCount; i++) {
+        JsonObject q = pr[i];
+        Preset& p = presets[i];
+        strlcpy(p.name, q["name"] | "Preset", sizeof(p.name));
+        presetSetEffect(p, constrain(q["effect"] | 0, 0, NUM_EFFECTS - 1));
+        const EffectDef& e = EFFECTS[p.effect];
+        p.palette = constrain(q["palette"] | 0, 0, paletteCount - 1);
+        p.sparkle = constrain(q["sparkle"] | 0.f, 0.f, 1.f);
+        JsonArray ps = q["params"].as<JsonArray>();
+        for (int j = 0; j < e.n && j < (int)ps.size(); j++)
+            p.p[j] = constrain(ps[j].as<float>(), e.params[j].min, e.params[j].max);
+        PresetSync& sy = presetSync[i];
+        sy.timing = constrain(q["timing"] | 0, 0, (int)TIMING_BEATS);
+        sy.beatsExp = constrain(q["beatsExp"] | 2, 0, 6);
+        sy.reverse = (q["reverse"] | false) ? 1 : 0;
+        sy.pulse = constrain(q["pulse"] | 0.f, 0.f, 1.f);
+        JsonArray ms = q["motions"].as<JsonArray>();
+        for (int m = 0; m < MOTIONS; m++) {
+            Motion& mo = presetMotion[i][m];
+            mo = {};
+            mo.seconds = 8;
+            mo.beatsExp = 3;
+            mo.to = 1;
+            if (m >= (int)ms.size()) continue;
+            JsonObject j = ms[m];
+            mo.target = constrain(j["target"] | 0, 0, (int)e.n);
+            mo.shape = constrain(j["shape"] | 0, 0, NUM_SHAPES - 1);
+            mo.inBeats = (j["inBeats"] | false) ? 1 : 0;
+            mo.beatsExp = constrain(j["beatsExp"] | 3, 0, 6);
+            mo.from = j["from"] | 0.f;
+            mo.to = j["to"] | 1.f;
+            mo.seconds = constrain(j["seconds"] | 8.f, 0.1f, 3600.f);
+            mo.phase = constrain(j["phase"] | 0.f, 0.f, 1.f);
+        }
+        if (!(q["auto"] | true)) autoSettings.skip |= 1u << i;
+    }
+    presetSaveAll();
+    settings.current = constrain(d["current"] | 0, 0, presetCount - 1);
+    // Output, Link, Auto
+    JsonObject o = d["output"];
+    IPAddress t;
+    if (o["target"].is<const char*>() && t.fromString(o["target"].as<const char*>())) settings.target = (uint32_t)t;
+    settings.brightness = constrain(o["brightness"] | (int)settings.brightness, 0, 255);
+    settings.gamma = constrain(o["gamma"] | settings.gamma, 1.f, 3.f);
+    JsonObject l = d["link"];
+    linkSettings.enabled = (l["enabled"] | (linkSettings.enabled != 0)) ? 1 : 0;
+    linkSettings.bpm = constrain(l["bpm"] | linkSettings.bpm, 20.f, 999.f);
+    linkSettings.latencyMs = constrain(l["latency"] | linkSettings.latencyMs, 0.f, 500.f);
+    JsonObject a = d["auto"];
+    autoSettings.enabled = (a["enabled"] | false) ? 1 : 0;
+    autoSettings.inBars = (a["inBars"] | (autoSettings.inBars != 0)) ? 1 : 0;
+    autoSettings.barsExp = constrain(a["barsExp"] | (int)autoSettings.barsExp, 0, 6);
+    autoSettings.seconds = constrain(a["seconds"] | autoSettings.seconds, 2.f, 3600.f);
+    autoSettings.shuffle = (a["shuffle"] | (autoSettings.shuffle != 0)) ? 1 : 0;
+    // Layout
+    if (d["layout"].is<JsonObject>()) {
+        JsonObject y = d["layout"];
+        Layout lay = layout;
+        lay.nx = constrain(y["nx"] | (int)lay.nx, 1, MAX_X);
+        lay.ny = constrain(y["ny"] | (int)lay.ny, 1, MAX_Y);
+        lay.length = y["length"] | lay.length;
+        lay.aspect = y["aspect"] | lay.aspect;
+        lay.measured = (y["measured"] | (lay.measured != 0)) ? 1 : 0;
+        JsonArray ru = y["rowUni"].as<JsonArray>();
+        const int n = min((int)ru.size(), MAX_Y);
+        for (int b = 0; b < n; b++) lay.rowUni[b] = constrain(ru[b].as<int>(), 0, 32767);
+        layoutFillUniverses(lay, n, n ? lay.rowUni[0] : 0);
+        layout = lay;
+        storeSaveLayout();
+    }
+    // Network (with the hotspot password)
+    JsonObject n = d["network"];
+    if (n["name"].is<const char*>()) netSettings.name = n["name"].as<const char*>();
+    if (n["fallback"].is<const char*>()) {
+        String s = n["fallback"].as<const char*>();
+        IPAddress ip;
+        if (!s.length()) netSettings.fallbackIp = IPAddress(0, 0, 0, 0);
+        else if (ip.fromString(s)) netSettings.fallbackIp = ip;
+    }
+    if (n["hotspotPassword"].is<const char*>()) netSettings.apPass = n["hotspotPassword"].as<const char*>();
+    netSave();
+    storeSaveNow();
+    reply(200, "application/json", "{\"restarting\":true}");
+    restartRequested = true;
+    restartAt = millis();
+}
+
 // Restart button on the page (it asks first): a normal start, unless the button is held
 static void handleRestart() {
     reply(200, "application/json", "{\"restarting\":true}");
@@ -597,6 +765,8 @@ static const Route ROUTES[] = {
     {"/api/link", HTTP_POST, handleLink},        {"/api/auto", HTTP_POST, handleAuto},
            {"/api/net", HTTP_GET, handleNetGet},
     {"/api/restart", HTTP_POST, handleRestart},
+    {"/api/backup", HTTP_GET, handleBackup},
+    {"/api/restore", HTTP_POST, handleRestore},
     {"/api/net", HTTP_POST, handleNetSet},
     {"/api/bench", HTTP_GET, handleBench},
 };
@@ -644,7 +814,7 @@ bool webApi(httpd_req_t* req, esp_err_t& result) {
         free(q);
     }
     rqBody = "";
-    if (req->content_len > 0 && req->content_len <= 8192) {
+    if (req->content_len > 0 && req->content_len <= 24576) {  // a settings file fits
         char* b = (char*)malloc(req->content_len + 1);
         size_t got = 0;
         while (b && got < req->content_len) {

@@ -153,6 +153,7 @@ addEventListener('scroll', () => { if (!touch) hideTip(); }, true);
 const H = {
   on: 'Switches the ceiling on or off with a one-second fade, the same as a long press of the button on the board. Off keeps the board running, so it comes back where it was.',
   brightness: 'Master brightness for every preset. It works after the gamma curve, so 50% looks about half as bright. Saved, and kept after a power cut.',
+  backup: 'Everything this board keeps in one file: presets (as they play now), palettes, Auto, Ableton Link, output, layout and network, the hotspot password too. Load it on another beamLED, or on this one later, to set it up in one go.',
   restart: 'Restarts the board, after a second tap to confirm. The lights go out for a few seconds. Hold the button on the board while it powers up for config mode (hotspot and this page only).',
   status: 'Frames per second (the target is 40) and the time one frame takes to draw (25 ms is the budget). Temperature: the chip’s own sensor, uncalibrated, so watch it change rather than trust the exact number; 60-70 °C is normal. Running: time since the board started, and why it started: power-on and restart (an update or a settings change) are normal; brown-out (the power supply dipped), watchdog or crash mean something went wrong. Then the network connection, WiFi, Ableton Link and the free memory.',
   auto: 'Auto: the presets change by themselves, every so many seconds, or every so many bars with Ableton Link (always on the bar line). Only the presets with In Auto ticked take part; the others are dimmed. Picking a preset by hand, here, with the button or over OSC, starts the count again from there. While the ceiling is off Auto waits. A double press of the button on the board turns Auto on, a short press turns it off.',
@@ -396,6 +397,9 @@ function draw() {
 
   app.append(h('h2', {textContent: 'Network'}));
   app.append(networkCard());
+
+  app.append(heading('Settings file', H.backup));
+  app.append(backupCard());
 
   app.append(heading('Status', H.status));
   const stats = h('dl', {className: 'stats'});
@@ -704,6 +708,63 @@ function networkCard() {
     field('Name', name, H.netName), field('Fallback IP', fb, H.fallback), field('Hotspot password', ap, H.apPass),
     h('div', {className: 'row'}, h('label'), save), msg,
     h('p', {className: 'hint', textContent: 'Ethernet only: DHCP first; with no answer after 10 s the fallback IP is used. No WiFi in normal running. Hold the button on the board while it powers up for config mode: a hotspot named after the board with this page at http://192.168.4.1, and no light output until the next restart.'}));
+}
+
+// Settings file: download everything as one file, or load one (it replaces everything, then the
+// board restarts). The file holds the hotspot password: keep it like a password.
+function backupCard() {
+  const msg = h('div', {className: 'hint'});
+  const dl = button('Download settings file', H.backup);
+  dl.onclick = async () => {
+    try {
+      const r = await fetch('/api/backup');
+      if (!r.ok) throw new Error(await r.text());
+      const text = await r.text();
+      const day = new Date().toISOString().slice(0, 10);
+      const a = h('a', {href: URL.createObjectURL(new Blob([text], {type: 'application/json'})),
+                        download: (N.name || 'beamled') + '-settings-' + day + '.json'});
+      document.body.append(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+      msg.textContent = 'Saved. The file holds the hotspot password.';
+    } catch (e) { msg.textContent = 'Could not download: ' + e.message; }
+  };
+  const file = h('input', {type: 'file', accept: '.json,application/json', id: 'settingsFile'});
+  const load = button('Load and restart', 'Replaces everything on this board with the file, saves it and restarts. Tap twice.', {disabled: true});
+  let text = null, armed = 0;
+  file.onchange = async () => {
+    text = null; load.disabled = true; load.textContent = 'Load and restart'; load.className = '';
+    const f = file.files && file.files[0];
+    if (!f) { msg.textContent = ''; return; }
+    try {
+      const t = await f.text(), d = JSON.parse(t);
+      if (d.beamled != 1 || !Array.isArray(d.presets) || !Array.isArray(d.palettes)) throw new Error('not a beamLED settings file');
+      const o = d.output || {}, n = d.network || {}, y = d.layout || {};
+      msg.textContent = d.presets.length + ' presets, ' + d.palettes.length + ' palettes' +
+        (y.ny ? ', ' + y.ny + ' rows of ' + y.nx + ' LEDs' : '') +
+        (o.target ? ', Art-Net to ' + o.target : '') +
+        (n.fallback != null ? ', fallback IP ' + (n.fallback || 'automatic') : '') +
+        '. Loading replaces everything on this board.';
+      text = t; load.disabled = false;
+    } catch (e) { msg.textContent = 'Can’t use this file: ' + e.message; }
+  };
+  load.onclick = async () => {
+    if (!text) return;
+    if (Date.now() - armed > 3000) {  // first tap asks, a second within 3 s loads
+      armed = Date.now(); load.textContent = 'Load now?'; load.className = 'warn';
+      setTimeout(() => { if (Date.now() - armed >= 3000) { load.textContent = 'Load and restart'; load.className = ''; } }, 3100);
+      return;
+    }
+    load.disabled = true; load.textContent = 'Loading…';
+    try {
+      const r = await fetch('/api/restore', {method: 'POST', body: text});
+      if (!r.ok) throw new Error(await r.text());
+      msg.textContent = 'Loaded. The board restarts; this page reconnects by itself.';
+    } catch (e) { msg.textContent = 'Not loaded: ' + e.message; load.disabled = false; load.textContent = 'Load and restart'; load.className = ''; }
+  };
+  return h('div', {className: 'card'},
+    h('div', {className: 'btns'}, dl),
+    h('div', {className: 'row'}, h('label', {textContent: 'Load a file', htmlFor: 'settingsFile'}), file),
+    h('div', {className: 'btns'}, load), msg);
 }
 
 // Ableton's guidelines: name it "Ableton Link" in full, its state as Enabled / Disabled
