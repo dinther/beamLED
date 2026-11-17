@@ -637,7 +637,8 @@ function paletteEditor(q, i) {
       const ci = h('input', {type: 'color', value: c, tabIndex: -1});
       ci.oninput = () => { q.colors[j] = ci.value; mk.style.background = ci.value; paint(); send(); };
       mk.append(ci);
-      const pick = () => { try { if (ci.showPicker) ci.showPicker(); else ci.click(); } catch (e) { ci.click(); } };
+      // Focused while open, so the page holds its redraws until the picker closes
+      const pick = () => { ci.focus({preventScroll: true}); try { if (ci.showPicker) ci.showPicker(); else ci.click(); } catch (e) { ci.click(); } };
       mk.onkeydown = e => {
         if (e.key == 'Enter' || e.key == ' ') { e.preventDefault(); pick(); }
         else if (e.key == 'Delete' || e.key == 'Backspace') { e.preventDefault(); remove(j); }
@@ -946,7 +947,7 @@ function oscValue(addr, v) {
       return;
     }
     const j = +key.slice(6) - 1;
-    if (j < q.colors.length && q.colors[j] != v) { q.colors[j] = v; redraw(); }
+    if (j < q.colors.length && q.colors[j].toLowerCase() != String(v).toLowerCase()) { q.colors[j] = v; redraw(); }  // not our own echo
   }
 }
 const reload = () => { reloadDue = true; settle(); };
