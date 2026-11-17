@@ -55,10 +55,13 @@ void ArtNetOut::sendUniverse(uint16_t universe, const uint8_t* data, uint16_t le
     buf[13] = 0;    // physical
     buf[14] = universe & 0xFF;          // SubUni
     buf[15] = (universe >> 8) & 0x7F;   // Net
+    // Always a full universe (170 pixels, the rest black): some pixel controllers drop short
+    // universes when they come through a switch, so the end of a row would update only now and then
+    memcpy(buf + 18, data, len);
+    memset(buf + 18 + len, 0, 510 - len);
+    len = 510;
     buf[16] = len >> 8;
     buf[17] = len & 0xFF;
-    memcpy(buf + 18, data, len);
-    if (len & 1) buf[18 + len++] = 0;   // Art-Net wants an even length
     // From the OSC socket: one UDP socket fewer (the ESP32 has 16 in all)
     const int s = oscUdpSocket();
     if (s < 0) return;
