@@ -67,6 +67,14 @@ select,input[type=text],input[type=password],input[type=number]{flex:1;min-width
 .row input[type=number]{flex:0 0 90px}
 [data-tip] label,label[data-tip],h2[data-tip]{cursor:help;text-decoration:underline dotted #555;text-underline-offset:3px}
 .motion{border-top:1px solid var(--line);margin-top:10px;padding-top:4px}
+.pdd{flex:1;min-width:0;position:relative}
+.pdd>button{width:100%;padding:0;border-radius:6px;overflow:hidden;display:flex}
+.pdd .g{flex:1;display:block;padding:7px 10px;color:#fff;font-weight:600;text-align:left;text-shadow:0 0 3px #000,0 0 2px #000,0 0 1px #000;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pdd>button .g::after{content:'▾';float:right;margin-left:8px}
+.pdd ul{position:absolute;z-index:20;left:0;right:0;top:100%;margin:4px 0 0;padding:4px;list-style:none;background:#1b1b1b;border:1px solid #444;border-radius:8px;max-height:60vh;overflow:auto;box-shadow:0 6px 18px #000a}
+.pdd li{margin:4px 0;border-radius:5px;overflow:hidden;cursor:pointer;outline:none}
+.pdd li.sel{box-shadow:0 0 0 2px var(--acc)}
+.pdd li:hover,.pdd li:focus-visible{box-shadow:0 0 0 2px #fffa}
 .curve{display:block;width:100%;height:44px}
 .curve path{fill:none;stroke:var(--acc);stroke-width:2}
 .curve line{stroke:#444;stroke-width:1}
@@ -235,6 +243,55 @@ function select(label, items, val, onch, help) {
   s.onchange = () => onch(+s.value);
   return tip(h('div', {className: 'row'}, h('label', {textContent: label}), s), help);
 }
+// The palette picker: each palette drawn as its gradient with its name on top
+const palGrad = q => {
+  const st = q.stops && q.stops.length == q.colors.length ? q.stops : evenStops(q.colors.length);
+  return 'linear-gradient(90deg,' + q.colors.map((c, j) => c + ' ' + (st[j] * 100).toFixed(1) + '%').join(',') + ')';
+};
+function paletteSelect(label, val, onch, help) {
+  const wrap = h('div', {className: 'pdd'});
+  const face = h('span', {className: 'g'});
+  const btn = h('button', {type: 'button'}, face);
+  btn.setAttribute('aria-haspopup', 'listbox');
+  btn.setAttribute('aria-expanded', 'false');
+  const show = v => { const q = S.palettes[v]; face.textContent = q ? q.name : '?'; face.style.background = q ? palGrad(q) : ''; };
+  show(val);
+  let list = null;
+  const outside = e => { if (!wrap.contains(e.target)) close(); };
+  const close = () => {
+    if (!list) return;
+    list.remove(); list = null;
+    btn.setAttribute('aria-expanded', 'false');
+    document.removeEventListener('pointerdown', outside, true);
+  };
+  const pick = v => { close(); btn.focus(); if (v != val) { val = v; show(v); onch(v); } };
+  btn.onclick = () => {
+    if (list) { close(); return; }
+    list = h('ul', {role: 'listbox'});
+    S.palettes.forEach((q, i) => {
+      const g = h('span', {className: 'g', textContent: q.name});
+      g.style.background = palGrad(q);
+      const li = h('li', {role: 'option', tabIndex: -1, className: i == val ? 'sel' : ''}, g);
+      li.setAttribute('aria-selected', i == val);
+      li.onclick = () => pick(i);
+      li.onkeydown = e => {
+        if (e.key == 'Enter' || e.key == ' ') { e.preventDefault(); pick(i); }
+        else if (e.key == 'ArrowDown') { e.preventDefault(); (li.nextSibling || li).focus(); }
+        else if (e.key == 'ArrowUp') { e.preventDefault(); (li.previousSibling || li).focus(); }
+        else if (e.key == 'Escape' || e.key == 'Tab') { close(); btn.focus(); }
+      };
+      list.append(li);
+    });
+    wrap.append(list);
+    btn.setAttribute('aria-expanded', 'true');
+    document.addEventListener('pointerdown', outside, true);
+    const cur = list.children[val] || list.firstChild;
+    if (cur) { cur.focus(); cur.scrollIntoView({block: 'nearest'}); }
+  };
+  btn.onkeydown = e => { if ((e.key == 'ArrowDown' || e.key == 'ArrowUp') && !list) { e.preventDefault(); btn.click(); } };
+  wrap.append(btn);
+  return tip(h('div', {className: 'row'}, h('label', {textContent: label}), wrap), help);
+}
 function field(label, input, help) { return tip(h('div', {className: 'row'}, h('label', {textContent: label}), input), help); }
 const button = (text, help, props = {}) => tip(h('button', Object.assign({textContent: text}, props)), help);
 const heading = (text, help) => tip(h('h2', {textContent: text}), help);
@@ -326,7 +383,7 @@ function draw() {
   card.append(select('Effect', S.effects.map(e => e.name), p.effect, v =>
     post('/api/preset', {index: S.current, effect: v}).then(np => { S.presets[S.current] = np; draw(); }),
     H.effect + ' ' + ef.name + ': ' + ef.help));
-  card.append(select('Palette', S.palettes.map(q => q.name), p.palette, v => {
+  card.append(paletteSelect('Palette', p.palette, v => {
     p.palette = v; post('/api/preset', {index: S.current, palette: v}); }, H.palette));
   // Timing: tempo and beat come from Ableton Link (or the board's own clock when it is disabled).
   // In beats, the effect's cycle (a band, a revolution, ...) takes 1, 2, 4 ... 64 beats and the
@@ -583,7 +640,7 @@ function paletteEditor(q, i) {
   if (!q.stops || q.stops.length != q.colors.length) q.stops = evenStops(q.colors.length);
   const box = h('div', {className: 'pal'});
   const sw = tip(h('div', {className: 'sw'}), H.palStops);
-  const paint = () => sw.style.background = 'linear-gradient(90deg,' + q.colors.map((c, j) => c + ' ' + (q.stops[j] * 100).toFixed(1) + '%').join(',') + ')';
+  const paint = () => sw.style.background = palGrad(q);
   const send = () => throttle('pal' + i, () => post('/api/palette', {index: i, name: q.name, colors: q.colors, stops: q.stops}));
   const nm = tip(h('input', {type: 'text', value: q.name, maxLength: 15}), H.palName);
   nm.onchange = () => { q.name = nm.value; send(); draw(); };
