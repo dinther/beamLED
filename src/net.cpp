@@ -471,9 +471,15 @@ IPAddress netArtNetTarget(IPAddress to) {
 
 bool netCanSendTo(IPAddress to) {
     if (!linkUp || !gotIp) return false;
-    if (!usingFallback) return true;
+    if (!usingFallback) return true;  // WiFi is off while the cable has DHCP (updateWifi)
     const uint32_t mask = (uint32_t)ETH.subnetMask();
-    return ((uint32_t)to & mask) == ((uint32_t)ETH.localIP() & mask);
+    if (((uint32_t)to & mask) != ((uint32_t)ETH.localIP() & mask)) return false;
+    // Never if the hotspot's subnet holds it too (a fallback set in 192.168.4.x): lwIP could pick WiFi
+    if (wifiState != WIFI_STANDBY) {
+        const uint32_t apMask = (uint32_t)WiFi.softAPSubnetMask();
+        if (apMask && ((uint32_t)to & apMask) == ((uint32_t)WiFi.softAPIP() & apMask)) return false;
+    }
+    return true;
 }
 
 // Address the web page is reachable on right now
