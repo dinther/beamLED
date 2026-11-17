@@ -526,6 +526,8 @@ float motionShape(uint8_t shape, float ph, uint32_t cycle, int m) {
         const float a = randomAt(n - 1, m), b = randomAt(n, m), u = ph < 0.5f ? ph * 2 : ph * 2 - 1;
         return a + (b - a) * easeInOut(u);
     }
+    if (shape == SHAPE_JUMP)  // Random's values, but jumped to at once and held for each half cycle
+        return randomAt(cycle * 2 + (ph < 0.5f ? 0 : 1), m);
     if (shape == SHAPE_SINE) return 0.5f - 0.5f * cosf(6.2831853f * ph);
     if (shape == SHAPE_BOUNCE) return ph < 0.5f ? bounceOut(2 * ph) : 1 - bounceOut(2 * ph - 1);
     const float x = ph < 0.5f ? 2 * ph : 2 - 2 * ph;  // there, then back
