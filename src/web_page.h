@@ -205,7 +205,7 @@ const H = {
   apply: 'Applies the layout at once and saves it. Presets and palettes are kept.',
   netName: 'The board’s name: http://<name>.local, the hotspot’s name and the firmware update name. Takes effect after the restart.',
   fallback: 'The address the board takes when no DHCP server answers within 10 seconds, for example when it is connected directly to a pixel controller. Keep it in the same subnet as the devices it talks to. Empty: an automatic 169.254.x.x address.',
-  ssid: 'A WiFi network the board joins while the Ethernet cable is unplugged. Empty: it opens its own hotspot instead.',
+  ssid: 'A WiFi network the board joins while the Ethernet cable is unplugged, for the web page and Ableton Link. Art-Net only goes out over the cable. Empty: it opens its own hotspot instead.',
   wifiPass: 'The backup WiFi’s password. Leave it empty to keep the saved one.',
   scan: 'Lists the WiFi networks in range; click one to fill in its name.',
   apPass: 'A password for the board’s hotspot, 8 characters or more. Empty: an open hotspot. Type - to remove a saved password.',

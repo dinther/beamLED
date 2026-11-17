@@ -429,16 +429,15 @@ bool netOtaActive() { return otaActive; }
 
 bool netCanSend() { return (linkUp && gotIp) || wifiGotIp; }
 
-// Art-Net never goes out over the hotspot: on the fallback address (no gateway) a target outside
-// the cable's subnet would be routed to the hotspot, and 1200 packets a second fill the WiFi
-// buffers until the page can't load. With DHCP (a gateway) or on WiFi it goes as before.
+// Art-Net only ever goes out over the cable, never over WiFi (hotspot or backup network): a
+// stream of 1200 packets a second fills the WiFi buffers until the web page can't load. On the
+// fallback address (no gateway) a target outside the cable's subnet would be routed to the
+// hotspot, so it is skipped. With DHCP (a gateway) everything goes over the cable as before.
 bool netCanSendTo(IPAddress to) {
-    if (linkUp && gotIp) {
-        if (!usingFallback) return true;
-        const uint32_t mask = (uint32_t)ETH.subnetMask();
-        return ((uint32_t)to & mask) == ((uint32_t)ETH.localIP() & mask);
-    }
-    return wifiGotIp;
+    if (!linkUp || !gotIp) return false;
+    if (!usingFallback) return true;
+    const uint32_t mask = (uint32_t)ETH.subnetMask();
+    return ((uint32_t)to & mask) == ((uint32_t)ETH.localIP() & mask);
 }
 
 // Address the web page is reachable on right now

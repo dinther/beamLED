@@ -169,6 +169,7 @@ Preset changes over OSC play at once and, like changes on the page, are kept wit
 - **WiFi only when the board can't be reached otherwise.** Cable unplugged: it joins the backup WiFi
   network, or opens a hotspot named after the board. On the fallback address (the cable goes only to
   the pixel controller) the hotspot opens too, since it is then the only way to the page.
+- **Art-Net only over the cable**, never over WiFi, so the stream can't crowd out the web page.
 - `http://<name>.local` over mDNS; firmware updates over the network.
 
 ## Building and flashing
