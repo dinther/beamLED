@@ -399,7 +399,7 @@ void loop() {
         else memset(leds, 0, layoutLeds() * sizeof(CRGB));
         buildOutLut();
         t1 = micros();
-        if (netCanSend()) artnet.send(IPAddress(settings.target), leds, outLut);  // handed to its task
+        if (netCanSendTo(IPAddress(settings.target))) artnet.send(IPAddress(settings.target), leds, outLut);  // handed to its task
     }
 
     // Stats, smoothed

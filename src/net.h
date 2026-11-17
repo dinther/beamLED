@@ -31,6 +31,7 @@ void netLoop();
 
 bool netOtaActive();        // a firmware update is running
 bool netCanSend();          // an interface with an address is up
+bool netCanSendTo(IPAddress to);  // and Art-Net to `to` won't end up on the hotspot
 IPAddress netCurrentIp();
 IPAddress netAutoFallbackIp();
 String netModeText();
