@@ -38,16 +38,18 @@ button:disabled{opacity:.4;cursor:default}
 .row output{flex:0 0 46px;text-align:right;font-variant-numeric:tabular-nums;color:var(--dim)}
 .btns{display:flex;flex-wrap:wrap;gap:6px;margin:7px 0}
 select,input[type=text],input[type=password],input[type=number]{flex:1;min-width:0;background:#222;color:var(--fg);border:1px solid #444;border-radius:6px;padding:6px 8px;font:inherit}
-.pal{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:8px 0;border-bottom:1px solid var(--line)}
+.pal{display:flex;flex-wrap:nowrap;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
 .pal:last-child{border-bottom:0}
-.pal input[type=text]{flex:0 1 140px}
+.pal input[type=text]{flex:0 0 110px;width:110px;order:0}
 .pal input[type=color]{width:38px;height:32px;border:1px solid #444;border-radius:6px;background:none;padding:2px}
-.pal .sw{flex:1 0 100%;height:16px;border-radius:4px;position:relative;margin:8px 0 14px;touch-action:none}
+.pal .sw{flex:1 1 auto;min-width:80px;height:16px;border-radius:4px;position:relative;margin:0 12px;touch-action:none;order:1}
 .pal .stop{position:absolute;top:-6px;width:20px;height:28px;margin-left:-10px;border-radius:5px;border:2px solid #fff;box-shadow:0 0 0 1px #000a;cursor:pointer;touch-action:none}
 .pal .stop:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.pal .stop.off{opacity:.25;border-style:dashed}
+.pal .sw{cursor:copy}
 .pal .stop input{position:absolute;left:0;top:100%;width:1px;height:1px;opacity:0;pointer-events:none;border:0;padding:0}
 .pal .stop:hover,.pal .stop.drag{border-color:var(--acc)}
-.pal .del{margin-left:auto}
+.pal .del{flex:0 0 auto;order:2}
 .pal-add{margin-top:8px}
 .pal button{padding:4px 10px}
 .conn{color:var(--warn);font-size:13px;margin:4px 0}
@@ -189,10 +191,8 @@ const H = {
   phase: 'Where in its cycle the motion is: 0 = at From at the start (or on the bar), 0.5 = at To. Give a second motion 0.25 or 0.5 to run it out of step with the first.',
   palettes: 'Palettes are shared: each preset picks one. Effects blend smoothly between the colours in order; looping effects wrap from the last colour back to the first.',
   palName: 'The palette’s name, as listed in each preset’s Palette choice. Up to 15 characters.',
-  palColour: 'A colour of this palette: tap it to change it (the ceiling follows as you pick), drag it to move it along the palette.',
-  palAdd: 'Adds a colour at the end, a copy of the last one. Up to 5 colours.',
-  palRemove: 'Removes the last colour. At least 2 colours stay.',
-  palStops: 'The palette as effects use it, first colour on the left. Each marker is one colour: tap it to change the colour, drag it to move it along the palette (bunch colours together for a quick change, spread them for a long blend). A marker stays between its neighbours. New palettes start evenly spaced.',
+  palColour: 'A colour of this palette: tap it to change it (the ceiling follows as you pick), drag it along the bar to move it, drag it off the bar (or press Delete) to remove it.',
+  palStops: 'The palette as effects use it, first colour on the left. Click the bar to add a colour there (up to 5). Each marker is one colour: tap it to change the colour, drag it along the bar to move it (bunch colours together for a quick change, spread them for a long blend), drag it off the bar to remove it (at least 2 stay).',
   palAddPalette: 'Adds a new palette at the end, a copy of the last one, to change as you like. Up to 16 palettes.',
   palDelete: 'Deletes this palette: click once, then again within 3 seconds to confirm. Presets that use it switch to the first palette. The last palette can\u2019t be deleted.',
   saveAsNew: 'You renamed this preset, so Save makes a new preset with the new name and your changes, and plays it. This preset goes back to how it was saved. To keep this preset\u2019s name, change the name back.',
@@ -582,27 +582,6 @@ function paletteEditor(q, i) {
   const nm = tip(h('input', {type: 'text', value: q.name, maxLength: 15}), H.palName);
   nm.onchange = () => { q.name = nm.value; send(); draw(); };
   box.append(nm);
-  if (q.colors.length < 5) {
-    const b = button('+', H.palAdd);
-    b.onclick = () => {
-      const even = isEven(q.stops);
-      q.colors.push(q.colors[q.colors.length - 1]);
-      if (even) q.stops = evenStops(q.colors.length);
-      else { const n = q.stops.length; q.stops[n - 1] = (q.stops[n - 2] || 0) / 2 + q.stops[n - 1] / 2; q.stops.push(1); }
-      send(); draw();
-    };
-    box.append(b);
-  }
-  if (q.colors.length > 2) {
-    const b = button('−', H.palRemove);
-    b.onclick = () => {
-      const even = isEven(q.stops);
-      q.colors.pop(); q.stops.pop();
-      if (even) q.stops = evenStops(q.colors.length);
-      send(); draw();
-    };
-    box.append(b);
-  }
   if (S.palettes.length > 1) {
     const del = button('Delete', H.palDelete, {className: 'del'});
     let armed = null;
@@ -613,6 +592,34 @@ function paletteEditor(q, i) {
     };
     box.append(del);
   }
+  // Click the bar to add a colour there, in the colour the palette already has at that point
+  // (so nothing changes until it is picked). Up to 5 colours.
+  const hex = c => [1, 3, 5].map(k => parseInt(c.substr(k, 2), 16));
+  const colourAt = t => {
+    let k = 0;
+    while (k < q.stops.length - 1 && q.stops[k + 1] < t) k++;
+    if (t <= q.stops[0]) return q.colors[0];
+    if (k >= q.stops.length - 1) return q.colors[q.colors.length - 1];
+    const a = hex(q.colors[k]), b = hex(q.colors[k + 1]), span = q.stops[k + 1] - q.stops[k];
+    const f = span > 0 ? (t - q.stops[k]) / span : 0;
+    return '#' + a.map((v, n) => Math.round(v + (b[n] - v) * f).toString(16).padStart(2, '0')).join('');
+  };
+  sw.onpointerdown = e => {
+    if (e.target != sw || q.colors.length >= 5) return;
+    const r = sw.getBoundingClientRect();
+    const t = Math.round(Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * 1000) / 1000;
+    let j = 0;
+    while (j < q.stops.length && q.stops[j] <= t) j++;
+    q.colors.splice(j, 0, colourAt(t));
+    q.stops.splice(j, 0, t);
+    send(); markers();
+  };
+  // A colour goes when its marker is dragged off the bar (or with Delete); at least 2 stay
+  const remove = j => {
+    if (q.colors.length <= 2) return;
+    q.colors.splice(j, 1); q.stops.splice(j, 1);
+    send(); paint(); markers();
+  };
   // The colour markers on the bar: tap one for its colour picker, drag it to move its colour
   // along the palette (kept between its neighbours)
   const markers = () => {
@@ -627,23 +634,30 @@ function paletteEditor(q, i) {
       ci.oninput = () => { q.colors[j] = ci.value; mk.style.background = ci.value; paint(); send(); };
       mk.append(ci);
       const pick = () => { try { if (ci.showPicker) ci.showPicker(); else ci.click(); } catch (e) { ci.click(); } };
-      mk.onkeydown = e => { if (e.key == 'Enter' || e.key == ' ') { e.preventDefault(); pick(); } };
+      mk.onkeydown = e => {
+        if (e.key == 'Enter' || e.key == ' ') { e.preventDefault(); pick(); }
+        else if (e.key == 'Delete' || e.key == 'Backspace') { e.preventDefault(); remove(j); }
+      };
       mk.onpointerdown = e => {
         if (e.target == ci) return;
         e.preventDefault(); mk.setPointerCapture(e.pointerId);
-        const x0 = e.clientX;
-        let moved = false;
+        const x0 = e.clientX, y0 = e.clientY;
+        let moved = false, off = false;
         mk.onpointermove = ev => {
-          if (!moved && Math.abs(ev.clientX - x0) < 4) return;  // a tap, not a drag (yet)
+          if (!moved && Math.abs(ev.clientX - x0) < 4 && Math.abs(ev.clientY - y0) < 4) return;  // a tap so far
           moved = true; mk.classList.add('drag');
           const r = sw.getBoundingClientRect();
+          // Pulled well away from the bar: let go there to remove this colour
+          off = q.colors.length > 2 && (ev.clientY > r.bottom + 36 || ev.clientY < r.top - 36);
+          mk.classList.toggle('off', off);
           const lo = j > 0 ? q.stops[j - 1] : 0, hi = j < q.stops.length - 1 ? q.stops[j + 1] : 1;
           q.stops[j] = Math.round(Math.min(hi, Math.max(lo, (ev.clientX - r.left) / r.width)) * 1000) / 1000;
           mk.style.left = (q.stops[j] * 100) + '%'; paint(); send();
         };
         mk.onpointerup = () => {
           mk.onpointermove = null; mk.classList.remove('drag');
-          if (!moved) pick();
+          if (off) remove(j);
+          else if (!moved) pick();
         };
       };
       return mk;
