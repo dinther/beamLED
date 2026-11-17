@@ -488,16 +488,33 @@ static void dropsFx(Ctx& c) {
     }
     const CRGB back = c.lutLin[0];
     const float sig = width * 0.5f;
+    // A row's light, added up drop by drop in the same order as before (so the same sums), but
+    // each drop only visits the LEDs of the row its ring can reach
+    static float* acc = nullptr;  // r, g, b per LED of a row (heap: static DRAM is full)
+    if (!acc) acc = (float*)malloc(3 * MAX_X * sizeof(float));
+    if (!acc) return;
+    const float pitch = W / NX;
     for (int b = 0; b < NY; b++) {
         CRGB* o = c.out + b * NX;
         for (int i = 0; i < NX; i++) {
-            float r = back.r * bg, g = back.g * bg, bl = back.b * bg;
-            for (const Drop& d : drops) {
-                if (!d.live) continue;
-                const float dx = X[i] - d.x, dy = Y[b] - d.y, d2 = dx * dx + dy * dy;
+            acc[3 * i] = back.r * bg;
+            acc[3 * i + 1] = back.g * bg;
+            acc[3 * i + 2] = back.b * bg;
+        }
+        for (const Drop& d : drops) {
+            if (!d.live) continue;
+            const float dy = Y[b] - d.y;
+            const float lim = 3.f * sig + FY[b], outer = d.r + lim + 0.01f, inner = d.r - lim - 0.01f;
+            const float reach2 = outer * outer - dy * dy;
+            if (reach2 < 0) continue;  // the ring's band misses this row
+            // LEDs within the band's reach along the row, one extra each side for rounding
+            const float reach = sqrtf(reach2);
+            const int i0 = max(0, (int)floorf((d.x - reach) / pitch - 0.5f) - 1);
+            const int i1 = min(NX - 1, (int)ceilf((d.x + reach) / pitch - 0.5f) + 1);
+            for (int i = i0; i <= i1; i++) {
+                const float dx = X[i] - d.x, d2 = dx * dx + dy * dy;
                 // Clearly outside the ring's band (with a margin, so the edge is still decided
                 // below exactly as before): no square root
-                const float lim = 3.f * sig + FY[b], outer = d.r + lim + 0.01f, inner = d.r - lim - 0.01f;
                 if (d2 > outer * outer || (inner > 0 && d2 < inner * inner)) continue;
                 // No square root, divide or expf per LED (they held Drops to 15 fps): 1/sqrt and
                 // the exp table, within a tenth of a colour step of the exact maths
@@ -510,12 +527,14 @@ static void dropsFx(Ctx& c) {
                 const float rse = rsqrtFast(sig * sig + fw * fw);  // 1 / se
                 const float I = expNeg(-0.5f * off * off * rse * rse) * (sig * rse) * d.fade;
                 const CRGB& k = c.lutWrap[d.col];
-                r += k.r * I;
-                g += k.g * I;
-                bl += k.b * I;
+                acc[3 * i] += k.r * I;
+                acc[3 * i + 1] += k.g * I;
+                acc[3 * i + 2] += k.b * I;
             }
-            o[i] = CRGB((uint8_t)fminf(r, 255.f), (uint8_t)fminf(g, 255.f), (uint8_t)fminf(bl, 255.f));
         }
+        for (int i = 0; i < NX; i++)
+            o[i] = CRGB((uint8_t)fminf(acc[3 * i], 255.f), (uint8_t)fminf(acc[3 * i + 1], 255.f),
+                        (uint8_t)fminf(acc[3 * i + 2], 255.f));
     }
 }
 
