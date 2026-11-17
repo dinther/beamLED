@@ -108,7 +108,8 @@ static void onNetworkEvent(WiFiEvent_t event) {
             ETH.setHostname(netSettings.name.c_str());
             break;
         case ARDUINO_EVENT_ETH_CONNECTED:
-            Serial.println("Ethernet link up");
+            Serial.printf("Ethernet link up, %d Mbit/s %s duplex\n", ETH.linkSpeed(),
+                          ETH.fullDuplex() ? "full" : "half");
             linkUp = true;
             linkUpAt = millis();
             if (usingFallback) dhcpRestartRequested = true;  // may now be in a network with DHCP
