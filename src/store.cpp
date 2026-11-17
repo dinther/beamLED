@@ -268,6 +268,7 @@ void storeLoad() {
         p.name[sizeof(p.name) - 1] = 0;
         if (p.effect >= NUM_EFFECTS) presetSetEffect(p, 0);
         if (p.palette >= paletteCount) p.palette = 0;
+        if (p.sparkleBeat > 3) p.sparkleBeat = 0;
     }
     for (PresetSync& y : presetSync) {
         if (y.timing > TIMING_BEATS) y.timing = TIMING_TIME;
@@ -341,7 +342,8 @@ void storeLoad() {
 // ---- Save / Revert per preset
 
 static bool samePreset(const Preset& a, const Preset& b) {
-    if (a.effect != b.effect || a.palette != b.palette || a.sparkle != b.sparkle) return false;
+    if (a.effect != b.effect || a.palette != b.palette || a.sparkle != b.sparkle || a.sparkleBeat != b.sparkleBeat)
+        return false;
     for (int j = 0; j < MAXP; j++)
         if (a.p[j] != b.p[j]) return false;
     return strncmp(a.name, b.name, sizeof(a.name)) == 0;  // a new name is an edit too

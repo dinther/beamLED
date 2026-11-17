@@ -50,4 +50,7 @@ void effectsInit();
 float effectsBenchmark(int e, const CRGB* lutWrap, const CRGB* lutLin, int frames);
 // Twinkles added on top of any effect. density 0..1. lut: their colours (a palette as a loop,
 // each twinkle a random place on it); nullptr = white.
-void sparkleOverlay(CRGB* out, float density, float dt, const CRGB* lut = nullptr);
+// div > 0: bursts on the beat instead, div per beat (1 beat, 2 eighths, 4 sixteenths); each
+// flashes at once and fades out before the next. beat: the beat clock (beats since the origin).
+void sparkleOverlay(CRGB* out, float density, float dt, const CRGB* lut = nullptr, double beat = 0,
+                    float bpm = 120, int div = 0);

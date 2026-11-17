@@ -188,6 +188,7 @@ const H = {
   beats: 'How many beats one cycle takes; 4 beats = one bar. After a change the motion eases onto the new beat grid over a few seconds instead of jumping.',
   reverse: 'Runs the cycle backwards: the lighthouse turns the other way, bands roll back, rings flow in.',
   sparkle: 'Twinkles on top of this preset’s effect. 0 = none, 1 = about 8% of the LEDs lit at any moment. Their colours: Sparkle colour.',
+  sparkleBeat: 'Free: twinkles come and go at random. Every beat, 1/8, 1/16: bursts of twinkles flash on each beat, eighth note or sixteenth note, on the beat of Ableton Link or the board’s own tempo, and fade out before the next. Sparkle overlay sets how many flash per burst.',
   sparkleColour: 'The colours of the Sparkle overlay’s twinkles: white, random colours from this preset’s own palette, or from any other palette.',
   pulse: 'A brightness accent on the beat: full on each beat and dipping in between, strongest on the bar’s first beat. 0 = steady. Follows Ableton Link, or the board’s own tempo.',
   reset: 'Sets this preset’s effect parameters back to the effect’s defaults (not saved until you click Save). Name, palette, timing, sparkle and pulse stay as they are.',
@@ -425,6 +426,8 @@ function draw() {
     const items = [{name: 'White', bg: 'linear-gradient(90deg,#8a8a8a,#e0e0e0)'},
                    {name: 'Preset’s palette (' + own.name + ')', bg: palGrad(own)}]
       .concat(S.palettes.map(q => ({name: q.name, bg: palGrad(q)})));
+    card.append(select('Sparkle timing', ['Free', 'Every beat', '1/8', '1/16'], p.sparkleBeat || 0, v => {
+      p.sparkleBeat = v; markChanged(S.current); post('/api/preset', {index: S.current, sparkleBeat: v}); }, H.sparkleBeat));
     card.append(gradSelect('Sparkle colour', items, p.sparkleColour || 0, v => {
       p.sparkleColour = v; markChanged(S.current); post('/api/preset', {index: S.current, sparkleColour: v}); }, H.sparkleColour));
   }
@@ -1001,6 +1004,7 @@ function oscValue(addr, v) {
     else if (key == 'sparkle') { p.sparkle = v; if (mine) return moveSlider('sparkle', v); }
     else if (key == 'pulse') { p.pulse = v; if (mine) return moveSlider('pulse', v); }
     else if (key == 'sparkle_colour') p.sparkleColour = v;
+    else if (key == 'sparkle_timing') p.sparkleBeat = v;
     else if (key == 'timing') p.timing = v;
     else if (key == 'beats') p.beatsExp = Math.round(Math.log2(v));
     else if (key == 'reverse') p.reverse = v;

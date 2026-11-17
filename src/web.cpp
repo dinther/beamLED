@@ -136,6 +136,7 @@ static void presetJson(JsonObject o, int i) {
     o["effect"] = p.effect;
     o["palette"] = p.palette;
     o["sparkle"] = p.sparkle;
+    o["sparkleBeat"] = p.sparkleBeat;  // 0 = free, 1 = beats, 2 = eighths, 3 = sixteenths
     JsonArray a = o["params"].to<JsonArray>();
     for (int j = 0; j < EFFECTS[p.effect].n; j++) a.add(p.p[j]);
     JsonArray ms = o["motions"].to<JsonArray>();
@@ -394,6 +395,7 @@ static void handlePreset() {
     }
     if (d["palette"].is<int>()) p.palette = constrain(d["palette"].as<int>(), 0, paletteCount - 1);
     if (d["sparkle"].is<float>()) p.sparkle = constrain(d["sparkle"].as<float>(), 0.f, 1.f);
+    if (d["sparkleBeat"].is<int>()) p.sparkleBeat = constrain(d["sparkleBeat"].as<int>(), 0, 3);
     if (d["params"].is<JsonArray>()) {
         JsonArray a = d["params"].as<JsonArray>();
         const EffectDef& e = EFFECTS[p.effect];
@@ -674,6 +676,7 @@ static void handleRestore() {
         const EffectDef& e = EFFECTS[p.effect];
         p.palette = constrain(q["palette"] | 0, 0, paletteCount - 1);
         p.sparkle = constrain(q["sparkle"] | 0.f, 0.f, 1.f);
+        p.sparkleBeat = constrain(q["sparkleBeat"] | 0, 0, 3);
         JsonArray ps = q["params"].as<JsonArray>();
         for (int j = 0; j < e.n && j < (int)ps.size(); j++)
             p.p[j] = constrain(ps[j].as<float>(), e.params[j].min, e.params[j].max);

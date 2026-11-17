@@ -220,11 +220,43 @@ static inline float sparkleLevel(uint16_t p) {
     return d * d;
 }
 
-void sparkleOverlay(CRGB* out, float density, float dt, const CRGB* lut) {
-    sparkleStep(density, 1.2f, dt);
+// Bursts: a flash at once, then a quick fade
+static inline float burstLevel(uint16_t p) {
+    if (!p) return 0;
+    const float d = 1.f - p / 65535.f;
+    return d * d;
+}
+
+// On the beat: on each tick (div per beat) a batch of random LEDs lights up; each fades out within
+// 90% of a tick. density 1 = 6% of the LEDs per burst.
+static void burstStep(float density, double beat, float bpm, int div, float dt) {
+    static int64_t lastTick = INT64_MIN;
+    const int64_t tick = (int64_t)floor(beat * div);
+    const float life = 0.9f * 60.f / (fmaxf(bpm, 20.f) * div);
+    const uint32_t inc = (uint32_t)fmaxf(1.f, 65535.f * dt / life);
     for (int i = 0; i < NL; i++) {
         if (!spPhase[i]) continue;
-        uint8_t a = (uint8_t)(sparkleLevel(spPhase[i]) * 255.f);
+        const uint32_t n = spPhase[i] + inc;
+        spPhase[i] = n >= 65535 ? 0 : n;
+    }
+    if (tick == lastTick) return;
+    const bool first = lastTick == INT64_MIN || tick < lastTick || tick - lastTick > 64;
+    lastTick = tick;
+    if (first) return;  // just started (or the beat jumped): wait for the next tick
+    const int n = (int)(density * 0.06f * NL + 0.5f);
+    for (int k = 0; k < n; k++) {
+        const int i = random16() % NL;
+        spPhase[i] = 1;
+        spColour[i] = random8();
+    }
+}
+
+void sparkleOverlay(CRGB* out, float density, float dt, const CRGB* lut, double beat, float bpm, int div) {
+    if (div > 0) burstStep(density, beat, bpm, div, dt);
+    else sparkleStep(density, 1.2f, dt);
+    for (int i = 0; i < NL; i++) {
+        if (!spPhase[i]) continue;
+        uint8_t a = (uint8_t)((div > 0 ? burstLevel(spPhase[i]) : sparkleLevel(spPhase[i])) * 255.f);
         if (!lut) {
             out[i] += CRGB(a, a, a);
             continue;
