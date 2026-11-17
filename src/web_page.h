@@ -263,7 +263,9 @@ async function loadOnce() {
 }
 
 // The preset list changed on the board: take its state
-const presetList = o => post('/api/presets', o).then(st => { S = st; draw(); });
+// A reply with the whole state: keep the effects (fetched once per build, not in the reply)
+const useState = st => { S = Object.assign(st, {effects: S.effects}); draw(); };
+const presetList = o => post('/api/presets', o).then(useState);
 
 function draw() {
   hideTip();
@@ -727,7 +729,7 @@ function layoutCard() {
   const msg = h('div', {className: 'hint'});
   apply.onclick = () => post('/api/layout', {nx: +nx.value, ny: +ny.value, length: +len.value, aspect: +asp.value,
       measured: meas.checked, rowUni: uni.slice(0, +ny.value), rowOrder: ord.slice(0, +ny.value)})
-    .then(st => { S = st; draw(); }).catch(e => { msg.textContent = e.message; });
+    .then(useState).catch(e => { msg.textContent = e.message; });
   table();
   upd();
   return h('div', {className: 'card'},
