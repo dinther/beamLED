@@ -32,6 +32,7 @@ void netLoop();
 bool netOtaActive();        // a firmware update is running
 bool netCanSend();          // an interface with an address is up
 bool netServing();          // that, or the hotspot: the web server can start
+IPAddress netArtNetTarget(IPAddress to);  // 255.255.255.255 becomes the cable subnet's broadcast
 bool netCanSendTo(IPAddress to);  // Art-Net to `to` goes out over the cable (never WiFi)
 IPAddress netCurrentIp();
 IPAddress netAutoFallbackIp();

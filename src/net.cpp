@@ -461,6 +461,14 @@ bool netServing() { return netCanSend() || wifiState == WIFI_HOTSPOT; }
 // stream of 1200 packets a second fills the WiFi buffers until the web page can't load. On the
 // fallback address (no gateway) a target outside the cable's subnet would be routed to the
 // hotspot, so it is skipped. With DHCP (a gateway) everything goes over the cable as before.
+// 255.255.255.255 would leave by whichever interface lwIP picks, the hotspot too: send it to the
+// cable subnet's broadcast (x.x.x.255 for a /24) instead, which only the cable reaches
+IPAddress netArtNetTarget(IPAddress to) {
+    if ((uint32_t)to != 0xFFFFFFFFu || !linkUp || !gotIp) return to;
+    const uint32_t mask = (uint32_t)ETH.subnetMask();
+    return IPAddress(((uint32_t)ETH.localIP() & mask) | ~mask);
+}
+
 bool netCanSendTo(IPAddress to) {
     if (!linkUp || !gotIp) return false;
     if (!usingFallback) return true;

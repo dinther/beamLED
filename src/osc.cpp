@@ -1087,6 +1087,8 @@ static void start() {
         udpSocket = -1;
     } else {
         fcntl(udpSocket, F_SETFL, O_NONBLOCK);
+        const int on = 1;  // Art-Net goes out from this socket too, and may be a broadcast
+        setsockopt(udpSocket, SOL_SOCKET, SO_BROADCAST, &on, sizeof(on));
     }
 
     chunkBuf = (char*)malloc(CHUNK);
