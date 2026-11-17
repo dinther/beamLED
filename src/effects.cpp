@@ -714,6 +714,112 @@ static void gradient(Ctx& c) {
     }
 }
 
+// ---------------------------------------------------------------- Shapes
+// Squares, circles and triangles appearing one after another at random places, sizes, angles and
+// palette colours; each stays for Count turns and fades out. Outline, solid, or a dim fill inside a
+// bright outline. Shape n's looks come from a hash of n, so it needs no state of its own.
+
+static inline float hrand(uint32_t n, uint32_t k) {
+    uint32_t x = n * 2654435761u + k * 40503u + 977u;
+    x ^= x >> 16; x *= 0x7feb352du; x ^= x >> 15; x *= 0x846ca68bu; x ^= x >> 16;
+    return (x >> 8) / 16777216.f;
+}
+
+static void shapesFx(Ctx& c) {
+    const int kind = clampi((int)(c.p[0] + 0.5f), 0, 3), count = clampi((int)(c.p[5] + 0.5f), 1, 6);
+    const float size = c.p[1], variety = c.p[2], fill = c.p[3], half = c.p[4] * 0.5f, every = c.p[6],
+                spin = c.p[7] * DEG;
+    advance(c, c.s[0], 1.f / every, 1.f);  // one new shape per cycle (in beats: on the beat)
+    const float clock = c.s[0];
+    const int J = floorI(clock);
+    // How long a shape lives, in seconds (for its spin)
+    const float lifeS = (c.cycleBeats > 0 ? c.cycleBeats * 60.f / fmaxf(c.bpm, 1.f) : every) * count;
+    struct Sh { float x, y, r, env, reach; float nx[4], ny[4]; uint8_t type, faces; CRGB col; } sh[6];
+    int n = 0;
+    for (int k = 0; k < count; k++) {
+        const int idx = J - k;
+        const float f = (clock - idx) / count;  // 0..1 through its life
+        if (f < 0 || f >= 1) continue;
+        const uint32_t u = (uint32_t)idx;
+        Sh& s = sh[n];
+        s.type = kind < 3 ? kind : (uint8_t)min(2, (int)(hrand(u, 1) * 3));
+        const float w = size * (1.f - variety * hrand(u, 2));  // its width in metres
+        const float a = hrand(u, 5) * TAU + (hrand(u, 6) < 0.5f ? -spin : spin) * f * lifeS;
+        s.env = sm(f * 12.5f) * sm((1.f - f) * 3.33f);  // quick fade in, slower fade out
+        s.col = c.lutWrap[(uint8_t)(hrand(u, 7) * 256.f)];
+        if (s.type == 0) {  // square: four faces, half a side from the centre
+            s.faces = 4;
+            s.r = w * 0.5f;
+            for (int q = 0; q < 4; q++) { s.nx[q] = cosf(a + q * 1.5707963f); s.ny[q] = sinf(a + q * 1.5707963f); }
+            s.reach = s.r * 1.4143f;
+        } else if (s.type == 2) {  // triangle, w = its side: three faces at the inradius
+            s.faces = 3;
+            s.r = w * 0.288675f;
+            for (int q = 0; q < 3; q++) { s.nx[q] = cosf(a + q * 2.0943951f); s.ny[q] = sinf(a + q * 2.0943951f); }
+            s.reach = s.r * 2.f;
+        } else {  // circle, w = its diameter
+            s.faces = 0;
+            s.r = w * 0.5f;
+            s.reach = s.r;
+        }
+        // Its centre: anywhere it fits inside the ceiling whole (a shape too big for that: centred)
+        const float mx = fminf(s.reach + half, W * 0.5f), my = fminf(s.reach + half, H * 0.5f);
+        s.x = mx + hrand(u, 3) * (W - 2 * mx);
+        s.y = Y[0] + my + hrand(u, 4) * (H - 2 * my);
+        s.reach += half + 0.6f;  // the line and the soft edge
+        n++;
+    }
+    memset(c.out, 0, NL * sizeof(CRGB));
+    const float pitch = W / NX, ip = 1.f / pitch;
+    for (int b = 0; b < NY; b++) {
+        CRGB* o = c.out + b * NX;
+        for (int j = 0; j < n; j++) {
+            const Sh& s = sh[j];
+            if (s.env <= 0.002f) continue;
+            const float dy = Y[b] - s.y;
+            if (fabsf(dy) >= s.reach) continue;
+            const float rx = sqrtf(s.reach * s.reach - dy * dy);
+            const int i0 = max(0, floorI((s.x - rx) * ip)), i1 = min(NX - 1, (int)((s.x + rx) * ip) + 1);
+            // An edge's softness: a little along the rows, the row's footprint where it crosses
+            // them (a face's slant to the rows), so it doesn't pop from one row to the next.
+            // Per face once a row: 1 / width
+            float ie[4];
+            for (int q = 0; q < s.faces; q++) ie[q] = 1.f / (0.12f + FY[b] * fabsf(s.ny[q]));
+            for (int i = i0; i <= i1; i++) {
+                const float dx = X[i] - s.x;
+                float d, inv;
+                if (s.faces) {  // distance outside the nearest face (inside: negative)
+                    int best = 0;
+                    float m = dx * s.nx[0] + dy * s.ny[0];
+                    for (int q = 1; q < s.faces; q++) {
+                        const float v = dx * s.nx[q] + dy * s.ny[q];
+                        if (v > m) { m = v; best = q; }
+                    }
+                    d = m - s.r;
+                    inv = ie[best];
+                } else {
+                    const float d2 = dx * dx + dy * dy;
+                    const float rd = d2 > 1e-8f ? rsqrtFast(d2) : 0.f;
+                    d = d2 * rd - s.r;
+                    const float e = 0.12f + FY[b] * fabsf(dy) * rd;
+                    inv = rsqrtFast(e * e);
+                }
+                // Coverage of the outline band and of the inside, over the edge's width: a line
+                // narrower than a row's footprint comes out dimmer instead of popping
+                const float line = sm(0.5f - (fabsf(d) - half) * inv);
+                const float inside = fill * sm(0.5f - d * inv);
+                const float I = fmaxf(line, inside) * s.env;
+                if (I < 0.002f) continue;
+                const CRGB v = scaleF(s.col, I);
+                CRGB& t = o[i];
+                if (v.r > t.r) t.r = v.r;
+                if (v.g > t.g) t.g = v.g;
+                if (v.b > t.b) t.b = v.b;
+            }
+        }
+    }
+}
+
 // ---------------------------------------------------------------- table
 // New effects go at the end: presets store the index.
 
@@ -832,6 +938,17 @@ const EffectDef EFFECTS[] = {
       {"Centre Y", -0.2f, 1.2f, 0.5f, 0.01f, "Radial: where the centre sits across the bars: 0 = the first bar, 0.5 = the middle, 1 = the last bar."}},
      gradient, false, nullptr, -1,
      "A steady gradient through the palette: straight in any direction, or round from a centre. The palette is used as a ramp, first colour to last and back. Calm light that doesn't move unless Drift or a Motion moves it."},
+    {"Shapes", 8,
+     {{"Shape", 0, 3, 3, 1, "0 = squares, 1 = circles, 2 = triangles, 3 = a mix of all three, picked at random."},
+      {"Size (m)", 0.8f, 8, 3, 0.1f, "How big the shapes are, in metres: a circle's diameter, a square's or a triangle's side. Below about 1.5 m they get hard to read across rows half a metre apart, for example."},
+      {"Size variety", 0, 1, 0.5f, 0.01f, "How much the sizes differ. 0 = all the same size, 1 = anything from Size down to tiny."},
+      {"Fill", 0, 1, 0, 0.01f, "0 = outlines only, 1 = solid shapes. In between: a dimmer inside within a bright outline."},
+      {"Line width (m)", 0.2f, 2, 0.6f, 0.05f, "How thick the outlines are, in metres. Lines thinner than the row spacing come out dimmer where they run along the rows, so they don't flicker."},
+      {"Count", 1, 6, 3, 1, "How many shapes show at once. Each stays for this many turns and fades out as a new one appears."},
+      {"New shape every (s)", 0.2f, 10, 1.5f, 0.1f, "How often a new shape appears, in seconds. Each lasts Count times this. In Beats timing this slider is replaced by beats per shape, and each lands on the beat."},
+      {"Spin (deg/s)", 0, 90, 10, 1, "How fast the shapes turn while they show, each its own way round. 0 = they keep their angle. Circles don't show it."}},
+     shapesFx, false, "shape", 6,
+     "Squares, circles and triangles appearing one after another at random places, sizes and angles, each in a random palette colour, as outlines, solid or both. Each stays a while and fades out."},
 };const int NUM_EFFECTS = sizeof(EFFECTS) / sizeof(EFFECTS[0]);
 
 void effectsInit() {
