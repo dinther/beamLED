@@ -152,6 +152,9 @@ static void onNetworkEvent(WiFiEvent_t event) {
             Serial.println("Ethernet link down");
             linkUp = false;
             linkDownAt = millis();
+            // A DHCP lease belongs to the network the cable was in: the next cable may lead
+            // elsewhere (straight to a pixel controller), so ask again, then fall back
+            if (!usingFallback) gotIp = false;
             break;
         case ARDUINO_EVENT_WIFI_STA_GOT_IP:
             Serial.printf("WiFi IP address: %s\n", WiFi.localIP().toString().c_str());
