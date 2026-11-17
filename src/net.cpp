@@ -163,6 +163,15 @@ static void onNetworkEvent(WiFiEvent_t event) {
         case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
             wifiGotIp = false;
             break;
+        case ARDUINO_EVENT_WIFI_AP_STACONNECTED:
+            Serial.printf("Hotspot: a client joined (%d now)\n", WiFi.softAPgetStationNum());
+            break;
+        case ARDUINO_EVENT_WIFI_AP_STADISCONNECTED:
+            Serial.printf("Hotspot: a client left (%d now)\n", WiFi.softAPgetStationNum());
+            break;
+        case ARDUINO_EVENT_WIFI_AP_STAIPASSIGNED:
+            Serial.println("Hotspot: a client got an address");
+            break;
         default:
             break;
     }

@@ -28,6 +28,7 @@ public:
     // reach the LEDs lands on the beat
     BeatTime now(double aheadMs = 0) const;
     void setTempo(double bpm);  // also changes it for every peer
+    void setBeat(double beat);  // carry on from the board's own beat count (before Link existed)
     // Starts Link's discovery afresh (a running Link sometimes stays alone while other apps
     // see each other); tempo and beat carry on
     void rejoin();

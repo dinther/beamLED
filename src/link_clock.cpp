@@ -51,6 +51,13 @@ void LinkClock::rejoin() {
     impl_->link.enable(true);
 }
 
+void LinkClock::setBeat(double beat) {
+    const auto at = impl_->link.clock().micros();
+    auto state = impl_->link.captureAppSessionState();
+    state.requestBeatAtTime(beat, at, kQuantum);
+    impl_->link.commitAppSessionState(state);
+}
+
 void LinkClock::setTempo(double bpm) {
     auto state = impl_->link.captureAppSessionState();
     state.setTempo(std::clamp(bpm, 20.0, 999.0), impl_->link.clock().micros());

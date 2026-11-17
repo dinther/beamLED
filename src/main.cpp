@@ -27,7 +27,7 @@ static float level = 0;      // master fade 0..1
 static int pending = -1;     // preset to switch to once faded out
 static float fps = 0, renderMs = 0;
 
-static LinkClock* linkClock = nullptr;  // created once the network stack is up
+static LinkClock* linkClock = nullptr;  // created when Link is first enabled (never while disabled)
 static BeatTime beat;              // where the music is, this frame
 static uint32_t linkAloneSince = 0;
 static int linkPeers = 0;
@@ -200,7 +200,25 @@ static void updateFade(float dt) {
 // Ableton Link, once a frame. As in Glow: Link sometimes stays alone while other apps see each
 // other; only a fresh Link clears it, so while alone start afresh every 15 s.
 static void updateLink() {
-    if (!linkClock) return;
+    // A Link that is never enabled is never created: no threads, no sockets, nothing on the
+    // hotspot. Until then the board keeps its own beat at its own tempo.
+    if (!linkClock && linkSettings.enabled) {
+        const double from = beat.beat;
+        linkClock = new LinkClock(linkSettings.bpm);
+        linkClock->setBeat(from);
+    }
+    if (!linkClock) {
+        static uint32_t prevUs = micros();
+        const uint32_t nowUs = micros();
+        beat.bpm = linkSettings.bpm;
+        beat.beat += (nowUs - prevUs) * 1e-6 * linkSettings.bpm / 60.0;
+        prevUs = nowUs;
+        beat.quantum = 4;
+        beat.phase = fmod(beat.beat, beat.quantum);
+        beat.peers = 0;
+        beat.link = false;
+        return;
+    }
     linkClock->enable(linkSettings.enabled);
     beat = linkClock->now(linkSettings.latencyMs);
     if (beat.peers != linkPeers) {
@@ -358,7 +376,6 @@ void setup() {
     netLoad();
     effectsInit();
     netBegin();
-    linkClock = new LinkClock(linkSettings.bpm);
     artnet.begin();
     webBegin();
     printLayout();
