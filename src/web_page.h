@@ -583,12 +583,13 @@ function paletteEditor(q, i) {
   nm.onchange = () => { q.name = nm.value; send(); draw(); };
   box.append(nm);
   if (S.palettes.length > 1) {
-    const del = button('Delete', H.palDelete, {className: 'del'});
+    const del = button('✕', H.palDelete, {className: 'del'});
+    del.setAttribute('aria-label', 'Delete palette ' + q.name);
     let armed = null;
     del.onclick = () => {
       if (armed) { clearTimeout(armed); post('/api/palettes', {delete: i}).then(st => { S = Object.assign(st, {effects: S.effects}); draw(); }); return; }
-      del.textContent = 'Really delete?'; del.className = 'del warn';
-      armed = setTimeout(() => { armed = null; del.textContent = 'Delete'; del.className = 'del'; }, 3000);
+      del.textContent = 'Delete?'; del.className = 'del warn';
+      armed = setTimeout(() => { armed = null; del.textContent = '✕'; del.className = 'del'; }, 3000);
     };
     box.append(del);
   }
