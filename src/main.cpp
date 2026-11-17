@@ -306,7 +306,29 @@ static void renderFrame(float dt) {
     }
     Ctx c{pp, edt, effState, lutWrap, lutLin, leds, beat.beat, (float)beat.bpm, cycleBeats, y.reverse != 0};
     e.render(c);
-    if (!e.ownSparkle && p.sparkle > 0) sparkleOverlay(leds, p.sparkle, dt);
+    if (!e.ownSparkle && p.sparkle > 0) {
+        // Its colours: white, the preset's palette, or another palette (its table on the heap,
+        // rebuilt only when that palette changes)
+        const CRGB* lut = nullptr;
+        if (y.sparkleColour == 1) lut = lutWrap;
+        else if (y.sparkleColour >= 2 && y.sparkleColour - 2 < paletteCount) {
+            static CRGB* spLut = nullptr;
+            static Palette* spBuilt = nullptr;
+            static bool spHave = false;
+            if (!spLut) spLut = (CRGB*)malloc(256 * sizeof(CRGB));
+            if (!spBuilt) spBuilt = (Palette*)calloc(1, sizeof(Palette));
+            const Palette& sp = palettes[y.sparkleColour - 2];
+            if (spLut && spBuilt) {
+                if (!spHave || memcmp(spBuilt, &sp, sizeof(sp)) != 0) {
+                    buildLut(sp, spLut, true);
+                    *spBuilt = sp;
+                    spHave = true;
+                }
+                lut = spLut;
+            }
+        }
+        sparkleOverlay(leds, p.sparkle, dt, lut);
+    }
 }
 
 // Gamma, brightness and fade in one table. The fade is squared so it looks even to the eye.

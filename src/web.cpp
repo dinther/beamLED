@@ -132,6 +132,7 @@ static void presetJson(JsonObject o, int i) {
     o["beatsExp"] = presetSync[i].beatsExp;
     o["reverse"] = presetSync[i].reverse != 0;
     o["pulse"] = presetSync[i].pulse;
+    o["sparkleColour"] = presetSync[i].sparkleColour;  // 0 = white, 1 = its palette, 2 + k = palette k
     o["effect"] = p.effect;
     o["palette"] = p.palette;
     o["sparkle"] = p.sparkle;
@@ -403,6 +404,8 @@ static void handlePreset() {
     if (d["beatsExp"].is<int>()) presetSync[i].beatsExp = constrain(d["beatsExp"].as<int>(), 0, 6);
     if (d["reverse"].is<bool>()) presetSync[i].reverse = d["reverse"].as<bool>();
     if (d["pulse"].is<float>()) presetSync[i].pulse = constrain(d["pulse"].as<float>(), 0.f, 1.f);
+    if (d["sparkleColour"].is<int>())
+        presetSync[i].sparkleColour = constrain(d["sparkleColour"].as<int>(), 0, 1 + paletteCount);
     if (d["auto"].is<bool>()) {  // in Auto or not: a setting, saved at once (not a preset edit)
         if (d["auto"].as<bool>()) autoSettings.skip &= ~(1u << i);
         else autoSettings.skip |= 1u << i;
@@ -679,6 +682,7 @@ static void handleRestore() {
         sy.beatsExp = constrain(q["beatsExp"] | 2, 0, 6);
         sy.reverse = (q["reverse"] | false) ? 1 : 0;
         sy.pulse = constrain(q["pulse"] | 0.f, 0.f, 1.f);
+        sy.sparkleColour = constrain(q["sparkleColour"] | 0, 0, 1 + paletteCount);
         JsonArray ms = q["motions"].as<JsonArray>();
         for (int m = 0; m < MOTIONS; m++) {
             Motion& mo = presetMotion[i][m];

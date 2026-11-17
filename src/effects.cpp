@@ -220,12 +220,17 @@ static inline float sparkleLevel(uint16_t p) {
     return d * d;
 }
 
-void sparkleOverlay(CRGB* out, float density, float dt) {
+void sparkleOverlay(CRGB* out, float density, float dt, const CRGB* lut) {
     sparkleStep(density, 1.2f, dt);
     for (int i = 0; i < NL; i++) {
         if (!spPhase[i]) continue;
         uint8_t a = (uint8_t)(sparkleLevel(spPhase[i]) * 255.f);
-        out[i] += CRGB(a, a, a);
+        if (!lut) {
+            out[i] += CRGB(a, a, a);
+            continue;
+        }
+        const CRGB& k = lut[spColour[i]];
+        out[i] += CRGB(k.r * a / 255, k.g * a / 255, k.b * a / 255);
     }
 }
 

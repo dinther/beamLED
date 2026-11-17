@@ -195,7 +195,7 @@ static void save() {
     Serial.println("Settings saved");
 }
 
-static const PresetSync SYNC_DEFAULT = {TIMING_TIME, 2, 0, 0};
+static const PresetSync SYNC_DEFAULT = {TIMING_TIME, 2, 0, 0, 0};
 
 void storeLoad() {
     defaults();
@@ -273,6 +273,7 @@ void storeLoad() {
         if (y.timing > TIMING_BEATS) y.timing = TIMING_TIME;
         if (y.beatsExp > 6) y.beatsExp = 2;
         y.reverse = y.reverse ? 1 : 0;
+        if (y.sparkleColour > 1 + paletteCount) y.sparkleColour = 0;
         if (!(y.pulse >= 0 && y.pulse <= 1)) y.pulse = 0;
     }
     if (settings.current >= presetCount) settings.current = 0;
@@ -352,7 +353,8 @@ static bool sameMotion(const Motion& a, const Motion& b) {
 }
 
 static bool sameSync(const PresetSync& a, const PresetSync& b) {
-    return a.timing == b.timing && a.beatsExp == b.beatsExp && a.reverse == b.reverse && a.pulse == b.pulse;
+    return a.timing == b.timing && a.beatsExp == b.beatsExp && a.reverse == b.reverse && a.pulse == b.pulse &&
+           a.sparkleColour == b.sparkleColour;
 }
 
 bool presetChanged(int i) {
@@ -569,9 +571,16 @@ bool paletteDelete(int k) {
         if (p.palette == k) p.palette = 0;
         else if (p.palette > k) p.palette--;
     };
+    auto fixSparkle = [&](PresetSync& y) {  // 2 + k: that palette
+        if (y.sparkleColour < 2) return;
+        if (y.sparkleColour - 2 == k) y.sparkleColour = 2;
+        else if (y.sparkleColour - 2 > k) y.sparkleColour--;
+    };
     for (int i = 0; i < presetCount; i++) {
         fix(presets[i]);
         fix(savedPresets[i]);
+        fixSparkle(presetSync[i]);
+        fixSparkle(savedSync[i]);
     }
     storeMarkDirty();
     return true;

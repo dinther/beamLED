@@ -35,8 +35,11 @@ struct PresetSync {
     uint8_t timing;    // Timing
     uint8_t beatsExp;  // timing in beats: 0..6 = 1, 2, 4, ... 64 beats per cycle
     uint8_t reverse;   // timing in beats: cycle runs backwards
+    uint8_t sparkleColour;  // the Sparkle overlay's colours: 0 = white, 1 = the preset's palette,
+                            // 2 + k = palette k (in what was padding: older saves read as 0)
     float pulse;       // brightness accent on each beat, 0..1
 };
+static_assert(sizeof(PresetSync) == 8, "PresetSync is saved as is: its size must not change");
 
 // A Motion moves one of the preset's sliders back and forth by itself, between From and To,
 // along a shape. Its period is one full there-and-back, in seconds or in beats (then it is on the

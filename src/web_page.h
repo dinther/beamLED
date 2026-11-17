@@ -187,7 +187,8 @@ const H = {
   timing: 'Time: speeds are in their own units (m/s, rpm, …). Time, follow tempo: the set speed is the speed at 120 BPM and scales with the tempo, so at 240 BPM it runs twice as fast. Beats (only for effects with a cycle): one cycle (a band, a revolution, …) takes a whole number of beats and lines up with the bar; the speed slider then gives way to Beats per cycle.',
   beats: 'How many beats one cycle takes; 4 beats = one bar. After a change the motion eases onto the new beat grid over a few seconds instead of jumping.',
   reverse: 'Runs the cycle backwards: the lighthouse turns the other way, bands roll back, rings flow in.',
-  sparkle: 'White twinkles on top of this preset’s effect. 0 = none, 1 = about 8% of the LEDs lit at any moment.',
+  sparkle: 'Twinkles on top of this preset’s effect. 0 = none, 1 = about 8% of the LEDs lit at any moment. Their colours: Sparkle colour.',
+  sparkleColour: 'The colours of the Sparkle overlay’s twinkles: white, random colours from this preset’s own palette, or from any other palette.',
   pulse: 'A brightness accent on the beat: full on each beat and dipping in between, strongest on the bar’s first beat. 0 = steady. Follows Ableton Link, or the board’s own tempo.',
   reset: 'Sets this preset’s effect parameters back to the effect’s defaults (not saved until you click Save). Name, palette, timing, sparkle and pulse stay as they are.',
   save: 'Stores this preset as it plays now: its name, effect, palette, sliders, motions, timing, sparkle and pulse. Until you save, changes (here or from OSC) play on the ceiling but the preset keeps its saved settings, so you can tinker freely. Unsaved changes are kept while you switch presets, and lost on a power cut.',
@@ -249,12 +250,16 @@ const palGrad = q => {
   return 'linear-gradient(90deg,' + q.colors.map((c, j) => c + ' ' + (st[j] * 100).toFixed(1) + '%').join(',') + ')';
 };
 function paletteSelect(label, val, onch, help) {
+  return gradSelect(label, S.palettes.map(q => ({name: q.name, bg: palGrad(q)})), val, onch, help);
+}
+// A picker of gradient strips with a name on each: items [{name, bg}]
+function gradSelect(label, items, val, onch, help) {
   const wrap = h('div', {className: 'pdd'});
   const face = h('span', {className: 'g'});
   const btn = h('button', {type: 'button'}, face);
   btn.setAttribute('aria-haspopup', 'listbox');
   btn.setAttribute('aria-expanded', 'false');
-  const show = v => { const q = S.palettes[v]; face.textContent = q ? q.name : '?'; face.style.background = q ? palGrad(q) : ''; };
+  const show = v => { const q = items[v]; face.textContent = q ? q.name : '?'; face.style.background = q ? q.bg : ''; };
   show(val);
   let list = null;
   const outside = e => { if (!wrap.contains(e.target)) close(); };
@@ -268,9 +273,9 @@ function paletteSelect(label, val, onch, help) {
   btn.onclick = () => {
     if (list) { close(); return; }
     list = h('ul', {role: 'listbox'});
-    S.palettes.forEach((q, i) => {
+    items.forEach((q, i) => {
       const g = h('span', {className: 'g', textContent: q.name});
-      g.style.background = palGrad(q);
+      g.style.background = q.bg;
       const li = h('li', {role: 'option', tabIndex: -1, className: i == val ? 'sel' : ''}, g);
       li.setAttribute('aria-selected', i == val);
       li.onclick = () => pick(i);
@@ -415,6 +420,14 @@ function draw() {
   });
   if (ef.sparkle) card.append(slider('Sparkle overlay', 0, 1, 0.01, p.sparkle, v => v.toFixed(2),
     v => { p.sparkle = v; markChanged(S.current); liveSend(presetAddr('sparkle'), v, () => post('/api/preset', {index: S.current, sparkle: v})); }, H.sparkle, 'sparkle'));
+  if (ef.sparkle) {
+    const own = S.palettes[p.palette] || S.palettes[0];
+    const items = [{name: 'White', bg: 'linear-gradient(90deg,#8a8a8a,#e0e0e0)'},
+                   {name: 'Preset’s palette (' + own.name + ')', bg: palGrad(own)}]
+      .concat(S.palettes.map(q => ({name: q.name, bg: palGrad(q)})));
+    card.append(gradSelect('Sparkle colour', items, p.sparkleColour || 0, v => {
+      p.sparkleColour = v; markChanged(S.current); post('/api/preset', {index: S.current, sparkleColour: v}); }, H.sparkleColour));
+  }
   card.append(slider('Beat pulse', 0, 1, 0.01, p.pulse, v => v.toFixed(2),
     v => { p.pulse = v; markChanged(S.current); liveSend(presetAddr('pulse'), v, () => post('/api/preset', {index: S.current, pulse: v})); }, H.pulse, 'pulse'));
   motions.forEach((mo, m) => card.append(motionEditor(p, ef, mo, m)));
