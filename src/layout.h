@@ -1,6 +1,6 @@
 // The LED grid: rows of LEDs, set on the web page. Effects work in metres: x along a row
 // (LED spacing = row length / LEDs per row), y across the rows (row spacing = aspect x LED
-// spacing, or the measured ceiling rows).
+// spacing, or the measured rows).
 #pragma once
 #include <stdint.h>
 
@@ -13,7 +13,7 @@ struct Layout {
     uint16_t ny;       // rows
     float length;      // m, row length
     float aspect;      // row spacing / LED spacing
-    uint8_t measured;  // use the measured ceiling rows (15 rows only)
+    uint8_t measured;  // use the measured rows (15 rows only)
     // Art-Net start universe of each row. A row uses universesPerRow() consecutive universes
     // from there (170 RGB pixels each).
     uint16_t rowUni[MAX_Y];

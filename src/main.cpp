@@ -1,4 +1,4 @@
-// beamLED: standalone LED ceiling renderer (WT32-ETH01 -> Art-Net -> pixel controller).
+// beamLED: standalone LED bar renderer (WT32-ETH01 -> Art-Net -> pixel controller).
 // Effects work in real coordinates (metres) on the LEDs that exist, never on a dense grid.
 #include <atomic>
 #include <Arduino.h>
@@ -326,7 +326,7 @@ static void renderFrame(float dt) {
         if (d.step >= 1) v = roundf(v);
         pp[mo.target - 1] = v;
     }
-    effectsToUnits(e, pp);  // lengths and speeds from % of the ceiling's shorter side to its units
+    effectsToUnits(e, pp);  // lengths and speeds from % of the layout's shorter side to its units
     Ctx c{pp, edt, effState, lutWrap, lutLin, leds, beat.beat, (float)beat.bpm, cycleBeats, y.reverse != 0,
           presetSteps[settings.current].lane, levels.effect / 255.f};
     effectsRender(e, c, (p.mirror & 1) != 0);  // Mirror Y: only the first half of each row rendered
@@ -395,7 +395,7 @@ static void buildOutLut() {
 
 // ---------------------------------------------------------------- button
 
-// Short press: Auto off, and next preset (or on). Double press: Auto on (and the ceiling on).
+// Short press: Auto off, and next preset (or on). Double press: Auto on (and the lights on).
 // Long press: on/off. A short press waits DOUBLE_MS to see whether a second one follows.
 static void pollButton() {
     static bool down = false, longDone = false;

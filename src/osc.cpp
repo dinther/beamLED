@@ -50,30 +50,30 @@ static bool nodeInfo(int id, NodeInfo& n, char* path, size_t len) {
         if (path) snprintf(path, len, "/beamled/%s", GLOBAL_NAME[id]);
         switch (id) {
             case G_PRESET:
-                n = {'i', 3, true, 1, (float)presetCount, "The preset playing, by its number on the web page. Fades over to it, and switches on."};
+                n = {'i', 3, true, 1, (float)presetCount, "Preset playing, 1 = the first."};
                 break;
-            case G_NEXT: n = {'N', 2, false, 0, 0, "The next preset, as a short press of the button (after the last comes the first). An argument of 0, a button's release, is ignored."}; break;
-            case G_PREV: n = {'N', 2, false, 0, 0, "The previous preset. An argument of 0 is ignored."}; break;
-            case G_ON: n = {'T', 3, false, 0, 1, "On or off, with a fade, as a long press of the button. No argument toggles."}; break;
-            case G_BRIGHTNESS: n = {'f', 3, true, 0, 1, "Master brightness, 0..1, as the web page's Brightness slider."}; break;
-            case G_AUTO: n = {'T', 3, false, 0, 1, "Auto: the presets change by themselves, every so many seconds or bars as set on the web page, among the presets that are in Auto. No argument toggles."}; break;
-            case G_LINK: n = {'T', 3, false, 0, 1, "Ableton Link: Enabled (true) or Disabled (false). No argument toggles."}; break;
-            case G_SPARKLE: n = {'f', 3, true, 0, 1, "Sparkle overlay, the same over every preset: twinkles on top of the effect (their colours: sparkle_colour). 0 = none, 1 = about 8% of the LEDs lit at a time. Not drawn over the Sparkle effect."}; break;
-            case G_SPARKLE_TIMING: n = {'i', 3, true, 0, 6, "Sparkle overlay timing: 0 = free, twinkles start at any moment; otherwise they start only every 1 = 1 beat, 2 = 1/2 beat, 3 = 1/4 beat, 4 = 1/8 beat, 5 = 2 beats, 6 = 4 beats (a bar)."}; break;
-            case G_SPARKLE_BURST: n = {'T', 3, false, 0, 1, "Sparkle overlay, with a timing other than free: true = a batch flashes on each tick and fades out before the next, false = single twinkles. No argument toggles."}; break;
-            case G_SPARKLE_COLOUR: n = {'i', 3, true, 0, (float)(1 + paletteCount), "Sparkle overlay colours: 0 = white, 1 = the playing preset's palette, 2 = palette 1, 3 = palette 2, and so on (palette n = n + 1)."}; break;
-            case G_SPARKLE_STEP: n = {'f', 3, true, 0, 1, "Sparkle overlay colour step: 0 = each twinkle a random colour from its palette; above 0 each new twinkle this far along the palette from the one before (0.5 = opposite colours in turn). Not with white twinkles."}; break;
-            case G_PALETTE: n = {'i', 3, true, 0, (float)paletteCount, "Palette lock: 0 = every preset plays its own palette; 1, 2, ... = every preset plays that palette instead (their own settings are kept). Not saved: after a restart each preset has its own again."}; break;
-            case G_SPARKLE_THROUGH: n = {'T', 3, false, 0, 1, "Sparkle overlay: true = each twinkle runs through its palette, first colour to last, over its life (a palette black, black, red: goes dark, pops red, fades); false = each twinkle one colour. Not with white twinkles. No argument toggles."}; break;
-            case G_SPARKLE_TIME: n = {'f', 3, true, 0.2f, 5, "Sparkle overlay: how long a twinkle lasts, in seconds (with Through the palette, how long it takes to go through the palette). Not with bursts: they last until the next tick."}; break;
-            case G_EFFECT_BRIGHTNESS: n = {'f', 3, true, 0, 1, "Effect brightness, 0..1: dims whatever preset plays (not the Sparkle overlay's twinkles), under the master brightness."}; break;
-            case G_SPARKLE_BRIGHTNESS: n = {'f', 3, true, 0, 1, "Sparkle brightness, 0..1: how strongly the Sparkle overlay's twinkles show over the effect (0 = not at all, a dark twinkle darkens less), under the master brightness."}; break;
-            case G_SAVE: n = {'N', 2, false, 0, 0, "Saves every preset as it plays now (as Save on each preset on the web page), with the palettes and settings, so they survive a power cut. Until then, preset changes from OSC or the web page play but are not saved."}; break;
+            case G_NEXT: n = {'N', 2, false, 0, 0, "Next preset (as a short press). 0 is ignored."}; break;
+            case G_PREV: n = {'N', 2, false, 0, 0, "Previous preset. 0 is ignored."}; break;
+            case G_ON: n = {'T', 3, false, 0, 1, "Lights on or off, with a fade. No argument toggles."}; break;
+            case G_BRIGHTNESS: n = {'f', 3, true, 0, 1, "Master brightness."}; break;
+            case G_AUTO: n = {'T', 3, false, 0, 1, "Auto: presets change by themselves. No argument toggles."}; break;
+            case G_LINK: n = {'T', 3, false, 0, 1, "Ableton Link enabled. No argument toggles."}; break;
+            case G_SPARKLE: n = {'f', 3, true, 0, 1, "Sparkle overlay amount. 1 = about 8% of the LEDs lit."}; break;
+            case G_SPARKLE_TIMING: n = {'i', 3, true, 0, 6, "Twinkle timing: 0 free; 1 = 1 beat, 2 = 1/2, 3 = 1/4, 4 = 1/8, 5 = 2 beats, 6 = 4 beats."}; break;
+            case G_SPARKLE_BURST: n = {'T', 3, false, 0, 1, "Bursts on each tick (not with free timing). No argument toggles."}; break;
+            case G_SPARKLE_COLOUR: n = {'i', 3, true, 0, (float)(1 + paletteCount), "Twinkle colours: 0 white, 1 the preset's palette, n + 1 palette n."}; break;
+            case G_SPARKLE_STEP: n = {'f', 3, true, 0, 1, "Twinkle colour step: 0 random, else this far along the palette each time."}; break;
+            case G_PALETTE: n = {'i', 3, true, 0, (float)paletteCount, "Palette lock: 0 = each preset's own, n = palette n. Not saved."}; break;
+            case G_SPARKLE_THROUGH: n = {'T', 3, false, 0, 1, "Each twinkle runs through its palette. No argument toggles."}; break;
+            case G_SPARKLE_TIME: n = {'f', 3, true, 0.2f, 5, "Twinkle duration, seconds."}; break;
+            case G_EFFECT_BRIGHTNESS: n = {'f', 3, true, 0, 1, "Effect brightness (not the Sparkle overlay)."}; break;
+            case G_SPARKLE_BRIGHTNESS: n = {'f', 3, true, 0, 1, "Sparkle overlay strength."}; break;
+            case G_SAVE: n = {'N', 2, false, 0, 0, "Save every preset as it plays."}; break;
         }
         return true;
     }
     if (path) snprintf(path, len, "/beamled/slider%d", id - SLIDER_BASE + 1);
-    n = {'f', 3, true, 0, 1, "A slider of the preset playing, by its place in the list on the web page (slider1 = the first), 0..1 over its whole range. Ignored when the effect has fewer sliders. Changes play at once; Save keeps them."};
+    n = {'f', 3, true, 0, 1, "The playing preset's slider in this place, 0..1 over its range."};
     return true;
 }
 
@@ -426,7 +426,7 @@ static void writeTree(Out& o, const char* path) {
         static const char* const top[] = {"beamled"};
         writeContainer(o, "/", "beamLED", 0, 0, top, 1, "/%s");
     } else {
-        writeContainer(o, path, "beamLED: the LED ceiling", 0, NUM_NODES);
+        writeContainer(o, path, "beamLED", 0, NUM_NODES);
     }
 }
 

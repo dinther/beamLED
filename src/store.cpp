@@ -193,7 +193,7 @@ static void rememberSaved() {
 }
 
 // The sliders' version: 2 = one order for every effect (2026-11-19), 3 = lengths and speeds in %
-// of the ceiling's shorter side, 4 = Centre X across the bars, Y along them (both 2026-11-19).
+// of the layout's shorter side, 4 = Centre X across the bars, Y along them (both 2026-11-19).
 // Missing: the order before, in metres.
 static const uint8_t PARAM_ORDER = 4;
 static bool orderWritten = false;

@@ -384,7 +384,7 @@ static void handleState() {
     JsonArray ro = lay["rowOrder"].to<JsonArray>();  // colour order per row, 0 RGB .. 5 BGR
     for (int b = 0; b < layout.ny; b++) ro.add(rowOrder[b]);
     lay["maxLeds"] = MAX_LEDS;
-    // Each row's place across the ceiling in metres, as the effects use it (for the preview)
+    // Each row's place across the layout in metres, as the effects use it (for the preview)
     {
         JsonArray ry = lay["rowY"].to<JsonArray>();
         const bool measured = layout.measured && layout.ny == cfg::CEILING_ROWS;

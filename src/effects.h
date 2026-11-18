@@ -12,7 +12,7 @@ struct ParamDef {
     const char* name;
     float min, max, def, step;
     const char* help;  // what it does, for the page's tooltip and OSCQuery's description
-    // 1: a length (%) or speed (%/s) as a share of the ceiling's shorter side; turned into the
+    // 1: a length (%) or speed (%/s) as a share of the layout's shorter side; turned into the
     // effects' units (effectsToUnits: 1 = that side) before the effect gets it. 0: as it is.
     uint8_t rel;
 };
@@ -61,7 +61,7 @@ int effectsParamFromOldOrder(int e, int old);
 // The relative sliders' % (of the shorter side) to the effects' units (1 = the shorter side), in place
 void effectsToUnits(const EffectDef& e, float* p);
 // Presets saved before 2026-11-19 hold lengths and speeds in metres: to % of a 5 m shorter side
-// (the ceiling they were made for), in place; and one value of slider j
+// (the layout they were made for), in place; and one value of slider j
 void effectsMetresToPercent(int e, float* p);
 // Presets saved before slider version 4 hold Centre X along the bars and Centre Y across: swapped,
 // in place; and a motion's slider number (j) to its number now

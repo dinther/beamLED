@@ -3,7 +3,7 @@
 #include <stdint.h>
 
 namespace cfg {
-// The ceiling: 15 bars of 180 LEDs, 5 m long, rows measured (bar 15 estimated)
+// The default layout: 15 bars of 180 LEDs, 5 m long
 constexpr int CEILING_ROWS = 15;
 constexpr int CEILING_PIX = 180;
 constexpr float CEILING_LENGTH = 5.0f;

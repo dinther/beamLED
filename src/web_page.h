@@ -164,7 +164,7 @@ const tip = (el, text) => { if (text) el.dataset.tip = text; return el; };
 // button keeps its hint and has its clicks stopped (on touch, a tap shows the hint instead).
 function off(el, why) {
   if (el.dataset.tip0 == null) el.dataset.tip0 = el.dataset.tip || '';
-  el.dataset.tip = (el.dataset.tip0 ? el.dataset.tip0 + ' ' : '') + 'Not available now: ' + why;
+  el.dataset.tip = (el.dataset.tip0 ? el.dataset.tip0 + ' ' : '') + 'Unavailable: ' + why;
   el.classList.add('na');
   el.setAttribute('aria-disabled', 'true');
   el.querySelectorAll('input,select,button').forEach(c => { c.disabled = true; });
@@ -214,83 +214,83 @@ document.addEventListener('contextmenu', e => {
 addEventListener('scroll', () => { if (!touch) hideTip(); }, true);
 
 const H = {
-  on: 'Switches the ceiling on or off with a one-second fade, the same as a long press of the button on the board. Off keeps the board running, so it comes back where it was.',
-  brightness: 'Master brightness for every preset. It works after the gamma curve, so 50% looks about half as bright. Saved, and kept after a power cut.',
-  backup: 'Everything this board keeps in one file: presets (as they play now), palettes, Auto, Ableton Link, output, layout and network, the hotspot password too. Load it on another beamLED, or on this one later, to set it up in one go.',
-  rowOrder: 'The colour order the LEDs of a row expect: RGB for most, GRB for many strips (red shows as green otherwise). Set it per row, or for all rows at once, then Apply.',
-  restart: 'Restarts the board, after a second tap to confirm. The lights go out for a few seconds. Hold the button on the board while it powers up for config mode (hotspot and this page only).',
-  status: 'Frames per second (the target is 40) and the time one frame takes to draw (25 ms is the budget). Temperature: the chip’s own sensor, uncalibrated, so watch it change rather than trust the exact number; 60-70 °C is normal. Running: time since the board started, and why it started: power-on and restart (an update or a settings change) are normal; brown-out (the power supply dipped), watchdog or crash mean something went wrong. Then the network connection, WiFi, Ableton Link and the free memory.',
-  auto: 'Auto: the presets change by themselves, every so many seconds, or every so many bars with Ableton Link (always on the bar line). Only the presets with In Auto ticked take part; the others are dimmed. Picking a preset by hand, here, with the button or over OSC, starts the count again from there. While the ceiling is off Auto waits. A double press of the button on the board turns Auto on, a short press turns it off.',
-  autoEvery: 'How often Auto changes preset: a number of seconds, or a number of bars (4 beats each) on the beat grid of Ableton Link or the board\u2019s own tempo.',
-  autoOrder: 'In order: the next preset in the list that is in Auto, round and round. Shuffle: a random one each time, never the same twice in a row.',
-  inAuto: 'Whether Auto plays this preset. Leave out presets you only want to pick by hand. Saved at once.',
-  presets: 'Click a preset to play it. The button on the board steps through them in this order (short press: next and Auto off, double press: Auto on, long press: on/off), and the one playing is kept after a power cut. Up to 32 presets. A • after a name: changes not saved yet (Save or Revert in its settings).',
-  play: 'Plays this preset with a short fade.',
-  add: 'Adds a new preset at the end, a copy of the one playing, and plays it. Up to 32 presets.',
-  name: 'The preset’s name, shown on its button. Up to 19 characters.',
-  earlier: 'Moves this preset one place earlier in the list, and in the order the board’s button steps through them.',
-  later: 'Moves this preset one place later in the list, and in the order the board’s button steps through them.',
-  del: 'Deletes this preset: click once, then again within 3 seconds to confirm. The last remaining preset can’t be deleted.',
-  effect: 'The effect this preset shows. Changing it resets the parameters below to that effect’s defaults.',
-  palette: 'The colours this preset uses, from the Palettes list below. Editing a palette changes every preset that uses it.',
-  timing: 'Time: speeds are in their own units (%/s of the ceiling’s shorter side, rpm, …). Time, follow tempo: the set speed is the speed at 120 BPM and scales with the tempo, so at 240 BPM it runs twice as fast. Beats (only for effects with a cycle): one cycle (a band, a revolution, …) takes a whole number of beats and lines up with the bar; the speed slider then gives way to Beats per cycle.',
-  beats: 'How many beats one cycle takes; 4 beats = one bar. After a change the motion eases onto the new beat grid over a few seconds instead of jumping.',
-  reverse: 'Runs the cycle backwards: the lighthouse turns the other way, bands roll back, rings flow in.',
-  sparkle: 'Twinkles on top of whatever preset plays: one setting for all presets, kept when the preset changes (not drawn over the Sparkle effect, which is twinkles itself). 0 = none, 1 = about 8% of the LEDs lit at any moment. Their colours: Sparkle colour.',
-  sparkleBeat: 'When twinkles start. Free: at any moment. Otherwise only on the beat grid of Ableton Link or the board’s own tempo: every 4 beats (once a bar), 2 beats, 1 beat, 1/2, 1/4 or 1/8 beat. The same amount of sparkle as Free, in time with the music.',
-  mirror: 'Mirror Y: the second half of every bar becomes the mirror image of the first half (top and bottom in the preview mirror each other): anything moving along the bars on one half moves the other way on the other. Only the first half is rendered, so the effect takes about half the time. The Sparkle overlay is not mirrored.',
-  mirrorX: 'Mirror X: the last rows become the mirror image of the first rows (left and right in the preview mirror each other): anything moving across the bars on one side moves the other way on the other. With Mirror Y as well: four-way symmetry. The Sparkle overlay is not mirrored.',
-  sparkleBurst: 'Off: single twinkles, each with the same soft rise and fade as in Free. On: a batch flashes at once on each tick and fades out before the next; Sparkle overlay sets how many (1 = 6% of the LEDs).',
-  paletteLock: 'Lock every preset to one palette, for a show in one set of colours: whichever preset plays (picked here, by the button, by Auto or OSC) uses this palette instead of its own. The presets’ own palettes are kept, so Each preset’s own brings them back. Not saved: after a restart each preset has its own palette again.',
-  preview: 'What the ceiling shows now, live from the board, up to 15 frames a second: seen from below, the first row on the left, the bars at their real places and spacing (drawn thicker than they are, so they show). The colours as the effects make them, without the LEDs’ gamma. The board sends frames only while this section is open, on screen and the tab is in view.',
-  previewPin: 'Pin (📌): the preview stays at the top of the screen while you scroll and work the controls below it; lit while pinned. Press again to let it scroll away. Kept in this browser.',
-  previewLook: 'On: each bar as a soft continuous strip, as with a diffuser. Off: bare LEDs, each a point of light with dark between and a bloom (glare) around the bright ones, as bare LEDs look to the eye or a camera. Kept in this browser.',
-  steps: 'The drum machine: 32 steps (two bars; in Beats timing with 8 beats per pattern each step is a 1/16 note, with Timing set to Frequency the pattern isn’t used: a plain strobe). Click a box to set or clear that step, or drag across boxes to set or clear several. On a set step its lane flashes: Whole = the whole ceiling, Band = a band at Angle, Block = one cell of a grid of about Size, Shape = a circle or square. Bands, blocks and shapes land somewhere new on every step. The lighter boxes are the beats.',
-  stepsClear: 'Clears every step in all four lanes (Revert brings back the saved pattern).',
-  effectBrightness: 'Dims whatever preset plays, but not the Sparkle overlay’s twinkles: pull the effect down and let the sparkle shine. On Strobe it dims only the Background: the flashes stay at full power. Under the master Brightness. Saved, like Brightness.',
-  sparkleBrightness: 'How strongly the Sparkle overlay’s twinkles show over the effect: 0 = not at all, 50% = each twinkle covers half (a dark one darkens by half), 100% = fully. Under the master Brightness. Saved, like Brightness.',
-  sparkleTime: 'How long one twinkle lasts, in seconds; with Through the palette, how long it takes to go through the palette. The amount lit at any moment stays the same: longer twinkles start less often.',
-  sparkleThrough: 'On: each twinkle runs through the sparkle palette over its life, from its first colour to its last: it covers what is under it at once, goes through the colours and fades back at the end. Black, black, red: goes dark, pops red, fades. Off: each twinkle has one colour.',
-  sparkleStep: 'How the twinkles pick their colours from the palette. 0 = each one a random colour. Above 0 = each new twinkle this far along the palette from the one before. A hundred or more twinkles start every second, so tiny steps matter: about 0.0005 = the colours drift slowly through the palette (a burst in neighbouring colours), 0.01 and up already look mixed, 0.5 = opposite colours in turn. The left part of the slider is fine, the right part coarse.',
-  sparkleColour: 'The colours of the Sparkle overlay’s twinkles: white, random colours from the playing preset’s palette (they change with the preset), or from any other palette. The twinkle’s colour replaces what is under it, so a palette of black gives dark twinkles.',
-  pulse: 'A brightness accent on the beat: full on each beat and dipping in between, strongest on the bar’s first beat. 0 = steady. Follows Ableton Link, or the board’s own tempo.',
-  reset: 'Sets this preset’s effect parameters back to the effect’s defaults (not saved until you click Save). Name, palette, timing and pulse stay as they are.',
-  save: 'Stores this preset as it plays now: its name, effect, palette, sliders, motions, timing and pulse. Until you save, changes (here or from OSC) play on the ceiling but the preset keeps its saved settings, so you can tinker freely. Unsaved changes are kept while you switch presets, and lost on a power cut.',
-  revert: 'Goes back to this preset’s saved settings, dropping the changes since the last Save.',
-  motion: 'A Motion moves one of this effect’s sliders back and forth by itself, between From and To: a beam swinging (Lighthouse Angle), bands scrolling to and fro (Offset), a width breathing. Off: no motion. The slider it moves shows ↔ and follows it. Up to three motions can move three sliders (Drops: Centre X and Centre Y, say), or run out of step with Phase.',
-  shape: 'How it travels between the ends. Sine: smooth, like a pendulum. Linear: a steady speed, turning sharply at the ends. Ease in-out: slow at the ends, quick through the middle. Hold at ends: rests at each end before turning back. Overshoot: goes a little past each end and settles. Bounce: bounces as it arrives at each end. Random slide: glides to a new random value between From and To every half period (the same values every time, on the beat grid in beats). Min max: From for the first half of the period, To for the second, switching at once with no transition. Random jump: the same random values as Random slide, but it jumps to each one at once and holds it for half a period. The drawing below shows one there-and-back (Random slide and Random jump: three). Sawtooth: steadily from From to To over the whole period, then straight back to From; on an Angle from −180 to 180 that is a turn that never stops (−180 and 180 are the same direction).',
-  periodIn: 'Seconds: one there-and-back takes a set time (scaled with the tempo when the preset follows it). Beats: it takes a number of beats and keeps to the beat grid with Ableton Link, at From on the bar.',
-  periodBeats: 'How many beats one full there-and-back takes; 4 beats = one bar. With 8 beats it is at From on one bar, at To on the next bar, and back at From on the bar after that. Sawtooth: one run from From to To takes that many beats (on an Angle from −180 to 180, one full turn).',
-  periodSec: 'How many seconds one full there-and-back takes (Sawtooth: one run from From to To).',
-  from: 'One end of the motion, in the slider’s own units.',
-  to: 'The other end of the motion, in the slider’s own units. To below From is fine: it simply runs the other way.',
-  phase: 'Where in its cycle the motion is: 0 = at From at the start (or on the bar), 0.5 = at To. Give a second motion 0.25 or 0.5 to run it out of step with the first.',
-  palettes: 'Palettes are shared: each preset picks one. Effects blend smoothly between the colours in order; looping effects wrap from the last colour back to the first.',
-  palName: 'The palette’s name, as listed in each preset’s Palette choice. Up to 15 characters.',
-  palColour: 'A colour of this palette: tap it to change it (the ceiling follows as you pick), drag it along the bar to move it, drag it off the bar (or press Delete) to remove it.',
-  palMid: 'Where the blend between these two colours is half-way. Drag along the bar: towards the left the next colour comes early, towards the right this colour holds longer and the next comes late. Double-click (or Home) for a straight blend again; arrow keys nudge it.',
-  palStops: 'The palette as effects use it, first colour on the left. Click the bar to add a colour there (up to 7). Each marker is one colour: tap it to change the colour, drag it along the bar to move it (bunch colours together for a quick change, spread them for a long blend), drag it off the bar to remove it (at least 2 stay).',
-  palAddPalette: 'Adds a new palette at the end, a copy of the last one, to change as you like. Up to 16 palettes.',
-  palDelete: 'Deletes this palette: click once, then again within 3 seconds to confirm. Presets that use it switch to the first palette. The last palette can\u2019t be deleted.',
-  saveAsNew: 'You renamed this preset, so Save makes a new preset with the new name and your changes, and plays it. This preset goes back to how it was saved. To keep this preset\u2019s name, change the name back.',
-  target: 'Where the Art-Net goes: the pixel controller\u2019s address, or a PC running a visualiser such as Beam for testing. Or a broadcast to everything on the cable: the network\u2019s .255 address (192.168.1.255, for example), or 255.255.255.255. With a broadcast every device on the cable gets all the universes. Art-Net only goes out over the cable, never over WiFi.',
-  gamma: 'The brightness curve, so fades look even to the eye. 2.2 suits most LEDs; lower makes dark parts brighter and flatter, higher gives deeper darks.',
-  link: 'Ableton Link. Enabled: tempo and beat are shared with Ableton Live and other Link apps on the same network (the Live laptop joins the board’s network or its hotspot). Disabled: the board keeps its own tempo.',
-  bpm: 'The tempo in beats per minute. With Ableton Link enabled and peers connected this changes everyone’s tempo; without peers it sets the board’s own.',
-  latency: 'How much later the LEDs show a frame than the board draws it (network and pixel controller). Frames are drawn this far ahead so beats land on time. Raise it if the lights trail the music.',
-  osc: 'OSC control, for MIMa and other OSC or OSCQuery apps. In MIMa, add beamLED as an OSCQuery application at beamled.local:80 (or this board’s IP address, port 80), and send OSC to port 8000: it lists every preset, parameter, motion and palette colour with its range and help, and its knobs and lights follow changes made here or with the button. Preset changes from OSC play at once and are kept with Save, like changes made here.',
-  nx: 'How many LEDs each row (bar) has.',
-  ny: 'How many rows (bars) there are.',
-  len: 'The length of a row in metres; the LED spacing is this divided by LEDs per row.',
-  rowSpacing: 'The distance from one row to the next in metres, for evenly spaced rows. Used when Measured rows is off or the row count differs from the ceiling’s.',
-  measured: 'Uses measured, uneven row positions built into the firmware, when the number of rows matches them. Off: rows evenly spaced by Aspect.',
-  rowUni: 'The Art-Net universe each row starts at. A row of more than 170 LEDs continues into the next universe(s). Set them to match how the pixel controller is patched.',
-  fill: 'Numbers the rows one after another, starting at the number given, leaving each row the universes it needs.',
-  apply: 'Applies the layout and saves it. Presets and palettes are kept. A new number of LEDs per row or rows restarts the board (the lights go dark for a few seconds), so its memory is set up afresh for the new size: the first click warns, a second within 4 s goes ahead. The other settings apply at once.',
-  netName: 'The board’s name: http://<name>.local, the hotspot’s name and the firmware update name. Takes effect after the restart.',
-  fallback: 'The address the board takes when no DHCP server answers within 10 seconds, for example when it is connected directly to a pixel controller. Keep it in the same subnet as the devices it talks to. Empty: an automatic 169.254.x.x address.',
-  apPass: 'A password for the config-mode hotspot (button held at power-on), 8 characters or more. Empty: an open hotspot. Type - to remove a saved password.',
-  netSave: 'Saves the network settings and restarts the board; the lights go out for a few seconds.',
+  on: 'Lights on or off, with a 1 s fade. Same as a long press of the button.',
+  brightness: 'Master brightness, after the gamma curve (50% looks half as bright). Saved.',
+  backup: 'Everything in one file: presets, palettes, Auto, Link, output, layout, network. Load it to set up this or another board.',
+  rowOrder: 'Colour order of the row’s LEDs: RGB for most, GRB for many strips. Then Apply.',
+  restart: 'Restart: tap twice. Lights out for a few seconds. Hold the button at power-up for config mode (hotspot and this page only).',
+  status: 'Frames per second (target 40) and draw time (budget 25 ms). Temperature: uncalibrated, 60–70 °C is normal. Running: uptime and start reason (brown-out, watchdog or crash mean trouble). Network, WiFi, Link, free memory.',
+  auto: 'Presets change by themselves, every so many seconds or bars. Only presets with In Auto take part. Picking a preset restarts the count; waits while the lights are off. Button: double press on, short press off.',
+  autoEvery: 'How often Auto changes preset: seconds, or bars on the beat grid.',
+  autoOrder: 'In order, or Shuffle (random, never the same twice in a row).',
+  inAuto: 'Auto plays this preset. Saved at once.',
+  presets: 'Click to play. The button steps through them in this order (short: next, double: Auto on, long: on/off). Up to 32. • = unsaved changes.',
+  play: 'Play this preset (short fade).',
+  add: 'New preset at the end: a copy of the one playing.',
+  name: 'Preset name, up to 19 characters.',
+  earlier: 'Move one place earlier.',
+  later: 'Move one place later.',
+  del: 'Delete: click twice within 3 s. The last preset stays.',
+  effect: 'Changing it resets the sliders to the new effect’s defaults.',
+  palette: 'Colours from the Palettes list. Editing a palette changes every preset using it.',
+  timing: 'Time: speeds in their own units. Follow tempo: the speed is set for 120 BPM and scales with the tempo. Beats: one cycle takes a whole number of beats, on the bar (effects with a cycle only).',
+  beats: 'Beats per cycle; 4 = one bar. A change eases onto the new grid.',
+  reverse: 'Runs the cycle backwards (Beats timing).',
+  sparkle: 'Twinkles over every preset, kept across preset changes. 0 = none, 1 = about 8% of the LEDs lit.',
+  sparkleBeat: 'When twinkles start: Free (any moment) or on the beat grid, every 4 beats down to 1/8 beat.',
+  mirror: 'Mirrors top to bottom.',
+  mirrorX: 'Mirrors left to right.',
+  sparkleBurst: 'Off: single twinkles. On: a batch flashes on each tick and fades before the next.',
+  paletteLock: 'Every preset plays this palette instead of its own. Not saved.',
+  preview: 'Live view of the LEDs, up to 15 frames/s, bars at their real spacing, first row on the left. No gamma. Sent only while open and on screen.',
+  previewPin: 'Pin (📌): keeps the preview at the top while you scroll. Kept in this browser.',
+  previewLook: 'On: bars as diffused strips. Off: bare LEDs with glare. Kept in this browser.',
+  steps: '32 steps, 4 lanes. In Beats timing (8 beats per pattern) a step is a 1/16 note. Click or drag to set steps. Whole: all LEDs. Band: a band at Angle. Block: one grid cell. Shape: a circle or square. Lighter boxes are beats.',
+  stepsClear: 'Clear all steps (Revert brings them back).',
+  effectBrightness: 'Dims the effect, not the Sparkle overlay. On Strobe: only the Background. Saved.',
+  sparkleBrightness: 'How strongly the twinkles cover the effect: 0 = not at all, 100% = fully. Saved.',
+  sparkleTime: 'Seconds a twinkle lasts (with Through the palette: one run through it). Same amount lit at any time.',
+  sparkleThrough: 'Each twinkle runs through the palette, first colour to last (black, black, red: dark, pops red, fades).',
+  sparkleStep: '0 = random colours. Above 0: each twinkle this far along the palette from the last. ~0.0005 drifts slowly, 0.01 already looks mixed, 0.5 alternates opposites. Fine on the left, coarse on the right.',
+  sparkleColour: 'White, the playing preset’s palette, or any palette. Twinkles replace what is under them: black gives dark twinkles.',
+  pulse: 'Brightness accent: full on each beat, dipping between, strongest on the bar. 0 = steady.',
+  reset: 'Sliders back to the effect’s defaults (not saved).',
+  save: 'Store this preset as it plays now. Unsaved changes play but are lost on a power cut.',
+  revert: 'Back to the saved preset.',
+  motion: 'Moves one slider between From and To by itself. The slider shows ↔. Up to three per preset.',
+  shape: 'Sine: smooth. Linear: steady, sharp turns. Ease in-out: slow at the ends. Hold at ends: rests at each end. Overshoot: a little past each end. Bounce. Random slide: glides to random values. Min max: From, then To, no transition. Random jump: jumps to random values. Sawtooth: From to To, then straight back (Angle −180 to 180: endless turn).',
+  periodIn: 'Seconds, or beats (on the beat grid, at From on the bar).',
+  periodBeats: 'Beats for one there-and-back (Sawtooth: one run); 4 = one bar.',
+  periodSec: 'Seconds for one there-and-back (Sawtooth: one run).',
+  from: 'One end, in the slider’s units.',
+  to: 'The other end. Below From runs the other way.',
+  phase: 'Where in its cycle: 0 = at From, 0.5 = at To. Offsets one motion from another.',
+  palettes: 'Shared palettes: each preset picks one. Looping effects wrap from the last colour to the first.',
+  palName: 'Palette name, up to 15 characters.',
+  palColour: 'Tap to change, drag along to move, drag off (or Delete) to remove.',
+  palMid: 'Where the blend is half-way. Double-click (or Home): straight blend. Arrow keys nudge.',
+  palStops: 'Click the bar to add a colour (up to 7). Drag markers to move them, off the bar to remove (2 stay).',
+  palAddPalette: 'New palette at the end: a copy of the last one. Up to 16.',
+  palDelete: 'Delete: click twice within 3 s. Its presets switch to the first palette.',
+  saveAsNew: 'Renamed: Save makes a new preset with this name; this one goes back to its saved state.',
+  target: 'Art-Net destination: the pixel controller, a visualiser PC, or a broadcast (x.x.x.255 or 255.255.255.255). Cable only.',
+  gamma: 'Brightness curve. 2.2 suits most LEDs; lower = brighter darks, higher = deeper darks.',
+  link: 'Enabled: tempo and beat shared with Ableton Live and other Link apps on the network. Disabled: own tempo.',
+  bpm: 'Tempo. With Link peers it changes everyone’s tempo.',
+  latency: 'Frames are drawn this far ahead so beats land on time. Raise it if the lights trail the music.',
+  osc: 'OSCQuery at beamled.local:80, OSC in on port 8000. The live controls plus slider1…slider8 (the playing preset’s sliders, 0–1).',
+  nx: 'LEDs per row.',
+  ny: 'Rows.',
+  len: 'Row length in metres.',
+  rowSpacing: 'Distance between rows in metres.',
+  measured: 'Use the uneven row positions built into the firmware (when the row count matches).',
+  rowUni: 'Start universe of each row. Over 170 LEDs a row continues into the next universe.',
+  fill: 'Number the rows one after another from this universe.',
+  apply: 'Apply and save. A new LED count restarts the board (click twice within 4 s).',
+  netName: 'Board name: <name>.local, hotspot and update name. After a restart.',
+  fallback: 'Address used when no DHCP answers within 10 s. Empty: automatic 169.254.x.x.',
+  apPass: 'Config-mode hotspot password, 8+ characters. Empty: open. - removes a saved one.',
+  netSave: 'Save and restart (lights out for a few seconds).',
 };
 
 const decimals = s => s >= 1 ? 0 : s >= 0.1 ? 1 : 2;
@@ -434,7 +434,7 @@ function sparkleRows(p, ef) {
     v => { S.sparkleBrightness = v; liveSend('/beamled/sparkle_brightness', v / 255, () => post('/api/set', {sparkleBrightness: v}), true); }, H.sparkleBrightness, 'sparkleBrightness'));
   const timeRow = slider('Twinkle time (s)', 0.2, 5, 0.1, sk.time || 1.2, v => v.toFixed(1),
     v => { sk.time = v; liveSend('/beamled/sparkle_time', v, () => send({time: v}), true); }, H.sparkleTime, 'sparkleTime');
-  if (sk.beat && sk.burst) off(timeRow, 'Bursts last until the next tick, so their length comes from Sparkle timing. Turn Bursts off to set it here.');
+  if (sk.beat && sk.burst) off(timeRow, 'bursts last until the next tick.');
   rows.push(timeRow);
   // Listed slow to fast; the codes are the board's (1..4 = 1, 1/2, 1/4, 1/8 beat; 5 = 2, 6 = 4 beats)
   const beatCodes = [0, 6, 5, 1, 2, 3, 4];
@@ -444,7 +444,7 @@ function sparkleRows(p, ef) {
   const burst = h('input', {type: 'checkbox', checked: !!sk.burst});
   burst.onchange = () => { sk.burst = burst.checked; send({burst: burst.checked}); draw(); };
   const bRow = field('Bursts', burst, H.sparkleBurst);
-  if (!sk.beat) off(bRow, 'Bursts need a Sparkle timing other than Free: with Free, twinkles start at any moment, so there is no tick to flash on.');
+  if (!sk.beat) off(bRow, 'needs a Sparkle timing other than Free.');
   rows.push(bRow);
   const own = S.palettes[S.paletteLock >= 0 ? S.paletteLock : p.palette] || S.palettes[0];
   const items = [{name: 'White', bg: 'linear-gradient(90deg,#8a8a8a,#e0e0e0)'},
@@ -461,10 +461,10 @@ function sparkleRows(p, ef) {
   const thr = h('input', {type: 'checkbox', checked: !!sk.through});
   thr.onchange = () => { sk.through = thr.checked; send({through: thr.checked}); draw(); };
   const thrRow = field('Through the palette', thr, H.sparkleThrough);
-  if (!sk.colour) off(thrRow, 'Sparkle colour is White: there is no palette to go through. Pick a palette above.');
+  if (!sk.colour) off(thrRow, 'Sparkle colour is White.');
   rows.push(thrRow);
-  if (!sk.colour) off(stepRow, 'Sparkle colour is White: there is no palette to step along. Pick a palette above.');
-  else if (sk.through) off(stepRow, 'Through the palette is on: each twinkle runs through the whole palette.');
+  if (!sk.colour) off(stepRow, 'Sparkle colour is White.');
+  else if (sk.through) off(stepRow, 'Through the palette is on.');
   rows.push(stepRow);
   return rows;
 }
@@ -512,14 +512,14 @@ function draw() {
   app.append(heading('Presets', H.presets));
   const g = h('div', {className: 'presets'});
   S.presets.forEach((q, i) => {
-    const b = button((i + 1) + '  ' + q.name + (q.changed ? ' •' : ''), H.play + ' ' + (i + 1) + ': ' + q.name + ' (' + S.effects[q.effect].name + ').' + (q.changed ? ' It has changes that aren’t saved yet.' : ''),
+    const b = button((i + 1) + '  ' + q.name + (q.changed ? ' •' : ''), q.name + ': ' + S.effects[q.effect].name + (q.changed ? ', unsaved changes' : '') + '.',
       {className: (i == S.current ? 'on' : '') + (q.auto === false ? ' out' : '')});
     b.onclick = () => { S.current = i; S.on = true; post('/api/set', {current: i}); draw(); };
     g.append(b);
   });
   const add = button('+ Add', H.add, {className: 'add'});
   add.onclick = () => presetList({add: S.current});
-  if (S.presets.length >= S.maxPresets) off(add, 'all ' + S.maxPresets + ' preset places are used; delete one first.');
+  if (S.presets.length >= S.maxPresets) off(add, 'all ' + S.maxPresets + ' presets used.');
   g.append(add);
   app.append(g);
   app.append(autoRow());
@@ -535,12 +535,12 @@ function draw() {
   card.append(field('Name', nm, H.name));
   const earlier = button('◀ Earlier', H.earlier);
   earlier.onclick = () => presetList({move: S.current, to: S.current - 1});
-  if (S.current == 0) off(earlier, 'this is already the first preset.');
+  if (S.current == 0) off(earlier, 'already first.');
   const later = button('Later ▶', H.later);
   later.onclick = () => presetList({move: S.current, to: S.current + 1});
-  if (S.current == S.presets.length - 1) off(later, 'this is already the last preset.');
+  if (S.current == S.presets.length - 1) off(later, 'already last.');
   const del = button('Delete', H.del);
-  if (S.presets.length <= 1) off(del, 'it is the only preset, and the board always needs one.');
+  if (S.presets.length <= 1) off(del, 'the only preset.');
   let armed = null;
   del.onclick = () => {
     if (armed) { clearTimeout(armed); presetList({delete: S.current}); return; }
@@ -553,7 +553,7 @@ function draw() {
   card.append(field('In Auto', inAuto, H.inAuto));
   card.append(select('Effect', S.effects.map(e => e.name), p.effect, v =>
     post('/api/preset', {index: S.current, effect: v}).then(np => { S.presets[S.current] = np; draw(); }),
-    H.effect + ' ' + ef.name + ': ' + ef.help));
+    ef.name + ': ' + ef.help + ' ' + H.effect));
   const locked = S.paletteLock >= 0 && S.palettes[S.paletteLock];
   card.append(paletteSelect('Palette', p.palette, v => {
     p.palette = v; post('/api/preset', {index: S.current, palette: v}); }, H.palette +
@@ -571,22 +571,22 @@ function draw() {
   const modes = ef.steps ? ['Frequency', 'Frequency, follow tempo', 'Beats'] : ['Time', 'Time, follow tempo', 'Beats'];
   const timing = ef.cycle ? p.timing : Math.min(p.timing, 1);
   const inBeats = timing == 2;
-  const noCycle = ef.name + ' has no repeating cycle (a band, a revolution, …) to fit to the beat, so it can’t run in Beats.';
+  const noCycle = ef.name + ' has no cycle to fit to the beat.';
   const tRow = select('Timing', modes, timing, v => {
-    p.timing = v; post('/api/preset', {index: S.current, timing: v}); draw(); }, H.timing + (ef.cycle ? '' : ' Beats is not available here: ' + noCycle));
+    p.timing = v; post('/api/preset', {index: S.current, timing: v}); draw(); }, H.timing + (ef.cycle ? '' : ' No Beats: ' + noCycle));
   if (!ef.cycle) tRow.querySelector('option[value="2"]').disabled = true;
   card.append(tRow);
   const beats = [1, 2, 4, 8, 16, 32, 64].map(b => b + ' beat' + (b > 1 ? 's' : '') + (b >= 4 ? ' (' + b / 4 + ' bar' + (b > 4 ? 's' : '') + ')' : ''));
   const bRow = select('Beats per ' + (ef.cycle || 'cycle'), beats, p.beatsExp, v => {
-    p.beatsExp = v; post('/api/preset', {index: S.current, beatsExp: v}); }, H.beats + (ef.cycle ? ' One cycle here: one ' + ef.cycle + '.' : ''));
+    p.beatsExp = v; post('/api/preset', {index: S.current, beatsExp: v}); }, H.beats + (ef.cycle ? ' Here a cycle is one ' + ef.cycle + '.' : ''));
   const rev = h('input', {type: 'checkbox', checked: p.reverse});
   rev.onchange = () => { p.reverse = rev.checked; post('/api/preset', {index: S.current, reverse: rev.checked}); };
   const rRow = field('Reverse', rev, H.reverse);
-  if (!inBeats) for (const r of [bRow, rRow]) off(r, ef.cycle ? 'only with Timing set to Beats.' : noCycle);
+  if (!inBeats) for (const r of [bRow, rRow]) off(r, ef.cycle ? 'Timing is not Beats.' : noCycle);
   card.append(bRow, rRow);
   if (ef.steps) {
     const g = card.appendChild(stepGrid(p));
-    if (!inBeats) for (const el of g.children) off(el, 'Timing is ' + modes[timing] + ': a plain strobe of every row (the middle Size share of it) at Speed flashes a second. Set Timing to Beats to play the pattern.');
+    if (!inBeats) for (const el of g.children) off(el, 'Timing is ' + modes[timing] + ': plain strobe. Beats plays the pattern.');
   }
   const motions = p.motions || [];
   const rows = [], moved = j => motions.some(mo => mo.target == j + 1);
@@ -597,10 +597,10 @@ function draw() {
       v => { p.params[j] = v; paramDeps(); markChanged(S.current); liveSend('/beamled/slider' + (j + 1), (v - d.min) / (d.max - d.min), () => post('/api/preset', {index: S.current, params: p.params})); },
       d.help + ' (' + d.min + ' to ' + d.max + ', default ' + d.def + ')' +
         (by >= 0 ? ' Now moved by Motion ' + (by + 1) + ' (below): set its From and To there.' : ''), 'p' + j);
-    if (by >= 0) { row.classList.add('moving'); off(row, 'Motion ' + (by + 1) + ' moves it: set its From and To there.'); }
-    else if (inBeats && j == ef.speedParam) off(row, 'Timing is Beats: the speed comes from Beats per ' + ef.cycle + ' instead.');
+    if (by >= 0) { row.classList.add('moving'); off(row, 'Motion ' + (by + 1) + ' moves it.'); }
+    else if (inBeats && j == ef.speedParam) off(row, 'Timing is Beats: Beats per ' + ef.cycle + ' sets the speed.');
     else if (ef.steps && !inBeats && /^(Angle|Softness)/.test(d.name))
-      off(row, 'Timing is ' + modes[timing] + ': the strobe lights the middle of every row, hard edged. It shapes the bands, blocks and shapes of the pattern (Timing: Beats).');
+      off(row, 'Timing is ' + modes[timing] + ': only for the pattern (Beats).');
     rows[j] = row;
     card.append(row);
   });
@@ -614,12 +614,12 @@ function draw() {
       if (rad >= 0 && (/^Centre [XY]$/.test(d.name) || /^Angle/.test(d.name))) {  // Gradient
         rule = true;
         const radial = p.params[rad] >= 0.5;
-        if (!moved(rad) && !radial && d.name.startsWith('Centre')) why = 'Radial is off: a straight gradient has no centre. Set Radial to 1 to use it.';
-        if (!moved(rad) && radial && d.name.startsWith('Angle')) why = 'Radial is on: a round gradient has no direction. Set Radial to 0 to use it.';
+        if (!moved(rad) && !radial && d.name.startsWith('Centre')) why = 'Radial is off.';
+        if (!moved(rad) && radial && d.name.startsWith('Angle')) why = 'Radial is on.';
       }
       if (arm >= 0 && (d.name == 'Weave' || d.name.startsWith('Turn'))) {  // Fibres
         rule = true;
-        if (!moved(arm) && p.params[arm] < 0.5) why = 'Arms is 0: rings have no arms to cross or turn. Set Arms to 1 or more to use it.';
+        if (!moved(arm) && p.params[arm] < 0.5) why = 'Arms is 0.';
       }
       if (!rule) return;
       if (why) off(rows[j], why); else on(rows[j]);
@@ -634,14 +634,14 @@ function draw() {
   const asNew = p.savedName != null;
   const save = button(asNew ? 'Save as new •' : p.changed ? 'Save •' : 'Saved', asNew ? H.saveAsNew : H.save,
     {className: p.changed || asNew ? 'on' : ''});
-  if (!p.changed && !asNew) off(save, 'this preset has no unsaved changes.');
+  if (!p.changed && !asNew) off(save, 'no changes.');
   save.onclick = () => post('/api/preset', {index: S.current, save: true}).then(np => {
     if (np.savedAs != null) { S.current = np.savedAs; load(); return; }  // a new preset: the list changed
     S.presets[S.current] = np; draw();
   });
   saveBtn = save;
   const revert = button('Revert', H.revert);
-  if (!p.changed) off(revert, 'there are no unsaved changes to drop.');
+  if (!p.changed) off(revert, 'no changes.');
   revertBtn = revert;
   revert.onclick = () => post('/api/preset', {index: S.current, revert: true}).then(np => { S.presets[S.current] = np; draw(); });
   card.append(h('div', {className: 'btns'}, save, revert, reset));
@@ -653,7 +653,7 @@ function draw() {
   {
     const add = button('+ Add palette', H.palAddPalette, {className: 'pal-add'});
     add.onclick = () => post('/api/palettes', {add: S.palettes.length - 1}).then(st => { S = Object.assign(st, {effects: S.effects}); draw(); });
-    if (S.palettes.length >= (S.maxPalettes || 16)) off(add, 'all ' + (S.maxPalettes || 16) + ' palette places are used; delete one first.');
+    if (S.palettes.length >= (S.maxPalettes || 16)) off(add, 'all ' + (S.maxPalettes || 16) + ' palettes used.');
     pc.append(add);
   }
   app.append(pc);
@@ -799,7 +799,7 @@ function motionEditor(p, ef, mo, m) {
   const secRow = slider('Period (s)', 0.5, 120, 0.5, mo.seconds, v => v.toFixed(1), v => { mo.seconds = v; throttle('ms' + m, () => send({seconds: v})); }, H.periodSec);
   const beats = [1, 2, 4, 8, 16, 32, 64].map(b => b + ' beat' + (b > 1 ? 's' : '') + (b >= 4 ? ' (' + b / 4 + ' bar' + (b > 4 ? 's' : '') + ')' : ''));
   const beatRow = select('Period (beats)', beats, mo.beatsExp, v => { mo.beatsExp = v; send({beatsExp: v}); }, H.periodBeats);
-  off(mo.inBeats ? secRow : beatRow, 'Period in is ' + (mo.inBeats ? 'Beats: the period is set in beats below.' : 'Seconds: the period is set in seconds above.'));
+  off(mo.inBeats ? secRow : beatRow, 'Period in is ' + (mo.inBeats ? 'Beats.' : 'Seconds.'));
   box.append(secRow, beatRow);
   box.append(slider('From', d.min, d.max, d.step, mo.from, fmt, v => { mo.from = v; throttle('mf' + m, () => send({from: v})); }, H.from));
   box.append(slider('To', d.min, d.max, d.step, mo.to, fmt, v => { mo.to = v; throttle('mt' + m, () => send({to: v})); }, H.to));
@@ -848,7 +848,7 @@ function autoRow() {
   const secs = h('input', {type: 'number', min: 2, max: 3600, step: 1, value: A.seconds});
   secs.onchange = () => send({seconds: Math.max(2, Math.min(3600, +secs.value || 60))});
   const secsBox = tip(h('span', {}, secs, ' s'), H.autoEvery), barsBox = tip(h('span', {}, bars), H.autoEvery);
-  off(A.inBars ? secsBox : barsBox, 'Auto counts in ' + (A.inBars ? 'bars: pick “Every … seconds” to use seconds.' : 'seconds: pick “Every … bars” to use bars.'));
+  off(A.inBars ? secsBox : barsBox, 'Auto counts in ' + (A.inBars ? 'bars.' : 'seconds.'));
   const amount = h('span', {}, secsBox, ' ', barsBox);
   const order = tip(h('select'), H.autoOrder);
   ['In order', 'Shuffle'].forEach((l, k) => order.append(h('option', {value: k, textContent: l, selected: (A.shuffle ? 1 : 0) == k})));
@@ -875,7 +875,7 @@ function paletteEditor(q, i) {
       del.textContent = 'Delete?'; del.className = 'del warn';
       armed = setTimeout(() => { armed = null; del.textContent = '✕'; del.className = 'del'; }, 3000);
     };
-    if (S.palettes.length <= 1) off(del, 'it is the only palette, and every preset needs one.');
+    if (S.palettes.length <= 1) off(del, 'the only palette.');
     box.append(del);
   }
   // Click the bar to add a colour there, in the colour the palette already has at that point
@@ -1036,7 +1036,7 @@ function layoutCard() {
     const used = uni.slice(0, +ny.value), dup = new Set();
     used.forEach((u, i) => used.forEach((v, j) => { if (i != j && u < v + upr() && v < u + upr()) dup.add(i + 1); }));
     info.textContent = 'LED spacing ' + (pitch * 1000).toFixed(1) + ' mm, row spacing ' +
-      (m ? 'measured (ceiling)' : (+sp.value).toFixed(3) + ' m') + ' · ' + leds + ' LEDs' +
+      (m ? 'measured' : (+sp.value).toFixed(3) + ' m') + ' · ' + leds + ' LEDs' +
       (leds > L.maxLeds ? ' (max ' + L.maxLeds + ')' : '') + ' · ' + upr() + ' universe' + (upr() > 1 ? 's' : '') +
       ' per row' + (dup.size ? ' · overlapping universes: rows ' + [...dup].join(', ') : '');
   };
@@ -1114,7 +1114,7 @@ function backupCard() {
   };
   const file = h('input', {type: 'file', accept: '.json,application/json', id: 'settingsFile'});
   const load = button('Load and restart', 'Replaces everything on this board with the file, saves it and restarts. Tap twice.');
-  const noFile = 'choose a beamLED settings file first.';
+  const noFile = 'no file chosen.';
   off(load, noFile);
   let text = null, armed = 0;
   file.onchange = async () => {
@@ -1131,7 +1131,7 @@ function backupCard() {
         (n.fallback != null ? ', fallback IP ' + (n.fallback || 'automatic') : '') +
         '. Loading replaces everything on this board.';
       text = t; on(load);
-    } catch (e) { msg.textContent = 'Can’t use this file: ' + e.message; off(load, 'that file can’t be used (the message says why); choose another.'); }
+    } catch (e) { msg.textContent = 'Can’t use this file: ' + e.message; off(load, 'unusable file.'); }
   };
   load.onclick = async () => {
     if (!text) return;
@@ -1379,7 +1379,7 @@ function unpack565(buf) {
   return o.buffer;
 }
 document.addEventListener('visibilitychange', previewSync);
-// The ceiling from below, the first row on the left: each row at its place, its LEDs up the
+// The layout from below, the first row on the left: each row at its place, its LEDs up the
 // bar. The frame goes into a small image (a column per row) and each column is stretched to scale.
 function drawPreview(buf) {
   const cv = document.getElementById('pv');
@@ -1390,7 +1390,7 @@ function drawPreview(buf) {
   const ry = L.rowY && L.rowY.length == ny ? L.rowY : Array.from({length: ny}, (_, b) => b * 0.5);
   const len = L.length || 5, y0 = ry[0], depth = Math.max(ry[ny - 1] - y0, len * 0.05);
   // Sized in the screen's own pixels so that a bar is a whole number of pixels per LED: every LED
-  // on its own pixel, evenly spaced (no 2-then-3 pattern), the ceiling in its true proportions
+  // on its own pixel, evenly spaced (no 2-then-3 pattern), the layout in its true proportions
   const dpr = window.devicePixelRatio || 1, box = cv.parentElement, cs = getComputedStyle(box);
   const avail = (box.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)) * dpr;
   const M = Math.round(12 * dpr);  // a small margin round the bars, in screen pixels (room for the glow)

@@ -12,10 +12,10 @@
 static constexpr float DEG = 0.01745329f;
 static constexpr float TAU = 6.2831853f;
 
-// Everything is in units of the ceiling's shorter side (1 = that side): the effects only see the
-// layout's proportions, so a preset looks the same on any size of ceiling. Built-in sizes were
-// tuned in metres on a 5 m ceiling and are written as metres * M.
-static constexpr float M = 0.2f;  // one metre of that 5 m ceiling, in short-side units
+// Everything is in units of the layout's shorter side (1 = that side): the effects only see the
+// layout's proportions, so a preset looks the same on any size of layout. Built-in sizes were
+// tuned in metres on a 5 m layout and are written as metres * M.
+static constexpr float M = 0.2f;  // one metre of that 5 m layout, in short-side units
 static float X[MAX_X];   // along a row
 static float Y[MAX_Y];   // across the rows
 static float FY[MAX_Y];  // footprint of a row across the rows
@@ -789,10 +789,10 @@ static void gradient(Ctx& c) {
         k = spread / fmaxf(maxR, 0.01f * M);
         k0 = base;
     } else {
-        // The ceiling's extent in that direction: the gradient runs from one side to the other
+        // The layout's extent in that direction: the gradient runs from one side to the other
         const float span = fmaxf(fabsf(W * ca) + fabsf(H * sa), 0.01f * M);
         k = spread / span;
-        k0 = base + 0.5f * spread;  // centred on the ceiling's middle
+        k0 = base + 0.5f * spread;  // centred on the layout's middle
     }
     for (int b = 0; b < NY; b++) {
         CRGB* o = c.out + b * NX;
@@ -856,7 +856,7 @@ static void shapesFx(Ctx& c) {
             s.r = w * 0.5f;
             s.reach = s.r;
         }
-        // Its centre: anywhere it fits inside the ceiling whole (a shape too big for that: centred)
+        // Its centre: anywhere it fits inside the layout whole (a shape too big for that: centred)
         const float mx = fminf(s.reach + half, W * 0.5f), my = fminf(s.reach + half, H * 0.5f);
         s.x = mx + hrand(u, 3) * (W - 2 * mx);
         s.y = Y[0] + my + hrand(u, 4) * (H - 2 * my);
@@ -916,8 +916,8 @@ static void shapesFx(Ctx& c) {
 
 // ---------------------------------------------------------------- Tunnel
 // Looking down a tube from inside it, its wall lined with helical fibres, flying along it. Each LED
-// is a ray from the eye through its place on the ceiling, straight ahead at the centre (Centre X
-// across the bars, Centre Y along them; also off the ceiling: then one side of the tube shows, as
+// is a ray from the eye through its place on the layout, straight ahead at the centre (Centre X
+// across the bars, Centre Y along them; also off the layout: then one side of the tube shows, as
 // long arcs fanning out); the centre swings on a pendulum around a pivot, as the shader's view
 // turns (angle 1 + sin(t / 5)). The tube (radius 1) is off the line of sight by o, which swings in a
 // slow circle and also curves along the tube, the curve coming towards you as you fly: the
@@ -979,7 +979,7 @@ static void tunnel(Ctx& c) {
     const float pc = cosCyc(pa * (1.f / TAU)), ps = cosCyc(pa * (1.f / TAU) - 0.25f);
     const float cx = Y[0] + c.p[kCentreX] * H + arm * pc;  // across the bars
     const float cy = c.p[kCentreY] * W + arm * ps;         // along them
-    const float fov = 2.f;  // the ceiling's shorter side spans +-1 of the view
+    const float fov = 2.f;  // the layout's shorter side spans +-1 of the view
     for (int b = 0; b < NY; b++) {
         const float dy = (Y[b] - cx) * fov;
         CRGB* o = c.out + b * NX;
@@ -1016,7 +1016,7 @@ static void tunnel(Ctx& c) {
 // ---------------------------------------------------------------- Fibres
 // Rifling seen down a barrel: grooves winding out from a centre as logarithmic spirals (each groove
 // crosses every circle at the same angle), each a sharp highlight with thin halo lines beside it,
-// darkening towards the bore. Two of them in each quarter of the ceiling, the second flipped so it
+// darkening towards the bore. Two of them in each quarter of the layout, the second flipped so it
 // winds the other way, both turning about their centres; the quarter mirrored both ways (across
 // the bars and along them): eight centres. The brighter of the two riflings wins at each LED.
 
@@ -1068,7 +1068,7 @@ static void fibres(Ctx& c) {
     const float ca = cosCyc(c.s[0]), sa = cosCyc(c.s[0] - 0.25f);
     const float size = fmaxf(c.p[kSize] * 0.01f, 0.05f);
     // The screen: u across the bars (left to right in the preview), v along them (top to bottom),
-    // each 0..1 over the ceiling; distances in screen heights (the bars' length), as the original
+    // each 0..1 over the layout; distances in screen heights (the bars' length), as the original
     const float aspect = W > 0 ? H / W : 1.f;
     const float iH = H > 1e-6f ? 1.f / H : 0.f, iW = 1.f / W;
     const float x1 = 1.f, x2 = 1.f - c.p[kSpacing], yc = c.p[kCentreY];
@@ -1103,7 +1103,7 @@ static void fibres(Ctx& c) {
 
 // ---------------------------------------------------------------- Strobe
 // In Beats timing a drum machine of flashes: 32 steps (two bars of 1/16 notes), four lanes, each
-// flashing its own kind of thing on the steps set in the preset's pattern: the whole ceiling, a
+// flashing its own kind of thing on the steps set in the preset's pattern: the whole layout, a
 // band, a block of a coarse grid, a circle or square. Bands, blocks and shapes land somewhere new
 // on every step (a hash of the step's count). In Time (the page's Frequency) a plain strobe, Speed
 // flashes a second, the pattern unused: the middle Size share of every row (strips are often not
@@ -1134,7 +1134,7 @@ static void strobe(Ctx& c) {
     const bool lit = (f < c.p[kFlash] || fresh) && (pattern || c.p[kSpeed] > 0);
     bool any = false, on[4] = {};
     for (int k = 0; k < 4; k++) {
-        on[k] = lit && (pattern ? c.steps && (c.steps[k] >> step & 1) : k == 0);  // Frequency: the whole ceiling
+        on[k] = lit && (pattern ? c.steps && (c.steps[k] >> step & 1) : k == 0);  // Frequency: the whole layout
         any |= on[k];
     }
     const float bg = c.p[kBackground] * c.level;  // Effect brightness dims the background, not the flashes
@@ -1167,7 +1167,7 @@ static void strobe(Ctx& c) {
     const uint32_t seed = (uint32_t)(n & 0xFFFFFFFF);
     const float size = c.p[kSize], hw = size * 0.5f, soft = c.p[kSoft];
     const float e = fmaxf(soft * hw, 0.02f * M);  // the edge's width
-    // Band: across the ceiling at Angle, at a random place
+    // Band: across the layout at Angle, at a random place
     const float ang = c.p[kAngle] * DEG, ca = cosf(ang), sa = sinf(ang);
     const float span = fabsf(W * ca) + fabsf(H * sa);
     const float bandAt = (hrand(seed, 11) - 0.5f) * fmaxf(span - size, 0.f);
@@ -1176,8 +1176,8 @@ static void strobe(Ctx& c) {
     const int ncy = clampi((int)(H / fmaxf(size, 1e-3f) + 0.5f), 1, 64);
     const float cw = W / ncx, ch = H / ncy;
     const float bx0 = (int)(hrand(seed, 12) * ncx) * cw, by0 = Y[0] + (int)(hrand(seed, 13) * ncy) * ch;
-    // Shape: a circle or a square (at a random angle) somewhere on the ceiling
-    const float mx = fminf(hw, W * 0.5f), my = fminf(hw, H * 0.5f);  // kept on the ceiling
+    // Shape: a circle or a square (at a random angle) somewhere on the layout
+    const float mx = fminf(hw, W * 0.5f), my = fminf(hw, H * 0.5f);  // kept on the layout
     const float sx = mx + hrand(seed, 14) * (W - 2 * mx), sy = Y[0] + my + hrand(seed, 15) * (H - 2 * my);
     const bool circle = hrand(seed, 16) < 0.5f;
     const float sang = hrand(seed, 17) * 1.5708f, sca = cosf(sang), ssa = sinf(sang);
@@ -1223,160 +1223,160 @@ static void strobe(Ctx& c) {
 // New effects go at the end: presets store the index.
 
 // Shared help texts
-#define H_BG "How bright the background is where nothing else shines, in the palette's first colour. 0 = black."
-#define H_DRIFT "How fast the colours slowly move through the palette. 0 = they stay put."
-#define H_GAPS "How dark the borders between neighbouring bands get. 0 = the colours touch, 1 = black between them."
-#define H_STEP "How far along the palette each next band moves. Small = neighbours in similar colours, 0.5 = opposite colours in turn, 0 or 1 = every band the same colour."
-#define H_SOFT_BANDS "How gradually one band blends into the next. 0 = crisp edges (still softened where they cross the bars, so they don't flicker), 1 = smooth gradients."
+#define H_BG "Background in the palette's first colour. 0 = black."
+#define H_DRIFT "Colours slowly move through the palette. 0 = still."
+#define H_GAPS "Darkness between bands. 0 = none, 1 = black."
+#define H_STEP "Palette step from band to band. 0.5 = alternating opposites."
+#define H_SOFT_BANDS "0 = crisp edges, 1 = smooth blend."
 
 // Every effect's sliders follow one order, so the same kind of slider sits in the same place:
 // Speed, Size, the effect's own, Angle, Turn, Centre X, Centre Y, Softness, Dark gaps, Colour ...,
 // Background, Offset. Speed is the first slider and Size the second wherever an effect has them.
 const EffectDef EFFECTS[] = {
     {"Rolling bars", 8,
-     {{"Speed (%/s)", 0, 160, 3, 0.2f, "How fast the bands roll, as a share of the ceiling's shorter side per second (100%/s crosses it in a second). 0 stops them. Calm: 1 to 4. In Beats timing this slider is replaced by beats per band.", 1},
-      {"Band width (%)", 16, 100, 40, 1, "The width of one band, as a share of the ceiling's shorter side (100% = the whole of it). Narrow bands flicker as they cross the rows: on a 5 m ceiling with rows half a metre apart, about 16% (0.8 m) is the narrowest that stays smooth.", 1},
-      {"Angle (deg)", -180, 180, 0, 1, "The direction the bands roll, in degrees: 0 = along the rows, 90 = across them (from the first row to the last), 180 = along the rows the other way. A Motion on it swings the direction to and fro."},
+     {{"Speed (%/s)", 0, 160, 3, 0.2f, "Roll speed, % of the layout's shorter side per second. Beats: beats per band.", 1},
+      {"Band width (%)", 16, 100, 40, 1, "Band width, % of the shorter side. Narrow bands flicker across the bars.", 1},
+      {"Angle (deg)", -180, 180, 0, 1, "Direction. 0 = along the bars, 90 = across."},
       {"Softness", 0, 1, 0.6f, 0.01f, H_SOFT_BANDS},
       {"Dark gaps", 0, 1, 0.3f, 0.01f, H_GAPS},
-      {"Gap width", 0, 0.9f, 0, 0.01f, "How wide the dark gaps between the bands are, as a share of a band: 0 = only where the colours meet, 0.5 = half dark, 0.9 = thin bars of colour with wide gaps. Dark gaps sets how dark they get (at Dark gaps 0 they don't show)."},
+      {"Gap width", 0, 0.9f, 0, 0.01f, "Gap width as a share of a band. Needs Dark gaps."},
       {"Colour step", 0, 1, 0.2f, 0.01f, H_STEP},
-      {"Offset (%)", -200, 200, 0, 0.2f, "Shifts the pattern by this share of the ceiling's shorter side, the way Speed moves the bands (in the rolling direction). With Speed at 0 it stays put, so a Motion on Offset moves it back and forth (with easing). 0 = no shift.", 1}},
+      {"Offset (%)", -200, 200, 0, 0.2f, "Shifts the bands. A Motion on it moves them to and fro.", 1}},
      rolling, false, "band", 0,
-     "Wide soft bands of palette colour rolling across the ceiling, in the direction Angle sets. In Beats timing, each band takes the chosen number of beats to pass."},
+     "Wide soft bands rolling across the layout."},
     {"Searchlights", 5,
-     {{"Speed", 0, 1.5f, 0.3f, 0.01f, "How fast the beams wander along their looping paths. 0.3 is a slow drift, 1.5 a brisk sweep, 0 freezes them."},
-      {"Beam radius (%)", 10, 60, 24, 1, "The radius of each beam, as a share of the ceiling's shorter side: 24% makes a beam about half that side across.", 1},
-      {"Beams", 1, 5, 3, 1, "How many round beams wander over the ceiling, each in its own palette colour. Where beams overlap their light adds up."},
-      {"Softness", 0, 1, 0.6f, 0.01f, "How far in from the edge a beam fades. 0 = an evenly lit disc with a short soft edge (never under 0.4 m), 1 = brightest only at the centre."},
+     {{"Speed", 0, 1.5f, 0.3f, 0.01f, "Wander speed. 0 = still."},
+      {"Beam radius (%)", 10, 60, 24, 1, "Beam radius, % of the shorter side.", 1},
+      {"Beams", 1, 5, 3, 1, "Number of beams, each its own palette colour."},
+      {"Softness", 0, 1, 0.6f, 0.01f, "0 = even disc, 1 = bright only at the centre."},
       {"Background", 0, 0.5f, 0.02f, 0.01f, H_BG}},
      searchlights, false, nullptr, -1,
-     "Soft round beams wandering over the ceiling on slow looping paths, like searchlights in the sky. Their paths don't repeat for a long time."},
+     "Soft beams wandering on looping paths."},
     {"Lighthouse", 8,
-     {{"Speed (rpm)", -20, 20, 4, 0.1f, "Turns per minute; negative turns the other way. In Beats timing this slider is replaced by beats per revolution."},
-      {"Beam width (deg)", 5, 120, 30, 1, "How wide the beam is, as an angle. The beam gets wider in metres the further it is from the centre."},
-      {"Beams", 1, 4, 1, 1, "How many beams, evenly spaced around the centre like a lighthouse with several lamps. Each spot is passed this many times per turn."},
-      {"Angle (deg)", -180, 180, 0, 1, "Which way the beam points, in degrees: 0 = along the bars (towards their far end), 90 = across them (towards the last bar), -90 = towards the first bar, 180 = back along the bars. With Speed at 0 the beam stays there; while it turns, this sets where the turn starts, so it can also line a turn up with the beat. With several beams it is the first one's direction."},
-      {"Centre X", -0.2f, 1.2f, -0.05f, 0.01f, "Where the centre the beam turns around sits across the bars: 0 = the first bar, 1 = the last bar. The default, -0.05, is just outside the first bar, so the beam sweeps in from the edge."},
-      {"Centre Y", -0.2f, 1.2f, 0.5f, 0.01f, "Where the centre the beam turns around sits along the bars: 0 = one end, 0.5 = the middle, 1 = the other end. Below 0 or above 1 puts it outside the ceiling."},
-      {"Colour spread", 0, 1, 0.6f, 0.01f, "How the beam's colour changes with distance from the centre. 0 = all in the palette's first colour, 1 = through the whole palette out to the farthest corner."},
+     {{"Speed (rpm)", -20, 20, 4, 0.1f, "Turns per minute; negative = the other way. Beats: beats per turn."},
+      {"Beam width (deg)", 5, 120, 30, 1, "Beam width in degrees."},
+      {"Beams", 1, 4, 1, 1, "Beams around the pivot."},
+      {"Angle (deg)", -180, 180, 0, 1, "Beam direction. 0 = along the bars, 90 = across. Sets the start when turning."},
+      {"Centre X", -0.2f, 1.2f, -0.05f, 0.01f, "Pivot across the bars: 0 = first bar, 1 = last."},
+      {"Centre Y", -0.2f, 1.2f, 0.5f, 0.01f, "Pivot along the bars: 0 = start, 1 = end."},
+      {"Colour spread", 0, 1, 0.6f, 0.01f, "Colour change with distance. 0 = first colour only, 1 = the whole palette."},
       {"Background", 0, 0.5f, 0.02f, 0.01f, H_BG}},
      lighthouse, false, "revolution", 0,
-     "A beam turning around a point, like a lighthouse. The point can sit inside the ceiling, at its edge or beyond it. In Beats timing, one revolution takes the chosen number of beats."},
+     "A turning beam, like a lighthouse."},
     {"Clouds", 8,
-     {{"Speed (%/s)", 0, 20, 3, 0.2f, "How fast the wind carries the clouds, as a share of the ceiling's shorter side per second (100%/s crosses it in a second). 0 = they stay in place (they can still evolve).", 1},
-      {"Cloud size (%)", 20, 160, 60, 1, "The typical size of a cloud, as a share of the ceiling's shorter side. Smaller clouds still keep their detail coarse enough for the bar spacing.", 1},
-      {"Coverage", 0, 1, 0.5f, 0.01f, "How much of the sky is cloud: 0 = clear, 0.5 = half cloudy, 1 = overcast."},
-      {"Evolve", 0, 1, 0.2f, 0.01f, "How fast the cloud shapes change as they drift. 0 = rigid shapes sliding past, 1 = clouds forming and dissolving quickly."},
-      {"Angle (deg)", -180, 180, 0, 1, "Which way the wind blows the clouds: 0 = along the bars, 90 = across them. A Motion on it turns the wind."},
-      {"Softness", 0, 1, 0.4f, 0.01f, "How gradually a cloud fades into the sky. 0 = crisp edges, 1 = hazy."},
-      {"Offset X (%)", -200, 200, 0, 0.2f, "Shifts the clouds along the bars by this share of the ceiling's shorter side, on top of the wind. With Speed at 0 they stay put, so a Motion on Offset X moves them back and forth. 0 = no shift.", 1},
-      {"Offset Y (%)", -200, 200, 0, 0.2f, "Shifts the clouds across the bars by this share of the ceiling's shorter side, on top of the wind. With Speed at 0 they stay put, so a Motion on Offset Y moves them back and forth. 0 = no shift.", 1}},
+     {{"Speed (%/s)", 0, 20, 3, 0.2f, "Wind speed, % of the shorter side per second.", 1},
+      {"Cloud size (%)", 20, 160, 60, 1, "Cloud size, % of the shorter side.", 1},
+      {"Coverage", 0, 1, 0.5f, 0.01f, "0 = clear, 1 = overcast."},
+      {"Evolve", 0, 1, 0.2f, 0.01f, "How fast the shapes change. 0 = rigid."},
+      {"Angle (deg)", -180, 180, 0, 1, "Wind direction. 0 = along the bars, 90 = across."},
+      {"Softness", 0, 1, 0.4f, 0.01f, "0 = crisp edges, 1 = hazy."},
+      {"Offset X (%)", -200, 200, 0, 0.2f, "Shifts the clouds along the bars (top to bottom).", 1},
+      {"Offset Y (%)", -200, 200, 0, 0.2f, "Shifts the clouds across the bars (left to right).", 1}},
      clouds, false, nullptr, -1,
-     "Soft clouds drifting on a slowly turning wind. The palette is used as a ramp: its first colour is the sky, its last colour the clouds."},
+     "Soft clouds drifting in the wind. First palette colour: sky, last: clouds."},
     {"Sparkle", 4,
-     {{"Density", 0, 1, 0.4f, 0.01f, "How many LEDs twinkle at once. 1 = about 8% of the LEDs lit at any moment."},
-      {"Twinkle time (s)", 0.3f, 5, 1.5f, 0.1f, "How long one twinkle lasts, in seconds: a quick rise and a slow fade."},
-      {"Colour drift", 0, 1, 0.2f, 0.01f, "How fast the background wash moves through the palette."},
-      {"Background", 0, 0.5f, 0.05f, 0.01f, "How bright the slowly drifting palette wash under the twinkles is. 0 = black."}},
+     {{"Density", 0, 1, 0.4f, 0.01f, "Share of LEDs twinkling. 1 = about 8%."},
+      {"Twinkle time (s)", 0.3f, 5, 1.5f, 0.1f, "Seconds per twinkle."},
+      {"Colour drift", 0, 1, 0.2f, 0.01f, "Background colour drift. 0 = still."},
+      {"Background", 0, 0.5f, 0.05f, 0.01f, "Background wash brightness. 0 = black."}},
      sparkle, true, nullptr, -1,
-     "Single LEDs twinkling in palette colours over a dim palette wash. For twinkles on top of another effect, use the Sparkle overlay (under Brightness) instead."},
+     "Twinkling LEDs over a dim palette wash."},
     {"Sweeps", 8,
-     {{"Speed (%/s)", 1, 40, 8, 0.2f, "How fast a bar crosses the ceiling, as a share of the ceiling's shorter side per second (100%/s crosses it in a second). In Beats timing this slider is replaced by beats per sweep.", 1},
-      {"Bar width (%)", 6, 80, 20, 1, "The width of the solid part of each bar, as a share of the ceiling's shorter side.", 1},
-      {"Bars", 1, 4, 1, 1, "How many bars travel at once, evenly spaced. Each changes direction on its own."},
-      {"Angle (deg)", -180, 180, 0, 1, "Turns the direction of every bar by this many degrees: with Angle change at 0 and one bar, the direction it sweeps (0 = along the rows, 90 = across them). Each bar takes it as its pass begins and keeps it to the end, so a controller or Motion on it (a Random jump, say) sets the direction of the next pass, never turns a bar halfway."},
-      {"Angle change (deg)", 0, 180, 37, 1, "How much the direction turns after each pass. 180 = back and forth, 90 = crosswise in turn, 0 = always the same way. Odd angles such as 37 rarely repeat."},
-      {"Trail (%)", 0, 120, 30, 1, "How far behind the bar its glow fades out, as a share of the ceiling's shorter side. 0 = no trail.", 1},
-      {"Softness", 0, 1, 0.2f, 0.01f, "How soft the bar's edges are, as a part of its width. 0 = crisp (still softened where they cross the bars)."},
+     {{"Speed (%/s)", 1, 40, 8, 0.2f, "Sweep speed, % of the shorter side per second. Beats: beats per sweep.", 1},
+      {"Bar width (%)", 6, 80, 20, 1, "Bar width, % of the shorter side.", 1},
+      {"Bars", 1, 4, 1, 1, "Bars at once."},
+      {"Angle (deg)", -180, 180, 0, 1, "Sweep direction, taken at the start of each pass."},
+      {"Angle change (deg)", 0, 180, 37, 1, "Turn after each pass. 180 = back and forth."},
+      {"Trail (%)", 0, 120, 30, 1, "Trail length, % of the shorter side. 0 = none.", 1},
+      {"Softness", 0, 1, 0.2f, 0.01f, "Edge softness. 0 = crisp."},
       {"Background", 0, 0.5f, 0.02f, 0.01f, H_BG}},
      sweeps, false, "sweep", 0,
-     "Bars sweeping across the ceiling one after another, each pass at a new angle, with a fading trail. Each new pass takes the next palette colour."},
+     "Bars sweeping across, each pass at a new angle, with a trail."},
     {"Plaid", 7,
-     {{"Speed (%/s)", 0, 20, 2, 0.2f, "How fast the stripes move, as a share of the ceiling's shorter side per second (100%/s crosses it in a second); the two sets move opposite ways. In Beats timing this slider is replaced by beats per stripe.", 1},
-      {"Stripe spacing (%)", 20, 120, 50, 1, "The distance from one stripe to the next, as a share of the ceiling's shorter side.", 1},
-      {"Cross angle (deg)", 0, 90, 60, 1, "The angle between the two stripe sets. 90 = square checks, smaller = stretched diamonds, 0 = both sets parallel."},
-      {"Turn (deg/s)", -10, 10, 1, 0.1f, "How fast the whole pattern turns, in degrees per second; negative turns the other way."},
-      {"Dark gaps", 0, 1, 0.6f, 0.01f, "How dark it gets between the stripes. 0 = even brightness, only the colours change, 1 = deep dark gaps."},
+     {{"Speed (%/s)", 0, 20, 2, 0.2f, "Stripe speed, % of the shorter side per second; the sets move opposite ways. Beats: beats per stripe.", 1},
+      {"Stripe spacing (%)", 20, 120, 50, 1, "Stripe spacing, % of the shorter side.", 1},
+      {"Cross angle (deg)", 0, 90, 60, 1, "Angle between the sets. 90 = squares."},
+      {"Turn (deg/s)", -10, 10, 1, 0.1f, "Rotation, degrees per second."},
+      {"Dark gaps", 0, 1, 0.6f, 0.01f, "Darkness between stripes. 0 = none."},
       {"Colour drift", 0, 1, 0.2f, 0.01f, H_DRIFT},
-      {"Offset (%)", -200, 200, 0, 0.2f, "Shifts the pattern by this share of the ceiling's shorter side, the way Speed moves the stripes (the second set goes the other way). With Speed at 0 it stays put, so a Motion on Offset moves it back and forth (with easing). 0 = no shift.", 1}},
+      {"Offset (%)", -200, 200, 0, 0.2f, "Shifts the stripes. A Motion on it moves them to and fro.", 1}},
      plaid, false, "stripe", 0,
-     "Two sets of broad stripes crossing at an angle, moving and slowly turning. The colour shows which of the two sets is stronger at each spot."},
+     "Two crossing stripe sets, moving and turning."},
     {"Rings", 8,
-     {{"Speed (%/s)", -20, 20, 4, 0.2f, "How fast the rings flow, as a share of the ceiling's shorter side per second (100%/s crosses it in a second): positive outward from the centre, negative inward. In Beats timing this slider is replaced by beats per ring.", 1},
-      {"Ring spacing (%)", 16, 80, 30, 1, "The distance from one ring to the next, as a share of the ceiling's shorter side.", 1},
-      {"Wander", 0, 1, 0.4f, 0.01f, "How far the centre roams. 0 = fixed in the middle of the ceiling, 1 = all the way to the edges."},
+     {{"Speed (%/s)", -20, 20, 4, 0.2f, "Ring speed, % of the shorter side per second; negative = inward. Beats: beats per ring.", 1},
+      {"Ring spacing (%)", 16, 80, 30, 1, "Ring spacing, % of the shorter side.", 1},
+      {"Wander", 0, 1, 0.4f, 0.01f, "How far the centre roams. 0 = fixed."},
       {"Wander speed", 0, 1, 0.2f, 0.01f, "How fast the centre roams."},
       {"Softness", 0, 1, 0.6f, 0.01f, H_SOFT_BANDS},
       {"Dark gaps", 0, 1, 0.4f, 0.01f, H_GAPS},
       {"Colour step", 0, 1, 0.2f, 0.01f, H_STEP},
-      {"Offset (%)", -200, 200, 0, 0.2f, "Shifts the pattern by this share of the ceiling's shorter side, the way Speed moves the rings (positive outward). With Speed at 0 it stays put, so a Motion on Offset moves it back and forth (with easing). 0 = no shift.", 1}},
+      {"Offset (%)", -200, 200, 0, 0.2f, "Shifts the rings. A Motion on it moves them in and out.", 1}},
      rings, false, "ring", 0,
-     "Concentric rings flowing out of (or into) a centre that slowly wanders over the ceiling."},
+     "Rings flowing out of a wandering centre."},
     {"Drops", 8,
-     {{"Speed (%/s)", 2, 80, 10, 0.2f, "How fast a ring spreads, as a share of the ceiling's shorter side per second (100%/s crosses it in a second).", 1},
-      {"Ring width (%)", 8, 50, 20, 1, "The width of a ring's bright band, as a share of the ceiling's shorter side.", 1},
-      {"Drops per minute", 1, 60, 10, 1, "How many new drops fall per minute. At most 10 rings show at once. In Beats timing this slider is replaced by beats per drop, and each drop lands on the beat."},
-      {"Max radius (%)", 20, 240, 120, 1, "How far a ring spreads before it has faded out completely, as a share of the ceiling's shorter side.", 1},
-      {"Centre X", -0.2f, 1.2f, 0.5f, 0.01f, "Where across the rows the drops land: 0 = the first row, 1 = the last. A Motion on it moves the landing point; each ring stays where its drop fell."},
-      {"Centre Y", -0.2f, 1.2f, 0.5f, 0.01f, "Where along the rows the drops land: 0 = the start of the rows, 1 = their end. A Motion on it moves the landing point; each ring stays where its drop fell."},
-      {"Colour step", 0, 1, 0, 0.01f, "Each drop's colour: 0 = a random colour from the palette; above 0 each new drop this far along the palette from the one before (0.5 = opposite colours in turn, small = walking slowly through it)."},
+     {{"Speed (%/s)", 2, 80, 10, 0.2f, "Spread speed, % of the shorter side per second.", 1},
+      {"Ring width (%)", 8, 50, 20, 1, "Ring width, % of the shorter side.", 1},
+      {"Drops per minute", 1, 60, 10, 1, "New drops per minute (10 rings at most). Beats: beats per drop."},
+      {"Max radius (%)", 20, 240, 120, 1, "Radius where a ring has faded, % of the shorter side.", 1},
+      {"Centre X", -0.2f, 1.2f, 0.5f, 0.01f, "Landing point across the bars: 0 = first bar, 1 = last."},
+      {"Centre Y", -0.2f, 1.2f, 0.5f, 0.01f, "Landing point along the bars: 0 = start, 1 = end."},
+      {"Colour step", 0, 1, 0, 0.01f, "0 = random colours; above 0: each drop this far along the palette."},
       {"Background", 0, 0.5f, 0.03f, 0.01f, H_BG}},
      dropsFx, false, "drop", 2,
-     "Big rings spreading from where drops land and fading out, like raindrops on a pond, at the point Centre X, Y sets (Motions on them move it). Each drop takes a palette colour: random, or Colour step further along the palette than the last."},
+     "Rings spreading from where drops land, like rain on a pond. Reverse: rings shrink in."},
     {"Gradient", 6,
-     {{"Spread", 0.1f, 4, 1, 0.01f, "How much of the palette spans the ceiling. 1 = from the palette's first colour at one side to its last colour at the other; 2 = there and back; 0.5 = only the first half of the palette. Bigger means more colour changes across the ceiling."},
-      {"Radial", 0, 1, 0, 1, "0 = a straight gradient in the direction of Angle; 1 = a round gradient, from the centre (Centre X, Centre Y) outwards."},
-      {"Angle (deg)", -180, 180, 0, 1, "The direction of a straight gradient, in degrees: 0 = along the bars, 90 = across them (from the first bar to the last), 45 = diagonally. Not used when Radial is 1."},
-      {"Centre X", -0.2f, 1.2f, 0.5f, 0.01f, "Radial: where the centre sits across the bars: 0 = the first bar, 0.5 = the middle, 1 = the last bar."},
-      {"Centre Y", -0.2f, 1.2f, 0.5f, 0.01f, "Radial: where the centre sits along the bars: 0 = one end, 0.5 = the middle, 1 = the other end. Beyond 0 or 1 puts it outside the ceiling."},
-      {"Colour offset", -2, 2, 0, 0.01f, "Shifts the colours along the gradient: 1 moves them by a whole palette (first colour to last). A Motion on Colour offset makes the colours flow back and forth."}},
+     {{"Spread", 0.1f, 4, 1, 0.01f, "How much palette spans the layout. 1 = first to last colour, 2 = there and back."},
+      {"Radial", 0, 1, 0, 1, "0 = straight, 1 = round."},
+      {"Angle (deg)", -180, 180, 0, 1, "Direction of a straight gradient. 0 = along the bars."},
+      {"Centre X", -0.2f, 1.2f, 0.5f, 0.01f, "Round centre across the bars: 0 = first bar, 1 = last."},
+      {"Centre Y", -0.2f, 1.2f, 0.5f, 0.01f, "Round centre along the bars: 0 = start, 1 = end."},
+      {"Colour offset", -2, 2, 0, 0.01f, "Shifts the colours; 1 = a whole palette. A Motion on it makes them flow."}},
      gradient, false, nullptr, -1,
-     "A steady gradient through the palette: straight in any direction, or round from a centre. The palette is used as a ramp, first colour to last and back. Calm light that doesn't move unless a Motion moves it."},
+     "A palette gradient, straight or round."},
     {"Shapes", 8,
-     {{"New shape every (s)", 0.2f, 10, 1.5f, 0.1f, "How often a new shape appears, in seconds. Each lasts Count times this. In Beats timing this slider is replaced by beats per shape, and each lands on the beat."},
-      {"Size (%)", 16, 160, 60, 1, "How big the shapes are, as a share of the ceiling's shorter side: a circle's diameter, a square's or a triangle's side. Below about 30% they get hard to read across rows half a metre apart on a 5 m ceiling.", 1},
-      {"Shape", 0, 3, 3, 1, "0 = squares, 1 = circles, 2 = triangles, 3 = a mix of all three, picked at random."},
-      {"Count", 1, 6, 3, 1, "How many shapes show at once. Each stays for this many turns and fades out as a new one appears."},
-      {"Size variety", 0, 1, 0.5f, 0.01f, "How much the sizes differ. 0 = all the same size, 1 = anything from Size down to tiny."},
-      {"Turn (deg/s)", 0, 90, 10, 1, "How fast the shapes turn while they show, each its own way round. 0 = they keep their angle. Circles don't show it."},
-      {"Line width (%)", 4, 40, 12, 1, "How thick the outlines are, as a share of the ceiling's shorter side. Lines thinner than the row spacing come out dimmer where they run along the rows, so they don't flicker.", 1},
-      {"Fill", 0, 1, 0, 0.01f, "0 = outlines only, 1 = solid shapes. In between: a dimmer inside within a bright outline."}},
+     {{"New shape every (s)", 0.2f, 10, 1.5f, 0.1f, "Seconds between shapes. Beats: beats per shape."},
+      {"Size (%)", 16, 160, 60, 1, "Shape size, % of the shorter side.", 1},
+      {"Shape", 0, 3, 3, 1, "0 squares, 1 circles, 2 triangles, 3 mixed."},
+      {"Count", 1, 6, 3, 1, "Shapes showing at once."},
+      {"Size variety", 0, 1, 0.5f, 0.01f, "0 = all the same size."},
+      {"Turn (deg/s)", 0, 90, 10, 1, "Rotation, degrees per second."},
+      {"Line width (%)", 4, 40, 12, 1, "Outline width, % of the shorter side.", 1},
+      {"Fill", 0, 1, 0, 0.01f, "0 = outline, 1 = solid."}},
      shapesFx, false, "shape", 0,
-     "Squares, circles and triangles appearing one after another at random places, sizes and angles, each in a random palette colour, as outlines, solid or both. Each stays a while and fades out."},
+     "Squares, circles and triangles appearing at random and fading."},
     {"Strobe", 7,
-     {{"Speed (Hz)", 0, 20, 8, 0.1f, "Flashes per second, with Timing set to Frequency: a plain strobe of every row (the middle Size share of it). 0 = no flashes. With Timing set to Beats the pattern plays instead, and this slider gives way to Beats per pattern."},
-      {"Size (%)", 10, 100, 30, 1, "Timing Beats: how big a band, block or shape is, as a share of the ceiling's shorter side (the Whole lane always lights everything). Timing Frequency: the share of each row's LEDs that flash, from the middle of the row outwards; fewer LEDs ask less of the power supply, so they flash brighter.", 1},
-      {"Flash length", 0.05f, 1, 0.5f, 0.01f, "How much of its step a flash stays on: short = a crisp strobe, 1 = lit for the whole step (steps in a row then join up). A flash always shows for at least one frame."},
-      {"Angle (deg)", -180, 180, 90, 1, "Which way the bands run: 90 = along the rows (a band lights a few rows), 0 = across them."},
-      {"Softness", 0, 1, 0.2f, 0.01f, "How soft the edges of bands, blocks and shapes are. 0 = hard edges (still softened where they cross the rows, so they don't flicker)."},
-      {"Colour", 0, 1, 0, 0.01f, "0 = white flashes. Above 0 the flashes take the palette's colours: each step this much further along it, and each lane a quarter of the palette apart."},
-      {"Background", 0, 0.5f, 0, 0.01f, "How brightly the palette shows between the flashes. 0 = black."}},
+     {{"Speed (Hz)", 0, 20, 8, 0.1f, "Frequency: flashes per second. Beats: beats per pattern."},
+      {"Size (%)", 10, 100, 30, 1, "Beats: size of bands, blocks and shapes, % of the shorter side. Frequency: share of each row lit, from the middle.", 1},
+      {"Flash length", 0.05f, 1, 0.5f, 0.01f, "Share of each step lit."},
+      {"Angle (deg)", -180, 180, 90, 1, "Band direction. 90 = along the bars."},
+      {"Softness", 0, 1, 0.2f, 0.01f, "Edge softness of bands, blocks and shapes."},
+      {"Colour", 0, 1, 0, 0.01f, "0 = white; above 0: palette colours, stepping each flash."},
+      {"Background", 0, 0.5f, 0, 0.01f, "Palette brightness between flashes. 0 = black."}},
      strobe, false, "pattern", 0,
-     "A drum machine of flashes: set steps in a grid of four lanes and 32 steps (two bars of 1/16 notes), and the lanes flash the whole ceiling, a band, a block or a shape on those steps, somewhere new each time. The flashes stay at full power whatever Effect brightness is (the master Brightness still applies); Effect brightness dims only the Background.",
+     "A plain strobe (Frequency) or a 4-lane, 32-step flash pattern (Beats). Flashes ignore Effect brightness.",
      true, true},
     {"Fibres", 8,
-     {{"Speed (deg/s)", -90, 90, -8.6f, 0.1f, "How fast the riflings turn about their centres, in degrees per second (the second one the other way, as it is mirrored); 0 = still. In Beats timing this slider gives way to beats per turn."},
-      {"Size (%)", 20, 300, 100, 1, "How big the riflings are: 100% = as the original, smaller = tighter spirals with more of them showing."},
-      {"Grooves", 1, 24, 12, 1, "How many grooves each rifling has."},
-      {"Smooth", 0, 1, 0, 0.01f, "How soft the grooves' highlights are: 0 = sharp, as the original; higher = softer and wider, gliding along the bars rather than flickering."},
-      {"Line width", 0.2f, 3, 1, 0.01f, "How fine the halo lines beside each groove are: 1 = as the original, higher = finer."},
-      {"Halo", 0, 1, 0.2f, 0.01f, "How bright the thin halo lines beside each groove are. 0 = only the sharp highlights."},
-      {"Spacing", 0, 0.5f, 0.35f, 0.01f, "How far in from the side the second rifling of each quarter is, as a share of the ceiling's width across the bars."},
-      {"Centre Y", 0.5f, 1, 0.75f, 0.01f, "Where along the bars the riflings' centres are (in the mirrored quarter): 0.5 = the middle, 1 = the end."}},
+     {{"Speed (deg/s)", -90, 90, -8.6f, 0.1f, "Rotation, degrees per second. Beats: beats per turn."},
+      {"Size (%)", 20, 300, 100, 1, "Spiral size. 100% = the original."},
+      {"Grooves", 1, 24, 12, 1, "Grooves per spiral."},
+      {"Smooth", 0, 1, 0, 0.01f, "0 = sharp, 1 = soft highlights."},
+      {"Line width", 0.2f, 3, 1, 0.01f, "Halo line fineness. 1 = the original."},
+      {"Halo", 0, 1, 0.2f, 0.01f, "Halo line brightness."},
+      {"Spacing", 0, 0.5f, 0.35f, 0.01f, "Inset of the second spiral, share of the width across the bars."},
+      {"Centre Y", 0.5f, 1, 0.75f, 0.01f, "Spiral centres along the bars (in the mirrored quarter)."}},
      fibres, false, "turn", 0,
-     "Fibres like rifling seen down a barrel: grooves winding out from a centre as spirals, each a sharp highlight with thin halo lines beside it, darker towards the bore. Two riflings in each quarter, the second winding the other way, both turning; the quarter mirrored across and along the bars: eight centres. In palette colours: a palette from black to red gives red rifling on black steel."},
+     "Rifling spirals seen down a barrel, mirrored four ways."},
     {"Tunnel", 8,
-     {{"Speed", -4, 4, 0.9f, 0.05f, "How fast you fly down the tunnel, in tube widths (radius) per second; below 0 backwards. The tunnel swings with it. In Beats timing this slider gives way to beats per fibre turn."},
-      {"Swing", 0, 1, 0.24f, 0.01f, "The tunnel's centre on a pendulum: how far it hangs from the pivot (Centre X, Centre Y), as a share of the ceiling's shorter side. It swings from 0 to about 115 degrees and back every 31 seconds, slowing at the ends, as in the original. 0 = the centre stays at the pivot."},
-      {"Fibres", 1, 12, 6, 1, "How many fibres wind along the tunnel wall."},
-      {"Twist", 0, 4, 0.65f, 0.01f, "How tightly the fibres wind along the tunnel: turns per tube width. 0 = straight along it (straight spokes from the centre); the original shader's is 1.3."},
-      {"Twin", 0, 1, 1, 0.01f, "The same tunnel flipped across the bars (first row to last) and added on top: a second tunnel mirrored over the middle, crossing the first. 0 = none, 1 = as bright."},
-      {"Centre X", -1, 2, 0.33f, 0.01f, "Where across the bars the pendulum's pivot is (the tunnel's centre hangs Swing from it; with Swing 0 the centre itself): 0 = the first bar, 1 = the last. With Twin, its mirror image is on the other side."},
-      {"Centre Y", -1, 2, 0.67f, 0.01f, "Where along the bars the pendulum's pivot is: 0 = the first LED, 1 = the last, beyond the ends off the ceiling."},
-      {"Line width", 0.03f, 0.5f, 0.15f, 0.01f, "How thick the fibres are, as a share of the gap between them. Thin = crisp points racing along the bars."}},
+     {{"Speed", -4, 4, 0.9f, 0.05f, "Flight speed; negative = backwards. Beats: beats per fibre turn."},
+      {"Swing", 0, 1, 0.24f, 0.01f, "Pendulum arm of the centre, share of the shorter side. One swing every 31 s. 0 = still."},
+      {"Fibres", 1, 12, 6, 1, "Fibres on the wall."},
+      {"Twist", 0, 4, 0.65f, 0.01f, "Fibre winding. 0 = straight."},
+      {"Twin", 0, 1, 1, 0.01f, "Adds the tunnel mirrored left to right."},
+      {"Centre X", -1, 2, 0.33f, 0.01f, "Pendulum pivot across the bars."},
+      {"Centre Y", -1, 2, 0.67f, 0.01f, "Pendulum pivot along the bars."},
+      {"Line width", 0.03f, 0.5f, 0.15f, 0.01f, "Fibre width."}},
      tunnel, false, "fibre turn", 0,
-     "Flying down a tunnel lined with fibres winding along its wall, seen from inside, its far end at Centre X, Centre Y. The fibres come out of the centre slowly and race outwards ever faster, each in one palette colour. The tunnel's centre swings on a slow pendulum (Swing) around a pivot, and the tunnel twists and bends as you fly; Twin adds the same tunnel flipped across the bars, crossing the first."},
+     "Flying down a fibre-lined tunnel. Its centre swings on a pendulum."},
 };
 const int NUM_EFFECTS = sizeof(EFFECTS) / sizeof(EFFECTS[0]);
 

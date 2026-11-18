@@ -1,30 +1,29 @@
 # beamLED
 
-A standalone LED ceiling renderer on a WT32-ETH01 (ESP32). It draws big, bold effects for a ceiling
-of LED bars, from a slow drift of colour to beams and bars that snap and sweep on every beat, and
+A standalone renderer for parallel LED bars (on a ceiling, a wall or a floor) on a WT32-ETH01
+(ESP32). It draws big, bold effects for a layout of LED bars, from a slow drift of colour to beams and bars that snap and sweep on every beat, and
 sends them as Art-Net to a pixel controller. There is no PC in the
 chain: the board steps through presets on a single button or by itself, locks to the beat of
 Ableton Live over Ableton Link, and takes live control over OSC (made for
 [MIMa](https://beatline.xyz)).
 
-![Rolling bars on the ceiling, rendered in Beam](docs/images/beam_rolling_sunset.jpg)
+![Rolling bars, rendered in Beam](docs/images/beam_rolling_sunset.jpg)
 
-*All the pictures of the ceiling here are the board's real Art-Net output, shown in
+*All the pictures here are the board's real Art-Net output, shown in
 [Beam](https://beatline.xyz/beam), the Beatline visualiser.*
 
 ## Why
 
-The ceiling it was made for has 15 LED bars of 180 RGB pixels, 5 m long, hung parallel 0.46 to
-0.65 m apart. General-purpose LED firmware treats that as a dense 180 x 15 image. Because the bars
-are far apart compared with the LEDs along them, effects designed for a dense grid look busy,
-flicker as fine detail crosses a bar, and are distorted by the uneven spacing. beamLED was written
+It was made for LED bars hung parallel, far apart compared with the LEDs along them. General-purpose
+LED firmware treats such a layout as a dense image, so effects designed for a dense grid look busy
+and flicker as fine detail crosses a bar. beamLED was written
 for this kind of installation (see [docs/background.md](docs/background.md)):
 
 - Every effect is evaluated at the real position of each LED. Nothing is drawn in the empty space
-  between the bars. Sizes and speeds are set as a share of the ceiling's shorter side, so a preset
-  keeps its look on a bigger or smaller ceiling, or on a small test rig.
+  between the bars. Sizes and speeds are set as a share of the layout's shorter side, so a preset
+  keeps its look on a bigger or smaller layout, or on a small test rig.
 - Detail across the bars is kept soft (features of 0.8 m and more), and where an edge crosses a bar
-  it is widened by the bar's share of the gap, so it moves across the ceiling smoothly.
+  it is widened by the bar's share of the gap, so it moves across the layout smoothly.
 - Effects are made of big shapes (wide bands, beams, clouds, rings, gradients), not pixel detail.
   They can drift for hours as background light, or run fast and land on every beat for a show.
 
@@ -67,21 +66,21 @@ for this kind of installation (see [docs/background.md](docs/background.md)):
 
 | | |
 |---|---|
-| ![Rolling bars](docs/images/beam_rolling_ocean.jpg) **Rolling bars**: wide soft bands rolling across the ceiling at any angle (a Motion on Angle swings it). | ![Searchlights](docs/images/beam_searchlights.jpg) **Searchlights**: soft round beams wandering over the ceiling on slow looping paths. |
-| ![Lighthouse](docs/images/beam_lighthouse.jpg) **Lighthouse**: a beam turning around a point at the edge of the ceiling or beyond it; it can also be aimed, or swung with a Motion. | ![Clouds](docs/images/beam_clouds_sunset.jpg) **Clouds**: soft clouds drifting on a slowly turning wind, from clear sky to overcast. |
-| ![Sweeps](docs/images/beam_sweeps.jpg) **Sweeps**: bars sweeping across the ceiling one after another, each pass at a new angle, with a trail. | ![Plaid](docs/images/beam_plaid.jpg) **Plaid**: two sets of broad stripes crossing at an angle, moving and slowly turning. |
+| ![Rolling bars](docs/images/beam_rolling_ocean.jpg) **Rolling bars**: wide soft bands rolling across the layout at any angle (a Motion on Angle swings it). | ![Searchlights](docs/images/beam_searchlights.jpg) **Searchlights**: soft round beams wandering over the layout on slow looping paths. |
+| ![Lighthouse](docs/images/beam_lighthouse.jpg) **Lighthouse**: a beam turning around a point at the edge of the layout or beyond it; it can also be aimed, or swung with a Motion. | ![Clouds](docs/images/beam_clouds_sunset.jpg) **Clouds**: soft clouds drifting on a slowly turning wind, from clear sky to overcast. |
+| ![Sweeps](docs/images/beam_sweeps.jpg) **Sweeps**: bars sweeping across the layout one after another, each pass at a new angle, with a trail. | ![Plaid](docs/images/beam_plaid.jpg) **Plaid**: two sets of broad stripes crossing at an angle, moving and slowly turning. |
 | ![Rings](docs/images/beam_rings.jpg) **Rings**: concentric rings flowing out of, or into, a slowly wandering centre. | ![Drops](docs/images/beam_drops.jpg) **Drops**: big rings spreading from where drops land (a point you set and can move with Motions) and fading out, like raindrops on a pond. |
 | ![Sparkle overlay](docs/images/beam_rolling_ice_sparkle.jpg) **Sparkle**: twinkles in palette colours, as an effect of its own or as an overlay on any other. | ![Gradient](docs/images/beam_gradient.jpg) **Gradient**: a steady gradient through the palette, straight at any angle or round from a centre; a Motion on Colour offset makes the colours flow. |
 
 **Strobe** is a drum machine of flashes: each preset holds a grid of four lanes and 32 steps (two
 bars of 1/16 notes on the beat), and on the steps set the lanes
-flash the whole ceiling, a band, a block or a circle or square, somewhere new each time. With
+flash the whole layout, a band, a block or a circle or square, somewhere new each time. With
 Timing set to Frequency it is a plain strobe, 0 to 20 flashes a second, of the middle Size share of
 every row (fewer lit LEDs ask less of the power supply, so they flash brighter).
 
 **Fibres** is rifling seen down a barrel: grooves winding out from a centre as spirals, each a sharp
 highlight with thin halo lines beside it, darker towards the bore. Two riflings in each quarter of the
-ceiling, the second winding the other way, all turning; the quarter is mirrored across and along the
+layout, the second winding the other way, all turning; the quarter is mirrored across and along the
 bars. On the bars the grooves show as points sliding along them as the riflings turn.
 
 **Tunnel** flies down a tube lined with fibres winding along its wall, seen from inside: each LED is
@@ -107,7 +106,7 @@ saved yet.
 ![A preset's settings](docs/images/ui_preset.png)
 
 Each preset: its name, its place in the list (Earlier / Later / Delete), effect, palette, timing
-and the effect's sliders. **Save** keeps the changes; after a rename it reads **Save as new** and adds\na preset with the new name, leaving the original as it was. A preset just added takes its first\nSave in place. Sliders reach the ceiling within a frame. A slider moved by a Motion
+and the effect's sliders. **Save** keeps the changes; after a rename it reads **Save as new** and adds\na preset with the new name, leaving the original as it was. A preset just added takes its first\nSave in place. Sliders reach the layout within a frame. A slider moved by a Motion
 shows ↔ and follows it on screen.
 
 ![A Motion](docs/images/ui_motion.png)
@@ -140,7 +139,7 @@ or disabled, it keeps its own tempo.
 
 Per preset, **Timing**:
 
-- **Time**: speeds in their own units (% of the ceiling's shorter side per second, rpm, degrees per second).
+- **Time**: speeds in their own units (% of the layout's shorter side per second, rpm, degrees per second).
 - **Time, follow tempo**: the set speed is the speed at 120 BPM and scales with the tempo.
 - **Beats** (effects with a cycle): one band, revolution, sweep, stripe, ring, drop or wave takes 1,
   2, 4 ... 64 beats and lands on the bar. A change eases onto the new grid instead of jumping.
@@ -220,7 +219,7 @@ fetches it into `.pio/deps/link` at build time.
 ## Layout
 
 Set on the page under **Layout**: LEDs per row, rows, row length in metres, and either the
-ceiling's measured row positions (`Measured rows`, 15 rows) or evenly spaced rows (`Row spacing`
+measured row positions built into the firmware (`Measured rows`, 15 rows) or evenly spaced rows (`Row spacing`
 in metres). Each row's start universe can be set, or filled in one after
 another. The Art-Net destination and the gamma curve are under **Output**.
 
