@@ -227,7 +227,7 @@ const H = {
   sparkleBurst: 'Off: single twinkles, each with the same soft rise and fade as in Free. On: a batch flashes at once on each tick and fades out before the next; Sparkle overlay sets how many (1 = 6% of the LEDs).',
   paletteLock: 'Lock every preset to one palette, for a show in one set of colours: whichever preset plays (picked here, by the button, by Auto or OSC) uses this palette instead of its own. The presets’ own palettes are kept, so Each preset’s own brings them back. Not saved: after a restart each preset has its own palette again.',
   preview: 'What the ceiling shows now, live from the board, up to 15 frames a second: seen from below, the first row on the left, the bars at their real places and spacing (drawn thicker than they are, so they show). The colours as the effects make them, without the LEDs’ gamma. The board sends frames only while this section is open, on screen and the tab is in view.',
-  previewLook: 'Diffused bars: each bar as a soft continuous strip, as with a diffuser. Bare LEDs: each LED as a point of light with dark between, and a bloom (glare) around the bright ones, as bare LEDs look to the eye or a camera. Kept in this browser.',
+  previewLook: 'On: each bar as a soft continuous strip, as with a diffuser. Off: bare LEDs, each a point of light with dark between and a bloom (glare) around the bright ones, as bare LEDs look to the eye or a camera. Kept in this browser.',
   effectBrightness: 'Dims whatever preset plays, but not the Sparkle overlay’s twinkles: pull the effect down and let the sparkle shine. Under the master Brightness. Saved, like Brightness.',
   sparkleBrightness: 'How strongly the Sparkle overlay’s twinkles show over the effect: 0 = not at all, 50% = each twinkle covers half (a dark one darkens by half), 100% = fully. Under the master Brightness. Saved, like Brightness.',
   sparkleTime: 'How long one twinkle lasts, in seconds; with Through the palette, how long it takes to go through the palette. The amount lit at any moment stays the same: longer twinkles start less often.',
@@ -459,10 +459,12 @@ function draw() {
     lockRow(), ...sparkleRows(p, ef)));
 
   app.append(heading('Preview', H.preview));
-  const look = select('Look', ['Diffused bars', 'Bare LEDs'], pvBare ? 1 : 0, v => {
-    pvBare = v == 1;
+  const diffuse = h('input', {type: 'checkbox', checked: !pvBare});
+  diffuse.onchange = () => {
+    pvBare = !diffuse.checked;
     try { localStorage.setItem('beamled.pvlook', pvBare ? 'bare' : 'diffused'); } catch (e) {}
-  }, H.previewLook);
+  };
+  const look = field('Diffuse', diffuse, H.previewLook);
   app.append(h('div', {className: 'card pv-card'}, h('canvas', {id: 'pv'}), look));
 
   app.append(heading('Presets', H.presets));
