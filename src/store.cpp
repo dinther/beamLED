@@ -23,6 +23,7 @@ static bool fresh[MAX_PRESETS];
 static const Motion MOTION_OFF = {0, SHAPE_SINE, 0, 3, 0, 1, 8, 0};
 LinkSettings linkSettings;
 AutoSettings autoSettings;
+SparkleSettings sparkleSettings;
 
 static const uint32_t SCHEMA = 1;  // bump when a struct above changes
 static const uint32_t SAVE_DELAY_MS = 3000;
@@ -47,13 +48,14 @@ void presetSetEffect(Preset& p, uint8_t effect) {
     for (int j = 0; j < MAXP; j++) p.p[j] = j < e.n ? e.params[j].def : 0;
 }
 
+// sparkle: what the factory preset had as its own overlay; unused since the overlay is global
 static void setPreset(int i, const char* name, uint8_t effect, uint8_t palette, float sparkle,
                       std::initializer_list<float> params = {}) {
     Preset& p = presets[i];
     strlcpy(p.name, name, sizeof(p.name));
     presetSetEffect(p, effect);
     p.palette = palette;
-    p.sparkle = sparkle;
+    (void)sparkle;
     int j = 0;
     for (float v : params)
         if (j < MAXP) p.p[j++] = v;
@@ -140,7 +142,7 @@ int32_t storeDirtyMs() { return dirty ? (int32_t)(millis() - dirtyAt) : -1; }
 // Flash wears with every page NVS erases, and NVS erases a page each time a save fills one. So a
 // save writes only what changed since the last: each part is fingerprinted, and a part with the
 // same fingerprint is not written again. Selecting a preset then writes 12 bytes, not 3 KB.
-enum SavePart { PART_PALS, PART_PRES, PART_SET, PART_SYNCS, PART_LINK, PART_AUTO, PART_MOTS, NUM_PARTS };
+enum SavePart { PART_PALS, PART_PRES, PART_SET, PART_SYNCS, PART_LINK, PART_AUTO, PART_MOTS, PART_SPARK, NUM_PARTS };
 static uint32_t partPrint[NUM_PARTS];
 static bool partKnown[NUM_PARTS];
 static bool verWritten = false;
@@ -169,6 +171,7 @@ static void rememberSaved() {
     partPrint[PART_LINK] = fingerprint(&linkSettings, sizeof(linkSettings));
     partPrint[PART_AUTO] = fingerprint(&autoSettings, sizeof(autoSettings));
     partPrint[PART_MOTS] = fingerprint(savedMotion, presetCount * sizeof(Motion) * MOTIONS);
+    partPrint[PART_SPARK] = fingerprint(&sparkleSettings, sizeof(sparkleSettings));
     for (bool& k : partKnown) k = true;
     verWritten = true;
 }
@@ -187,6 +190,7 @@ static void save() {
     putPart(PART_LINK, "link", &linkSettings, sizeof(linkSettings));
     putPart(PART_AUTO, "auto", &autoSettings, sizeof(autoSettings));
     putPart(PART_MOTS, "mots", savedMotion, presetCount * sizeof(Motion) * MOTIONS);
+    putPart(PART_SPARK, "spark", &sparkleSettings, sizeof(sparkleSettings));
     if (prefs.isKey("pal")) prefs.remove("pal");
     if (prefs.isKey("pals7") && prefs.isKey("pals")) prefs.remove("pals");  // up to 5 colours, moved to pals7
     if (prefs.isKey("pre")) prefs.remove("pre");
@@ -268,15 +272,12 @@ void storeLoad() {
         p.name[sizeof(p.name) - 1] = 0;
         if (p.effect >= NUM_EFFECTS) presetSetEffect(p, 0);
         if (p.palette >= paletteCount) p.palette = 0;
-        if ((p.sparkleBeat & SPARKLE_GRID) > 4 || (p.sparkleBeat & ~(SPARKLE_GRID | SPARKLE_BURST)))
-            p.sparkleBeat = 0;
         p.mirror = p.mirror ? 1 : 0;
     }
     for (PresetSync& y : presetSync) {
         if (y.timing > TIMING_BEATS) y.timing = TIMING_TIME;
         if (y.beatsExp > 6) y.beatsExp = 2;
         y.reverse = y.reverse ? 1 : 0;
-        if (y.sparkleColour > 1 + paletteCount) y.sparkleColour = 0;
         if (!(y.pulse >= 0 && y.pulse <= 1)) y.pulse = 0;
     }
     if (settings.current >= presetCount) settings.current = 0;
@@ -286,6 +287,7 @@ void storeLoad() {
     layoutDefaults();
     linkSettings = {0, 120, 20};
     autoSettings = {0, 1, 3, 0, 60, 0};  // off; every 8 bars, or 60 s
+    sparkleSettings = {0, 0, 0};          // off
     prefs.begin("beamled", true);
     if (prefs.isKey("lay") && prefs.getBytesLength("lay") == sizeof(layout))
         prefs.getBytes("lay", &layout, sizeof(layout));
@@ -297,6 +299,8 @@ void storeLoad() {
         prefs.getBytes("link", &linkSettings, sizeof(linkSettings));
     if (prefs.isKey("auto") && prefs.getBytesLength("auto") == sizeof(autoSettings))
         prefs.getBytes("auto", &autoSettings, sizeof(autoSettings));
+    if (prefs.isKey("spark") && prefs.getBytesLength("spark") == sizeof(sparkleSettings))
+        prefs.getBytes("spark", &sparkleSettings, sizeof(sparkleSettings));
     prefs.end();
     layoutSanitize(layout);
     linkSettings.enabled = linkSettings.enabled ? 1 : 0;
@@ -307,6 +311,10 @@ void storeLoad() {
     autoSettings.shuffle = autoSettings.shuffle ? 1 : 0;
     if (autoSettings.barsExp > 6) autoSettings.barsExp = 3;
     if (!(autoSettings.seconds >= 2 && autoSettings.seconds <= 3600)) autoSettings.seconds = 60;
+    if (!(sparkleSettings.amount >= 0 && sparkleSettings.amount <= 1)) sparkleSettings.amount = 0;
+    if ((sparkleSettings.beat & SPARKLE_GRID) > 4 || (sparkleSettings.beat & ~(SPARKLE_GRID | SPARKLE_BURST)))
+        sparkleSettings.beat = 0;
+    if (sparkleSettings.colour > 1 + paletteCount) sparkleSettings.colour = 0;
     if (!savedPresets) savedPresets = (Preset*)calloc(MAX_PRESETS, sizeof(Preset));
     if (!savedSync) savedSync = (PresetSync*)calloc(MAX_PRESETS, sizeof(PresetSync));
     if (!presetMotion) presetMotion = (Motion (*)[MOTIONS])calloc(MAX_PRESETS, sizeof(Motion) * MOTIONS);
@@ -362,8 +370,7 @@ void storeLoad() {
 // ---- Save / Revert per preset
 
 static bool samePreset(const Preset& a, const Preset& b) {
-    if (a.effect != b.effect || a.palette != b.palette || a.sparkle != b.sparkle || a.sparkleBeat != b.sparkleBeat ||
-        a.mirror != b.mirror)
+    if (a.effect != b.effect || a.palette != b.palette || a.mirror != b.mirror)
         return false;
     for (int j = 0; j < MAXP; j++)
         if (a.p[j] != b.p[j]) return false;
@@ -376,8 +383,7 @@ static bool sameMotion(const Motion& a, const Motion& b) {
 }
 
 static bool sameSync(const PresetSync& a, const PresetSync& b) {
-    return a.timing == b.timing && a.beatsExp == b.beatsExp && a.reverse == b.reverse && a.pulse == b.pulse &&
-           a.sparkleColour == b.sparkleColour;
+    return a.timing == b.timing && a.beatsExp == b.beatsExp && a.reverse == b.reverse && a.pulse == b.pulse;
 }
 
 bool presetChanged(int i) {
@@ -594,17 +600,13 @@ bool paletteDelete(int k) {
         if (p.palette == k) p.palette = 0;
         else if (p.palette > k) p.palette--;
     };
-    auto fixSparkle = [&](PresetSync& y) {  // 2 + k: that palette
-        if (y.sparkleColour < 2) return;
-        if (y.sparkleColour - 2 == k) y.sparkleColour = 2;
-        else if (y.sparkleColour - 2 > k) y.sparkleColour--;
-    };
     for (int i = 0; i < presetCount; i++) {
         fix(presets[i]);
         fix(savedPresets[i]);
-        fixSparkle(presetSync[i]);
-        fixSparkle(savedSync[i]);
     }
+    uint8_t& sc = sparkleSettings.colour;  // 2 + k: that palette
+    if (sc >= 2 && sc - 2 == k) sc = 2;
+    else if (sc >= 2 && sc - 2 > k) sc--;
     storeMarkDirty();
     return true;
 }

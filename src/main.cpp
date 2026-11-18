@@ -310,18 +310,20 @@ static void renderFrame(float dt) {
     }
     Ctx c{pp, edt, effState, lutWrap, lutLin, leds, beat.beat, (float)beat.bpm, cycleBeats, y.reverse != 0};
     effectsRender(e, c, p.mirror != 0);
-    if (!e.ownSparkle && p.sparkle > 0) {
-        // Its colours: white, the preset's palette, or another palette (its table on the heap,
-        // rebuilt only when that palette changes)
+    // The Sparkle overlay, the same over every preset (not on the Sparkle effect itself)
+    const SparkleSettings& sk = sparkleSettings;
+    if (!e.ownSparkle && sk.amount > 0) {
+        // Its colours: white, the playing preset's palette, or another palette (its table on the
+        // heap, rebuilt only when that palette changes)
         const CRGB* lut = nullptr;
-        if (y.sparkleColour == 1) lut = lutWrap;
-        else if (y.sparkleColour >= 2 && y.sparkleColour - 2 < paletteCount) {
+        if (sk.colour == 1) lut = lutWrap;
+        else if (sk.colour >= 2 && sk.colour - 2 < paletteCount) {
             static CRGB* spLut = nullptr;
             static Palette* spBuilt = nullptr;
             static bool spHave = false;
             if (!spLut) spLut = (CRGB*)malloc(256 * sizeof(CRGB));
             if (!spBuilt) spBuilt = (Palette*)calloc(1, sizeof(Palette));
-            const Palette& sp = palettes[y.sparkleColour - 2];
+            const Palette& sp = palettes[sk.colour - 2];
             if (spLut && spBuilt) {
                 if (!spHave || memcmp(spBuilt, &sp, sizeof(sp)) != 0) {
                     buildLut(sp, spLut, true);
@@ -331,9 +333,9 @@ static void renderFrame(float dt) {
                 lut = spLut;
             }
         }
-        const int grid = p.sparkleBeat & SPARKLE_GRID;  // 1/4, 1/8, 1/16, 1/32: 1, 2, 4, 8 per beat
+        const int grid = sk.beat & SPARKLE_GRID;  // 1/4, 1/8, 1/16, 1/32: 1, 2, 4, 8 per beat
         const int div = grid >= 1 && grid <= 4 ? 1 << (grid - 1) : 0;
-        sparkleOverlay(leds, p.sparkle, dt, lut, beat.beat, (float)beat.bpm, div, (p.sparkleBeat & SPARKLE_BURST) != 0);
+        sparkleOverlay(leds, sk.amount, dt, lut, beat.beat, (float)beat.bpm, div, (sk.beat & SPARKLE_BURST) != 0);
     }
 }
 

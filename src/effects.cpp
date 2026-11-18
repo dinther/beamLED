@@ -960,7 +960,7 @@ const EffectDef EFFECTS[] = {
       {"Background", 0, 0.5f, 0.05f, 0.01f, "How bright the slowly drifting palette wash under the twinkles is. 0 = black."},
       {"Drift", 0, 1, 0.2f, 0.01f, "How fast the background wash moves through the palette."}},
      sparkle, true, nullptr, -1,
-     "Single LEDs twinkling in palette colours over a dim palette wash. For twinkles on top of another effect, use that preset's Sparkle overlay instead."},
+     "Single LEDs twinkling in palette colours over a dim palette wash. For twinkles on top of another effect, use the Sparkle overlay (under Brightness) instead."},
     {"Sweeps", 8,
      {{"Bars", 1, 4, 1, 1, "How many bars travel at once, evenly spaced. Each changes direction on its own."},
       {"Speed (m/s)", 0.05f, 2, 0.4f, 0.01f, "How fast a bar crosses the ceiling, in metres per second. In Beats timing this slider is replaced by beats per sweep."},

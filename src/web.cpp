@@ -120,6 +120,21 @@ static bool readBody(JsonDocument& d) {
     return true;
 }
 
+// The Sparkle overlay, one for all presets
+static void sparkleJson(JsonObject o) {
+    o["amount"] = sparkleSettings.amount;
+    o["beat"] = sparkleSettings.beat & SPARKLE_GRID;  // 0 = free, 1..4 = 1/4, 1/8, 1/16, 1/32
+    o["burst"] = (sparkleSettings.beat & SPARKLE_BURST) != 0;
+    o["colour"] = sparkleSettings.colour;  // 0 = white, 1 = the playing preset's palette, 2 + k = palette k
+}
+static void sparkleFromJson(JsonObject d) {
+    SparkleSettings& s = sparkleSettings;
+    if (d["amount"].is<float>()) s.amount = constrain(d["amount"].as<float>(), 0.f, 1.f);
+    if (d["beat"].is<int>()) s.beat = (s.beat & SPARKLE_BURST) | constrain(d["beat"].as<int>(), 0, 4);
+    if (d["burst"].is<bool>()) s.beat = (s.beat & SPARKLE_GRID) | (d["burst"].as<bool>() ? SPARKLE_BURST : 0);
+    if (d["colour"].is<int>()) s.colour = constrain(d["colour"].as<int>(), 0, 1 + paletteCount);
+}
+
 static void presetJson(JsonObject o, int i) {
     const Preset& p = presets[i];
     o["name"] = p.name;
@@ -132,12 +147,8 @@ static void presetJson(JsonObject o, int i) {
     o["beatsExp"] = presetSync[i].beatsExp;
     o["reverse"] = presetSync[i].reverse != 0;
     o["pulse"] = presetSync[i].pulse;
-    o["sparkleColour"] = presetSync[i].sparkleColour;  // 0 = white, 1 = its palette, 2 + k = palette k
     o["effect"] = p.effect;
     o["palette"] = p.palette;
-    o["sparkle"] = p.sparkle;
-    o["sparkleBeat"] = p.sparkleBeat & SPARKLE_GRID;  // 0 = free, 1..4 = 1/4, 1/8, 1/16, 1/32
-    o["sparkleBurst"] = (p.sparkleBeat & SPARKLE_BURST) != 0;
     o["mirror"] = p.mirror != 0;
     JsonArray a = o["params"].to<JsonArray>();
     for (int j = 0; j < EFFECTS[p.effect].n; j++) a.add(p.p[j]);
@@ -315,6 +326,7 @@ static void handleState() {
     au["barsExp"] = autoSettings.barsExp;
     au["seconds"] = autoSettings.seconds;
     au["shuffle"] = autoSettings.shuffle != 0;
+    sparkleJson(d["sparkle"].to<JsonObject>());
     d["maxPalettes"] = MAX_PALETTES;
     d["linkLatency"] = linkSettings.latencyMs;
     sendJson(d);
@@ -407,12 +419,7 @@ static void handlePreset() {
         }
     }
     if (d["palette"].is<int>()) p.palette = constrain(d["palette"].as<int>(), 0, paletteCount - 1);
-    if (d["sparkle"].is<float>()) p.sparkle = constrain(d["sparkle"].as<float>(), 0.f, 1.f);
-    if (d["sparkleBeat"].is<int>())
-        p.sparkleBeat = (p.sparkleBeat & SPARKLE_BURST) | constrain(d["sparkleBeat"].as<int>(), 0, 4);
     if (d["mirror"].is<bool>()) p.mirror = d["mirror"].as<bool>() ? 1 : 0;
-    if (d["sparkleBurst"].is<bool>())
-        p.sparkleBeat = (p.sparkleBeat & SPARKLE_GRID) | (d["sparkleBurst"].as<bool>() ? SPARKLE_BURST : 0);
     if (d["params"].is<JsonArray>()) {
         JsonArray a = d["params"].as<JsonArray>();
         const EffectDef& e = EFFECTS[p.effect];
@@ -423,8 +430,6 @@ static void handlePreset() {
     if (d["beatsExp"].is<int>()) presetSync[i].beatsExp = constrain(d["beatsExp"].as<int>(), 0, 6);
     if (d["reverse"].is<bool>()) presetSync[i].reverse = d["reverse"].as<bool>();
     if (d["pulse"].is<float>()) presetSync[i].pulse = constrain(d["pulse"].as<float>(), 0.f, 1.f);
-    if (d["sparkleColour"].is<int>())
-        presetSync[i].sparkleColour = constrain(d["sparkleColour"].as<int>(), 0, 1 + paletteCount);
     if (d["auto"].is<bool>()) {  // in Auto or not: a setting, saved at once (not a preset edit)
         if (d["auto"].as<bool>()) autoSettings.skip &= ~(1u << i);
         else autoSettings.skip |= 1u << i;
@@ -533,6 +538,16 @@ static void handleLayout() {
     handleState();
 }
 
+// The Sparkle overlay (one for all presets): {amount, beat, burst, colour}
+static void handleSparkle() {
+    JsonDocument d;
+    if (!readBody(d)) return;
+    sparkleFromJson(d.as<JsonObject>());
+    storeMarkDirty();
+    webChanged();
+    handleStatus();
+}
+
 // Auto: {enabled, inBars, barsExp, seconds, shuffle}
 static void handleAuto() {
     JsonDocument d;
@@ -627,6 +642,7 @@ static void handleBackup() {
     a["barsExp"] = autoSettings.barsExp;
     a["seconds"] = autoSettings.seconds;
     a["shuffle"] = autoSettings.shuffle != 0;
+    sparkleJson(d["sparkle"].to<JsonObject>());
     JsonObject y = d["layout"].to<JsonObject>();
     y["nx"] = layout.nx;
     y["ny"] = layout.ny;
@@ -692,8 +708,7 @@ static void handleRestore() {
         presetSetEffect(p, constrain(q["effect"] | 0, 0, NUM_EFFECTS - 1));
         const EffectDef& e = EFFECTS[p.effect];
         p.palette = constrain(q["palette"] | 0, 0, paletteCount - 1);
-        p.sparkle = constrain(q["sparkle"] | 0.f, 0.f, 1.f);
-        p.sparkleBeat = constrain(q["sparkleBeat"] | 0, 0, 4) | ((q["sparkleBurst"] | false) ? SPARKLE_BURST : 0);
+        // (a backup from before the overlay was global has sparkle settings per preset: ignored)
         p.mirror = (q["mirror"] | false) ? 1 : 0;
         JsonArray ps = q["params"].as<JsonArray>();
         for (int j = 0; j < e.n && j < (int)ps.size(); j++)
@@ -703,7 +718,6 @@ static void handleRestore() {
         sy.beatsExp = constrain(q["beatsExp"] | 2, 0, 6);
         sy.reverse = (q["reverse"] | false) ? 1 : 0;
         sy.pulse = constrain(q["pulse"] | 0.f, 0.f, 1.f);
-        sy.sparkleColour = constrain(q["sparkleColour"] | 0, 0, 1 + paletteCount);
         JsonArray ms = q["motions"].as<JsonArray>();
         for (int m = 0; m < MOTIONS; m++) {
             Motion& mo = presetMotion[i][m];
@@ -742,6 +756,8 @@ static void handleRestore() {
     autoSettings.barsExp = constrain(a["barsExp"] | (int)autoSettings.barsExp, 0, 6);
     autoSettings.seconds = constrain(a["seconds"] | autoSettings.seconds, 2.f, 3600.f);
     autoSettings.shuffle = (a["shuffle"] | (autoSettings.shuffle != 0)) ? 1 : 0;
+    sparkleSettings = {0, 0, 0};
+    if (d["sparkle"].is<JsonObject>()) sparkleFromJson(d["sparkle"].as<JsonObject>());
     // Layout
     if (d["layout"].is<JsonObject>()) {
         JsonObject y = d["layout"];
@@ -824,6 +840,7 @@ static const Route ROUTES[] = {
     {"/api/palette", HTTP_POST, handlePalette},  {"/api/palettes", HTTP_POST, handlePaletteList},
      {"/api/layout", HTTP_POST, handleLayout},
     {"/api/link", HTTP_POST, handleLink},        {"/api/auto", HTTP_POST, handleAuto},
+    {"/api/sparkle", HTTP_POST, handleSparkle},
            {"/api/net", HTTP_GET, handleNetGet},
     {"/api/restart", HTTP_POST, handleRestart},
     {"/api/backup", HTTP_GET, handleBackup},

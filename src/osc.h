@@ -13,9 +13,11 @@
 //   /beamled/preset i, /beamled/next, /beamled/prev, /beamled/on T, /beamled/brightness f 0..1,
 //   /beamled/link T, /beamled/save (no tempo: Ableton Link moves it by fractions of a BPM all the
 //   time, which would reach every listener as a stream of changes; set it on the web page or in Live)
-//   /beamled/presets/<n>/play T | effect i | palette i | sparkle f | timing i | beats i |
-//                        reverse T | pulse f | sparkle_colour i (0 white, 1 own palette, 1 + n palette n) |
-//                        sparkle_timing i (0 free, 1..4 = 1/4 .. 1/32) | sparkle_burst T | mirror T |
+//   /beamled/sparkle f 0..1 | sparkle_timing i (0 free, 1..4 = 1/4 .. 1/32) | sparkle_burst T |
+//   sparkle_colour i (0 white, 1 the playing preset's palette, 1 + n palette n): the Sparkle
+//   overlay, one for all presets
+//   /beamled/presets/<n>/play T | effect i | palette i | timing i | beats i |
+//                        reverse T | pulse f | mirror T |
 //                        <parameter> (named after it: speed, bars, ...)
 //                        motion1_target i | motion1_shape i | motion1_from f | motion1_to f |
 //                        motion1_seconds f | motion1_beats i | motion1_phase f (and motion2_, motion3_)

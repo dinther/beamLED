@@ -187,14 +187,14 @@ const H = {
   timing: 'Time: speeds are in their own units (m/s, rpm, …). Time, follow tempo: the set speed is the speed at 120 BPM and scales with the tempo, so at 240 BPM it runs twice as fast. Beats (only for effects with a cycle): one cycle (a band, a revolution, …) takes a whole number of beats and lines up with the bar; the speed slider then gives way to Beats per cycle.',
   beats: 'How many beats one cycle takes; 4 beats = one bar. After a change the motion eases onto the new beat grid over a few seconds instead of jumping.',
   reverse: 'Runs the cycle backwards: the lighthouse turns the other way, bands roll back, rings flow in.',
-  sparkle: 'Twinkles on top of this preset’s effect. 0 = none, 1 = about 8% of the LEDs lit at any moment. Their colours: Sparkle colour.',
+  sparkle: 'Twinkles on top of whatever preset plays: one setting for all presets, kept when the preset changes (not drawn over the Sparkle effect, which is twinkles itself). 0 = none, 1 = about 8% of the LEDs lit at any moment. Their colours: Sparkle colour.',
   sparkleBeat: 'When twinkles start. Free: at any moment. 1/4, 1/8, 1/16, 1/32: only on quarter, eighth, sixteenth or 32nd notes, on the beat of Ableton Link or the board’s own tempo; the same amount of sparkle as Free, in time with the music.',
   mirror: 'The right half of the ceiling becomes the mirror image of the left, along the rows: anything moving right on the left half moves left on the right half. Only the left half is rendered, so the effect takes about half the time. The Sparkle overlay is not mirrored.',
   sparkleBurst: 'Off: single twinkles, each with the same soft rise and fade as in Free. On: a batch flashes at once on each tick and fades out before the next; Sparkle overlay sets how many (1 = 6% of the LEDs).',
-  sparkleColour: 'The colours of the Sparkle overlay’s twinkles: white, random colours from this preset’s own palette, or from any other palette.',
+  sparkleColour: 'The colours of the Sparkle overlay’s twinkles: white, random colours from the playing preset’s palette (they change with the preset), or from any other palette.',
   pulse: 'A brightness accent on the beat: full on each beat and dipping in between, strongest on the bar’s first beat. 0 = steady. Follows Ableton Link, or the board’s own tempo.',
-  reset: 'Sets this preset’s effect parameters back to the effect’s defaults (not saved until you click Save). Name, palette, timing, sparkle and pulse stay as they are.',
-  save: 'Stores this preset as it plays now: its name, effect, palette, sliders, motions, timing, sparkle and pulse. Until you save, changes (here or from OSC) play on the ceiling but the preset keeps its saved settings, so you can tinker freely. Unsaved changes are kept while you switch presets, and lost on a power cut.',
+  reset: 'Sets this preset’s effect parameters back to the effect’s defaults (not saved until you click Save). Name, palette, timing and pulse stay as they are.',
+  save: 'Stores this preset as it plays now: its name, effect, palette, sliders, motions, timing and pulse. Until you save, changes (here or from OSC) play on the ceiling but the preset keeps its saved settings, so you can tinker freely. Unsaved changes are kept while you switch presets, and lost on a power cut.',
   revert: 'Goes back to this preset’s saved settings, dropping the changes since the last Save.',
   motion: 'A Motion moves one of this effect’s sliders back and forth by itself, between From and To: a beam swinging (Lighthouse Angle), bands scrolling to and fro (Offset), a width breathing. Off: no motion. The slider it moves shows ↔ and follows it. Up to three motions can move three sliders (Drops: X and Y, say), or run out of step with Phase.',
   shape: 'How it travels between the ends. Sine: smooth, like a pendulum. Linear: a steady speed, turning sharply at the ends. Ease in-out: slow at the ends, quick through the middle. Hold at ends: rests at each end before turning back. Overshoot: goes a little past each end and settles. Bounce: bounces as it arrives at each end. Random slide: glides to a new random value between From and To every half period (the same values every time, on the beat grid in beats). Min max: From for the first half of the period, To for the second, switching at once with no transition. Random jump: the same random values as Random slide, but it jumps to each one at once and holds it for half a period. The drawing below shows one there-and-back (Random slide and Random jump: three).',
@@ -332,6 +332,28 @@ async function loadOnce() {
 const useState = st => { S = Object.assign(st, {effects: S.effects}); draw(); };
 const presetList = o => post('/api/presets', o).then(useState);
 
+// The Sparkle overlay: one for all presets
+function sparkleRows(p, ef) {
+  const sk = S.sparkle || {amount: 0, beat: 0, burst: false, colour: 0};
+  S.sparkle = sk;
+  const send = o => post('/api/sparkle', o);
+  const rows = [slider('Sparkle overlay', 0, 1, 0.01, sk.amount, v => v.toFixed(2),
+    v => { sk.amount = v; liveSend('/beamled/sparkle', v, () => send({amount: v}), true); },
+    H.sparkle + (ef.sparkle ? '' : ' (The playing effect is Sparkle itself: no overlay on it.)'), 'sparkle')];
+  rows.push(select('Sparkle timing', ['Free', '1/4', '1/8', '1/16', '1/32'], sk.beat || 0, v => {
+    sk.beat = v; send({beat: v}); draw(); }, H.sparkleBeat));
+  if (sk.beat) {
+    const burst = h('input', {type: 'checkbox', checked: !!sk.burst});
+    burst.onchange = () => { sk.burst = burst.checked; send({burst: burst.checked}); };
+    rows.push(field('Bursts', burst, H.sparkleBurst));
+  }
+  const own = S.palettes[p.palette] || S.palettes[0];
+  const items = [{name: 'White', bg: 'linear-gradient(90deg,#8a8a8a,#e0e0e0)'},
+                 {name: 'Preset’s palette (now ' + own.name + ')', bg: palGrad(own)}]
+    .concat(S.palettes.map(q => ({name: q.name, bg: palGrad(q)})));
+  rows.push(gradSelect('Sparkle colour', items, sk.colour || 0, v => { sk.colour = v; send({colour: v}); }, H.sparkleColour));
+  return rows;
+}
 function draw() {
   hideTip();
   sliders = {};
@@ -346,7 +368,8 @@ function draw() {
   if (S.configMode) app.append(h('div', {className: 'conn', textContent: 'Config mode: hotspot and this page only, the lights get no data. Restart (at the bottom) to run normally.'}));
   app.append(h('div', {className: 'card'},
     slider('Brightness', 0, 255, 1, S.brightness, v => Math.round(v / 2.55) + '%',
-      v => { S.brightness = v; liveSend('/beamled/brightness', v / 255, () => post('/api/set', {brightness: v}), true); }, H.brightness, 'brightness')));
+      v => { S.brightness = v; liveSend('/beamled/brightness', v / 255, () => post('/api/set', {brightness: v}), true); }, H.brightness, 'brightness'),
+    ...sparkleRows(p, ef)));
 
   app.append(heading('Presets', H.presets));
   const g = h('div', {className: 'presets'});
@@ -424,23 +447,6 @@ function draw() {
     if (by >= 0) { row.classList.add('moving'); row.querySelector('input').disabled = true; }
     card.append(row);
   });
-  if (ef.sparkle) card.append(slider('Sparkle overlay', 0, 1, 0.01, p.sparkle, v => v.toFixed(2),
-    v => { p.sparkle = v; markChanged(S.current); liveSend(presetAddr('sparkle'), v, () => post('/api/preset', {index: S.current, sparkle: v})); }, H.sparkle, 'sparkle'));
-  if (ef.sparkle) {
-    const own = S.palettes[p.palette] || S.palettes[0];
-    const items = [{name: 'White', bg: 'linear-gradient(90deg,#8a8a8a,#e0e0e0)'},
-                   {name: 'Preset’s palette (' + own.name + ')', bg: palGrad(own)}]
-      .concat(S.palettes.map(q => ({name: q.name, bg: palGrad(q)})));
-    card.append(select('Sparkle timing', ['Free', '1/4', '1/8', '1/16', '1/32'], p.sparkleBeat || 0, v => {
-      p.sparkleBeat = v; markChanged(S.current); post('/api/preset', {index: S.current, sparkleBeat: v}); draw(); }, H.sparkleBeat));
-    if (p.sparkleBeat) {
-      const burst = h('input', {type: 'checkbox', checked: !!p.sparkleBurst});
-      burst.onchange = () => { p.sparkleBurst = burst.checked; markChanged(S.current); post('/api/preset', {index: S.current, sparkleBurst: burst.checked}); };
-      card.append(field('Bursts', burst, H.sparkleBurst));
-    }
-    card.append(gradSelect('Sparkle colour', items, p.sparkleColour || 0, v => {
-      p.sparkleColour = v; markChanged(S.current); post('/api/preset', {index: S.current, sparkleColour: v}); }, H.sparkleColour));
-  }
   card.append(slider('Beat pulse', 0, 1, 0.01, p.pulse, v => v.toFixed(2),
     v => { p.pulse = v; markChanged(S.current); liveSend(presetAddr('pulse'), v, () => post('/api/preset', {index: S.current, pulse: v})); }, H.pulse, 'pulse'));
   motions.forEach((mo, m) => card.append(motionEditor(p, ef, mo, m)));
@@ -992,6 +998,10 @@ function oscValue(addr, v) {
     else if (a[2] == 'preset') { if (S.current != v - 1) { S.current = v - 1; redraw(); } }
     else if (a[2] == 'link') { if (S.link.enabled != v) { S.link.enabled = v; redraw(); } }
     else if (a[2] == 'auto') { if (S.auto && S.auto.enabled != v) { S.auto.enabled = v; redraw(); } }
+    else if (S.sparkle && a[2] == 'sparkle') { S.sparkle.amount = v; moveSlider('sparkle', v); }
+    else if (S.sparkle && a[2] == 'sparkle_timing') { if (S.sparkle.beat != v) { S.sparkle.beat = v; redraw(); } }
+    else if (S.sparkle && a[2] == 'sparkle_burst') { if (S.sparkle.burst != !!v) { S.sparkle.burst = !!v; redraw(); } }
+    else if (S.sparkle && a[2] == 'sparkle_colour') { if (S.sparkle.colour != v) { S.sparkle.colour = v; redraw(); } }
     return;
   }
   const n = +a[3] - 1, key = a[4];
@@ -1011,11 +1021,7 @@ function oscValue(addr, v) {
     if (key == 'effect') { if (p.effect != v - 1) reload(); return; }
     if (key == 'auto') { if (p.auto !== v) { p.auto = v; redraw(); } return; }
     if (key == 'palette') p.palette = v - 1;
-    else if (key == 'sparkle') { p.sparkle = v; if (mine) return moveSlider('sparkle', v); }
     else if (key == 'pulse') { p.pulse = v; if (mine) return moveSlider('pulse', v); }
-    else if (key == 'sparkle_colour') p.sparkleColour = v;
-    else if (key == 'sparkle_timing') p.sparkleBeat = v;
-    else if (key == 'sparkle_burst') p.sparkleBurst = !!v;
     else if (key == 'mirror') { p.mirror = !!v; draw(); }
     else if (key == 'timing') p.timing = v;
     else if (key == 'beats') p.beatsExp = Math.round(Math.log2(v));

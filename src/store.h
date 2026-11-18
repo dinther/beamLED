@@ -13,14 +13,12 @@ struct Preset {
     char name[20];
     uint8_t effect;
     uint8_t palette;
-    uint8_t sparkleBeat;  // the Sparkle overlay's timing, low bits: 0 = free, 1..4 = new twinkles
-                          // start only on 1/4, 1/8, 1/16 or 1/32 notes; bit 7 (SPARKLE_BURST):
-                          // short flashes, gone before the next tick (in what was padding: older
-                          // saves read as 0)
+    uint8_t unusedSparkleBeat;  // was the preset's own Sparkle overlay timing; the overlay is
+                                // global now (SparkleSettings). Kept so saved presets still load.
     uint8_t mirror;       // the right half mirrors the left (only the left is rendered; in what was
                           // padding: older saves read as 0)
     float p[MAXP];
-    float sparkle;  // overlay density 0..1
+    float unusedSparkle;  // was the preset's own Sparkle overlay amount (see unusedSparkleBeat)
 };
 static_assert(sizeof(Preset) == 60, "Preset is saved as is: its size must not change");
 constexpr uint8_t SPARKLE_GRID = 0x07, SPARKLE_BURST = 0x80;
@@ -43,8 +41,7 @@ struct PresetSync {
     uint8_t timing;    // Timing
     uint8_t beatsExp;  // timing in beats: 0..6 = 1, 2, 4, ... 64 beats per cycle
     uint8_t reverse;   // timing in beats: cycle runs backwards
-    uint8_t sparkleColour;  // the Sparkle overlay's colours: 0 = white, 1 = the preset's palette,
-                            // 2 + k = palette k (in what was padding: older saves read as 0)
+    uint8_t unusedSparkleColour;  // was the preset's own Sparkle overlay colours (now global)
     float pulse;       // brightness accent on each beat, 0..1
 };
 static_assert(sizeof(PresetSync) == 8, "PresetSync is saved as is: its size must not change");
@@ -79,6 +76,15 @@ struct AutoSettings {
     uint32_t skip;    // presets left out, one bit each
 };
 
+// The Sparkle overlay: twinkles on top of whatever preset plays (not on the Sparkle effect, which
+// is twinkles itself). One for all presets, kept across preset changes.
+struct SparkleSettings {
+    float amount;    // 0 = off .. 1 = about 8% of the LEDs lit at a time
+    uint8_t beat;    // low bits (SPARKLE_GRID): 0 = free, 1..4 = new twinkles start only on 1/4,
+                     // 1/8, 1/16 or 1/32 notes; SPARKLE_BURST: short flashes, gone before the next tick
+    uint8_t colour;  // 0 = white, 1 = the playing preset's palette, 2 + k = palette k
+};
+
 struct LinkSettings {
     uint8_t enabled;  // Ableton Link
     float bpm;        // own tempo when no peers (and the last tempo seen)
@@ -94,6 +100,7 @@ extern Motion (*presetMotion)[MOTIONS];  // [MAX_PRESETS][MOTIONS], from the hea
 extern Settings settings;
 extern LinkSettings linkSettings;
 extern AutoSettings autoSettings;
+extern SparkleSettings sparkleSettings;
 inline bool presetInAuto(int i) { return !(autoSettings.skip >> i & 1); }
 
 void storeLoad();

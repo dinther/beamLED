@@ -20,14 +20,14 @@
 // subscriptions in small arrays: the globals, then MAX_PRESETS blocks of PSLOTS, then
 // MAX_PALETTES blocks of CSLOTS. A preset's parameters take the slots after its fixed ones.
 
-enum Global : uint8_t { G_PRESET, G_NEXT, G_PREV, G_ON, G_BRIGHTNESS, G_LINK, G_SAVE, G_AUTO, NUM_GLOBALS };
-static const char* const GLOBAL_NAME[NUM_GLOBALS] = {"preset", "next", "prev", "on", "brightness", "link", "save", "auto"};
+enum Global : uint8_t { G_PRESET, G_NEXT, G_PREV, G_ON, G_BRIGHTNESS, G_LINK, G_SAVE, G_AUTO,
+                        G_SPARKLE, G_SPARKLE_TIMING, G_SPARKLE_BURST, G_SPARKLE_COLOUR, NUM_GLOBALS };
+static const char* const GLOBAL_NAME[NUM_GLOBALS] = {"preset", "next", "prev", "on", "brightness", "link", "save", "auto",
+                                                     "sparkle", "sparkle_timing", "sparkle_burst", "sparkle_colour"};
 
-enum PSlot : uint8_t { P_PLAY, P_EFFECT, P_PALETTE, P_SPARKLE, P_TIMING, P_BEATS, P_REVERSE, P_PULSE, P_AUTO,
-                       P_SPARKLE_COLOUR, P_SPARKLE_BEAT, P_SPARKLE_BURST, P_MIRROR, P_FIXED };
-static const char* const PSLOT_NAME[P_FIXED] = {"play",  "effect", "palette", "sparkle", "timing",
-                                                "beats", "reverse", "pulse",  "auto",    "sparkle_colour", "sparkle_timing",
-                                                "sparkle_burst", "mirror"};
+enum PSlot : uint8_t { P_PLAY, P_EFFECT, P_PALETTE, P_TIMING, P_BEATS, P_REVERSE, P_PULSE, P_AUTO, P_MIRROR, P_FIXED };
+static const char* const PSLOT_NAME[P_FIXED] = {"play", "effect", "palette", "timing", "beats",
+                                                "reverse", "pulse", "auto", "mirror"};
 // After a preset's parameters: its motions' settings
 enum MSlot : uint8_t { M_TARGET, M_SHAPE, M_FROM, M_TO, M_SECONDS, M_BEATS, M_PHASE, MSLOTS };
 static const char* const MSLOT_NAME[MSLOTS] = {"target", "shape", "from", "to", "seconds", "beats", "phase"};
@@ -89,6 +89,10 @@ static bool nodeInfo(int id, NodeInfo& n, char* path, size_t len) {
             case G_BRIGHTNESS: n = {'f', 3, true, 0, 1, "Master brightness, 0..1, as the web page's Brightness slider."}; break;
             case G_AUTO: n = {'T', 3, false, 0, 1, "Auto: the presets change by themselves, every so many seconds or bars as set on the web page, among the presets that are in Auto. No argument toggles."}; break;
             case G_LINK: n = {'T', 3, false, 0, 1, "Ableton Link: Enabled (true) or Disabled (false). No argument toggles."}; break;
+            case G_SPARKLE: n = {'f', 3, true, 0, 1, "Sparkle overlay, the same over every preset: twinkles on top of the effect (their colours: sparkle_colour). 0 = none, 1 = about 8% of the LEDs lit at a time. Not drawn over the Sparkle effect."}; break;
+            case G_SPARKLE_TIMING: n = {'i', 3, true, 0, 4, "Sparkle overlay timing: 0 = free, twinkles start at any moment; 1, 2, 3, 4 = they start only on quarter, eighth, sixteenth or 32nd notes."}; break;
+            case G_SPARKLE_BURST: n = {'T', 3, false, 0, 1, "Sparkle overlay, with a timing other than free: true = a batch flashes on each tick and fades out before the next, false = single twinkles. No argument toggles."}; break;
+            case G_SPARKLE_COLOUR: n = {'i', 3, true, 0, (float)(1 + paletteCount), "Sparkle overlay colours: 0 = white, 1 = the playing preset's palette, 2 = palette 1, 3 = palette 2, and so on (palette n = n + 1)."}; break;
             case G_SAVE: n = {'N', 2, false, 0, 0, "Saves every preset as it plays now (as Save on each preset on the web page), with the palettes and settings, so they survive a power cut. Until then, preset changes from OSC or the web page play but are not saved."}; break;
         }
         return true;
@@ -127,11 +131,7 @@ static bool nodeInfo(int id, NodeInfo& n, char* path, size_t len) {
             case P_PLAY: n = {'T', 3, false, 0, 1, "True while this preset is the one playing (or being faded to). Send true to play it; false is ignored."}; break;
             case P_EFFECT: n = {'i', 3, true, 1, (float)NUM_EFFECTS, effectList}; break;
             case P_PALETTE: n = {'i', 3, true, 1, (float)paletteCount, "The palette, by its number in the Palettes list on the web page (1 = the first)."}; break;
-            case P_SPARKLE: n = {'f', 3, true, 0, 1, "Sparkle overlay: twinkles on top of the effect (their colours: sparkle_colour). 0 = none, 1 = about 8% of the LEDs lit at a time."}; break;
-            case P_SPARKLE_BEAT: n = {'i', 3, true, 0, 4, "Sparkle overlay timing: 0 = free, twinkles start at any moment; 1, 2, 3, 4 = they start only on quarter, eighth, sixteenth or 32nd notes."}; break;
-            case P_SPARKLE_BURST: n = {'T', 3, false, 0, 1, "Sparkle overlay, with a timing other than free: true = a batch flashes on each tick and fades out before the next, false = single twinkles. No argument toggles."}; break;
             case P_MIRROR: n = {'T', 3, false, 0, 1, "Mirror: the right half of the ceiling is the mirror image of the left (only the left half is rendered, so it takes about half the time). No argument toggles."}; break;
-            case P_SPARKLE_COLOUR: n = {'i', 3, true, 0, (float)(1 + paletteCount), "Sparkle overlay colours: 0 = white, 1 = this preset's own palette, 2 = palette 1, 3 = palette 2, and so on (palette n = n + 1)."}; break;
             case P_TIMING: n = {'i', 3, true, 0, 2, "0 = time (speeds in their own units), 1 = follow the tempo (the set speed at 120 BPM, scaled with the tempo), 2 = beats (the effect's cycle takes a whole number of beats and lands on the bar; only for effects with a cycle)."}; break;
             case P_BEATS: n = {'i', 3, true, 1, 64, "With timing 2 (beats): how many beats one cycle takes: 1, 2, 4, 8, 16, 32 or 64 (other numbers go to the nearest of these)."}; break;
             case P_REVERSE: n = {'T', 3, false, 0, 1, "With timing 2 (beats): run the cycle backwards. No argument toggles."}; break;
@@ -170,6 +170,10 @@ static bool nodeValue(int id, char type, uint32_t& v) {
             case G_BRIGHTNESS: return f(settings.brightness / 255.f);
             case G_LINK: return i(linkSettings.enabled != 0);
             case G_AUTO: return i(autoSettings.enabled != 0);
+            case G_SPARKLE: return f(sparkleSettings.amount);
+            case G_SPARKLE_TIMING: return i(sparkleSettings.beat & SPARKLE_GRID);
+            case G_SPARKLE_BURST: return i((sparkleSettings.beat & SPARKLE_BURST) != 0);
+            case G_SPARKLE_COLOUR: return i(sparkleSettings.colour);
         }
         return false;
     }
@@ -195,15 +199,11 @@ static bool nodeValue(int id, char type, uint32_t& v) {
             case P_PLAY: return i(engineCurrent() == k);
             case P_EFFECT: return i(p.effect + 1);
             case P_PALETTE: return i(p.palette + 1);
-            case P_SPARKLE: return f(p.sparkle);
             case P_TIMING: return i(y.timing);
             case P_BEATS: return i(1 << y.beatsExp);
             case P_REVERSE: return i(y.reverse != 0);
             case P_PULSE: return f(y.pulse);
             case P_AUTO: return i(presetInAuto(k));
-            case P_SPARKLE_COLOUR: return i(y.sparkleColour);
-            case P_SPARKLE_BEAT: return i(p.sparkleBeat & SPARKLE_GRID);
-            case P_SPARKLE_BURST: return i((p.sparkleBeat & SPARKLE_BURST) != 0);
             case P_MIRROR: return i(p.mirror != 0);
         }
         return false;
@@ -350,6 +350,14 @@ static void apply(const char* path, const Arg* a, int n) {
             case G_LINK: linkSettings.enabled = on; break;
             case G_SAVE: presetSaveAll(); storeMarkDirty(); break;
             case G_AUTO: autoSettings.enabled = on; storeMarkDirty(); webChanged(); break;
+            case G_SPARKLE: sparkleSettings.amount = constrain(v, 0.f, 1.f); storeMarkDirty(); break;
+            case G_SPARKLE_TIMING:
+                sparkleSettings.beat = (sparkleSettings.beat & SPARKLE_BURST) | constrain((int)v, 0, 4);
+                storeMarkDirty(); webChanged(); break;  // the page shows Bursts only with a timing
+            case G_SPARKLE_BURST:
+                sparkleSettings.beat = (sparkleSettings.beat & SPARKLE_GRID) | (on ? SPARKLE_BURST : 0);
+                storeMarkDirty(); break;
+            case G_SPARKLE_COLOUR: sparkleSettings.colour = constrain((int)v, 0, 1 + paletteCount); storeMarkDirty(); break;
         }
         return;
     }
@@ -399,14 +407,10 @@ static void apply(const char* path, const Arg* a, int n) {
                 }
                 break;
             case P_PALETTE: p.palette = (int)v - 1; break;
-            case P_SPARKLE: p.sparkle = v; break;
             case P_TIMING: y.timing = (int)v; break;
             case P_BEATS: y.beatsExp = constrain((int)lroundf(log2f(fmaxf(v, 1.f))), 0, 6); break;
             case P_REVERSE: y.reverse = on; break;
             case P_PULSE: y.pulse = v; break;
-            case P_SPARKLE_COLOUR: y.sparkleColour = (int)v; break;
-            case P_SPARKLE_BEAT: p.sparkleBeat = (p.sparkleBeat & SPARKLE_BURST) | (int)v; break;
-            case P_SPARKLE_BURST: p.sparkleBeat = (p.sparkleBeat & SPARKLE_GRID) | (on ? SPARKLE_BURST : 0); break;
             case P_MIRROR: p.mirror = on; break;
             case P_AUTO:
                 if (on) autoSettings.skip &= ~(1u << i);
