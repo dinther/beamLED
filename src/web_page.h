@@ -101,16 +101,37 @@ select,input[type=text],input[type=password],input[type=number]{flex:1;min-width
 .seq .st.on{background:var(--acc)}
 .na .st,.seq .st.na{pointer-events:none}
 
+#ask{position:fixed;z-index:15;display:none;left:0;right:0;bottom:0;margin:0 auto;max-width:640px;box-sizing:border-box;background:#2b2b2b;color:#eee;border-top:2px solid var(--warn);border-radius:10px 10px 0 0;box-shadow:0 -4px 18px #000a;padding:12px 16px calc(12px + env(safe-area-inset-bottom))}
+#ask .btns{margin-top:10px}
 #elsewhere{position:fixed;inset:0;z-index:20;display:none;align-items:center;justify-content:center;background:#121212e8;padding:16px}
 #elsewhere .card{max-width:360px;text-align:center}
 #elsewhere p{margin:6px 0 14px}
 #tip{position:fixed;z-index:9;display:none;bottom:0;box-sizing:border-box;max-height:40vh;overflow:auto;background:#2b2b2b;color:#eee;border-top:2px solid var(--acc);border-radius:10px 10px 0 0;box-shadow:0 -4px 18px #000a;padding:10px 16px calc(10px + env(safe-area-inset-bottom));font-size:14px;line-height:1.45;pointer-events:none}
-</style></head><body><main id="app">Loading...</main><div id="tip"></div>
+</style></head><body><main id="app">Loading...</main><div id="tip"></div><div id="ask"></div>
 <div id="elsewhere"><div class="card"><p id="elsewhere-text"></p><button class="on" id="elsewhere-go">Continue here</button></div></div>
 <script>
 let S, N;
 const h = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; };
 let saveBtn = null, revertBtn = null;  // the playing preset's Save and Revert: lit by any edit
+// Clicking another preset while the playing one has unsaved changes: ask first (Save, Discard, Cancel)
+function switchPreset(i) {
+  const go = () => { S.current = i; S.on = true; post('/api/set', {current: i}); draw(); };
+  const cur = S.presets[S.current], box = document.getElementById('ask');
+  if (i == S.current || !cur || !cur.changed) return go();
+  const close = () => { box.style.display = 'none'; box.replaceChildren(); };
+  const saveGo = h('button', {className: 'on', textContent: 'Save and switch'});
+  saveGo.onclick = () => { close(); post('/api/preset', {index: S.current, save: true}).then(np => {
+    if (np.savedAs != null) { S.current = i; post('/api/set', {current: i}).then(load); return; }  // saved as a new preset: the list changed
+    S.presets[S.current] = np; go();
+  }); };
+  const dropGo = h('button', {className: 'warn', textContent: 'Discard and switch'});
+  dropGo.onclick = () => { close(); post('/api/preset', {index: S.current, revert: true}).then(np => { S.presets[S.current] = np; go(); }); };
+  const cancel = h('button', {textContent: 'Cancel'});
+  cancel.onclick = close;
+  box.replaceChildren(h('div', {}, h('b', {textContent: '“' + cur.name + '”'}), ' has unsaved changes.'),
+    h('div', {className: 'btns'}, saveGo, dropGo, cancel));
+  box.style.display = 'block';
+}
 function markChanged(i) {
   if (!S || !S.presets[i]) return;
   S.presets[i].changed = true;
@@ -514,7 +535,7 @@ function draw() {
   S.presets.forEach((q, i) => {
     const b = button((i + 1) + '  ' + q.name + (q.changed ? ' •' : ''), q.name + ': ' + S.effects[q.effect].name + (q.changed ? ', unsaved changes' : '') + '.',
       {className: (i == S.current ? 'on' : '') + (q.auto === false ? ' out' : '')});
-    b.onclick = () => { S.current = i; S.on = true; post('/api/set', {current: i}); draw(); };
+    b.onclick = () => switchPreset(i);
     g.append(b);
   });
   const add = button('+ Add', H.add, {className: 'add'});
