@@ -945,8 +945,9 @@ static void shapesFx(Ctx& c) {
 // Looking down a tube from inside it, its wall lined with helical fibres, flying along it. Each LED
 // is a ray from the eye through its place on the ceiling, straight ahead at the centre (Centre X
 // across the bars, Centre Y along them; also off the ceiling: then one side of the tube shows, as
-// long arcs fanning out). The tube (radius 1) is off the line of sight by o, which swings in a slow
-// circle and, with Bend, also curves along the tube, the curve coming towards you as you fly: the
+// long arcs fanning out); the centre swings on a pendulum around a pivot, as the shader's view
+// turns (angle 1 + sin(t / 5)). The tube (radius 1) is off the line of sight by o, which swings in a
+// slow circle and also curves along the tube, the curve coming towards you as you fly: the
 // near part swings while the far end stays put, and the tunnel twists and bends. The depth t where
 // a ray meets the wall: the straight-tube answer, then once again with the offset at that depth.
 // As in the shader this comes from, the fibres' angle is the angle around the line of sight (not
@@ -981,7 +982,7 @@ struct TunnelView {
 };
 
 static void tunnel(Ctx& c) {
-    enum { kSpeed, kBend, kFibres, kTwist, kTwin, kCentreX, kCentreY, kWidth };
+    enum { kSpeed, kSwing, kFibres, kTwist, kTwin, kCentreX, kCentreY, kWidth };
     TunnelView v;
     v.fib = fmaxf(roundFast(c.p[kFibres]), 1.f);
     v.twist = c.p[kTwist];
@@ -993,12 +994,18 @@ static void tunnel(Ctx& c) {
     c.s[1] = fmodf(c.s[1] + c.dt * 0.21f * fabsf(c.p[kSpeed]), 1.f);
     v.z0 = c.s[0];
     v.swing = c.s[1];
-    v.bend = c.p[kBend];
+    v.bend = 0.11f;  // the tube's own swing and bend, as the shader
     v.curve = 0.06f;  // turns of the bend per tube width along the tunnel
     const float w = fmaxf(c.p[kWidth], 0.01f);
     v.k = 2.8f / (w * w);
     const float twin = c.p[kTwin];
-    const float cy = c.p[kCentreY] * W, cx = Y[0] + c.p[kCentreX] * H;  // along, across
+    // The centre on a pendulum, as the shader's view turns: hanging Swing from the pivot (Centre X,
+    // Centre Y), at an angle of 1 + sin(t / 5) radians (0 to ~115 degrees and back, every ~31 s)
+    c.s[2] = fmodf(c.s[2] + c.dt * (1.f / 31.4159f), 1.f);
+    const float pa = 1.f + cosCyc(c.s[2] - 0.25f), arm = c.p[kSwing];  // cos(x - 90 deg) = sin x
+    const float pc = cosCyc(pa * (1.f / TAU)), ps = cosCyc(pa * (1.f / TAU) - 0.25f);
+    const float cx = Y[0] + c.p[kCentreX] * H + arm * pc;  // across the bars
+    const float cy = c.p[kCentreY] * W + arm * ps;         // along them
     const float fov = 2.f;  // the ceiling's shorter side spans +-1 of the view
     for (int b = 0; b < NY; b++) {
         const float dy = (Y[b] - cx) * fov;
@@ -1399,15 +1406,15 @@ const EffectDef EFFECTS[] = {
      "Fibres like rifling seen down a barrel: grooves winding out from a centre as spirals, each a sharp highlight with thin halo lines beside it, darker towards the bore. Two riflings in each quarter, the second winding the other way, both turning; the quarter mirrored across and along the bars: eight centres. In palette colours: a palette from black to red gives red rifling on black steel."},
     {"Tunnel", 8,
      {{"Speed", -4, 4, 0.9f, 0.05f, "How fast you fly down the tunnel, in tube widths (radius) per second; below 0 backwards. The tunnel swings with it. In Beats timing this slider gives way to beats per fibre turn."},
-      {"Bend", 0, 0.8f, 0.11f, 0.01f, "How far the tunnel swings around you and bends along its length, as a share of its width: the near part swings while the far end stays put, and the fibres twist and squeeze. 0 = a straight tunnel straight ahead."},
+      {"Swing", 0, 1, 0.24f, 0.01f, "The tunnel's centre on a pendulum: how far it hangs from the pivot (Centre X, Centre Y), as a share of the ceiling's shorter side. It swings from 0 to about 115 degrees and back every 31 seconds, slowing at the ends, as in the original. 0 = the centre stays at the pivot."},
       {"Fibres", 1, 12, 6, 1, "How many fibres wind along the tunnel wall."},
-      {"Twist", 0.1f, 4, 1.3f, 0.01f, "How tightly the fibres wind: turns per tube width along the tunnel."},
+      {"Twist", 0, 4, 0.65f, 0.01f, "How tightly the fibres wind along the tunnel: turns per tube width. 0 = straight along it (straight spokes from the centre); the original shader's is 1.3."},
       {"Twin", 0, 1, 1, 0.01f, "The same tunnel flipped across the bars (first row to last) and added on top: a second tunnel mirrored over the middle, crossing the first. 0 = none, 1 = as bright."},
-      {"Centre X", -1, 2, 0.25f, 0.01f, "Where across the bars the tunnel's far end is: 0 = the first bar, 1 = the last. With Twin, its mirror image is on the other side. Off the ceiling only one side of the tunnel shows: long arcs fanning out. A slow Motion on it makes the centre wander."},
-      {"Centre Y", -1, 2, 0.5f, 0.01f, "Where along the bars the tunnel's far end is: 0 = the first LED, 1 = the last, beyond the ends off the ceiling."},
+      {"Centre X", -1, 2, 0.33f, 0.01f, "Where across the bars the pendulum's pivot is (the tunnel's centre hangs Swing from it; with Swing 0 the centre itself): 0 = the first bar, 1 = the last. With Twin, its mirror image is on the other side."},
+      {"Centre Y", -1, 2, 0.67f, 0.01f, "Where along the bars the pendulum's pivot is: 0 = the first LED, 1 = the last, beyond the ends off the ceiling."},
       {"Line width", 0.03f, 0.5f, 0.15f, 0.01f, "How thick the fibres are, as a share of the gap between them. Thin = crisp points racing along the bars."}},
      tunnel, false, "fibre turn", 0,
-     "Flying down a tunnel lined with fibres winding along its wall, seen from inside, its far end at Centre X, Centre Y. The fibres come out of the centre slowly and race outwards ever faster, each in one palette colour. Bend swings and curves the tunnel, so it twists and bends as you fly; Twin adds the same tunnel flipped across the bars, crossing the first. A slow Motion on Centre X makes the centre wander."},
+     "Flying down a tunnel lined with fibres winding along its wall, seen from inside, its far end at Centre X, Centre Y. The fibres come out of the centre slowly and race outwards ever faster, each in one palette colour. The tunnel's centre swings on a slow pendulum (Swing) around a pivot, and the tunnel twists and bends as you fly; Twin adds the same tunnel flipped across the bars, crossing the first."},
 };
 const int NUM_EFFECTS = sizeof(EFFECTS) / sizeof(EFFECTS[0]);
 
