@@ -236,6 +236,8 @@ The page uses these; they take and return JSON.
 | `POST /api/presets` | `add`, `delete`, `move` |
 | `POST /api/palettes` | `add`, `delete` |
 | `POST /api/palette`, `/api/layout`, `/api/link`, `/api/net` | palettes, layout, Link, network |
+| `POST /api/sparkle` | the sparkle overlay: `amount`, `beat`, `burst`, `colour`, `step` |
+| `POST /api/auto` | Auto: `enabled`, `inBars`, `barsExp`, `seconds`, `shuffle` |
 | `GET /api/bench?e=<effect>&frames=<n>` | render time of an effect, and free network sockets |
 
 ## Credits
