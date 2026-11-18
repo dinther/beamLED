@@ -7,6 +7,8 @@
 #include <lwip/sockets.h>
 #include <math.h>
 
+#include <atomic>
+
 #include "config.h"
 #include "effects.h"
 #include "engine.h"
@@ -298,7 +300,7 @@ static httpd_handle_t server = nullptr;
 
 // A JSON reply streamed out in chunks, so the whole tree never has to be in memory. Bigger chunks
 // make the tree come down much faster (each chunk is a TCP round trip).
-static const size_t CHUNK = 4096;
+static const size_t CHUNK = 1024;  // the tree is ~7.5 KB
 static char* chunkBuf = nullptr;  // CHUNK bytes from the heap (static DRAM is full)
 struct Out {
     httpd_req_t* req;
@@ -560,23 +562,23 @@ static void sendStatus(int fd) {
 // since the last push (split when a bundle fills a packet): each frame costs a network round
 // trip on the board, each extra message in it almost nothing.
 static const size_t BUNDLE_MAX = 1400;
-static uint8_t (*bundle)[BUNDLE_MAX] = nullptr;  // one per listener, from the heap
-static size_t bundleLen[MAX_LISTENERS];
+static uint8_t* bundle = nullptr;  // one, from the heap: the listeners' bundles are built in turn
+static size_t bundleLen = 0;
 
 static void bundleFlush(int k) {
-    if (bundleLen[k] > 16 && listeners[k].fd >= 0) sendFrame(listeners[k].fd, HTTPD_WS_TYPE_BINARY, bundle[k], bundleLen[k]);
+    if (bundleLen > 16 && k >= 0 && listeners[k].fd >= 0) sendFrame(listeners[k].fd, HTTPD_WS_TYPE_BINARY, bundle, bundleLen);
     // "#bundle", then the time tag 1 = at once
     static const uint8_t head[16] = {'#', 'b', 'u', 'n', 'd', 'l', 'e', 0, 0, 0, 0, 0, 0, 0, 0, 1};
-    memcpy(bundle[k], head, 16);
-    bundleLen[k] = 16;
+    memcpy(bundle, head, 16);
+    bundleLen = 16;
 }
 
 static void bundleAdd(int k, const uint8_t* m, size_t len) {
-    if (bundleLen[k] + 4 + len > BUNDLE_MAX) bundleFlush(k);
-    uint8_t* b = bundle[k] + bundleLen[k];
+    if (bundleLen + 4 + len > BUNDLE_MAX) bundleFlush(k);
+    uint8_t* b = bundle + bundleLen;
     b[0] = len >> 24; b[1] = len >> 16; b[2] = len >> 8; b[3] = len;
     memcpy(b + 4, m, len);
-    bundleLen[k] += 4 + len;
+    bundleLen += 4 + len;
 }
 
 static float pushAvgMs = 0;
@@ -588,19 +590,18 @@ void oscPushTiming(float& avgMs, float& maxMs) {
 }
 
 // ---------------------------------------------------------------- live preview
-// Two buffers on the heap: the render loop (core 1) fills the one not being sent, the server's task
-// (core 0) sends the newest. A frame being sent is never written.
-static uint8_t* pvBuf[2] = {nullptr, nullptr};
-static size_t pvLen = 0;
-// The brightest of the frames rendered since the last preview frame went out: the preview sends 15
-// a second and the board renders 40, so a flash lit for a frame or two (Strobe, twinkles) would
-// mostly fall between two previews
-static uint8_t* pvPeak = nullptr;
+// Two buffers on the heap, only while a page has its Preview open: the brightest of the frames
+// rendered since the last preview frame (the preview sends 15 a second and the board renders 40, so
+// a flash lit for a frame or two would mostly fall between two previews), and the frame to send.
+// The render loop (core 1) and the server's task (core 0) hand them over by the state below, so a
+// frame being sent is never written and buffers in use are never freed.
+enum { PV_IDLE, PV_READY, PV_SENDING, PV_BUSY };
+static std::atomic<int> pvState{PV_IDLE};
+static uint8_t* pvPeak = nullptr;  // nx * ny * 3
+static uint8_t* pvOut = nullptr;   // "BLPV", nx, ny, then the frame
+static size_t pvLen = 0;           // pvOut's length (0: no buffers)
 static bool pvHeld = false;
-static uint32_t pvCalled = 0;  // the last frame offered: after a pause (preview closed) the hold starts afresh
-static volatile int8_t pvReady = -1;    // the newest frame not yet sent
-static volatile int8_t pvSending = -1;  // the one going out now
-static uint32_t pvLast = 0;
+static uint32_t pvCalled = 0, pvLast = 0;
 
 bool oscPreviewWanted() {
     for (const Listener& l : listeners)
@@ -608,22 +609,39 @@ bool oscPreviewWanted() {
     return false;
 }
 
+// Takes the buffers for the caller (IDLE or READY -> BUSY); false while a frame is going out
+static bool pvTake(int& was) {
+    for (int e : {PV_IDLE, PV_READY}) {
+        int x = e;
+        if (pvState.compare_exchange_strong(x, PV_BUSY)) { was = e; return true; }
+    }
+    return false;
+}
+
+static void pvFree() {
+    free(pvPeak); free(pvOut);
+    pvPeak = pvOut = nullptr;
+    pvLen = 0;
+    pvHeld = false;
+}
+
 void oscPreviewFrame(const CRGB* leds, int nx, int ny, float bright) {
+    int was;
+    if (!pvTake(was)) return;  // the last frame is going out: this one waits for the next
+    int next = was;
     const uint32_t now = millis();
-    if (now - pvCalled > 200) pvHeld = false;
+    if (now - pvCalled > 200) pvHeld = false;  // after a pause the hold starts afresh
     pvCalled = now;
     const size_t n = (size_t)nx * ny * 3, len = 8 + n;
     if (len != pvLen) {  // first use, or another layout
-        if (pvSending >= 0) return;
-        for (uint8_t*& b : pvBuf) { free(b); b = (uint8_t*)malloc(len); }
-        free(pvPeak);
+        pvFree();
         pvPeak = (uint8_t*)malloc(n);
-        pvLen = (pvBuf[0] && pvBuf[1] && pvPeak) ? len : 0;
-        pvReady = -1;
-        pvHeld = false;
-        if (!pvLen) return;
+        pvOut = (uint8_t*)malloc(len);
+        if (pvPeak && pvOut) pvLen = len;
+        else pvFree();
+        next = PV_IDLE;
     }
-    {
+    if (pvLen) {
         const int k = (int)(constrain(bright, 0.f, 1.f) * 256.f);
         const uint8_t* in = (const uint8_t*)leds;
         if (!pvHeld)
@@ -634,27 +652,32 @@ void oscPreviewFrame(const CRGB* leds, int nx, int ny, float bright) {
                 if (v > pvPeak[i]) pvPeak[i] = v;
             }
         pvHeld = true;
+        if (now - pvLast >= 66) {  // at most 15 a second
+            memcpy(pvOut, "BLPV", 4);
+            pvOut[4] = nx & 0xFF; pvOut[5] = nx >> 8; pvOut[6] = ny & 0xFF; pvOut[7] = ny >> 8;
+            memcpy(pvOut + 8, pvPeak, n);
+            pvHeld = false;  // the next window starts afresh
+            pvLast = now;
+            next = PV_READY;
+        }
     }
-    if (now - pvLast < 66) return;  // at most 15 a second
-    const int8_t w = pvReady == 0 ? 1 : (pvReady == 1 ? 0 : (pvSending == 0 ? 1 : 0));
-    if (w == pvSending) return;  // both busy: skip this one
-    uint8_t* o = pvBuf[w];
-    memcpy(o, "BLPV", 4);
-    o[4] = nx & 0xFF; o[5] = nx >> 8; o[6] = ny & 0xFF; o[7] = ny >> 8;
-    memcpy(o + 8, pvPeak, n);
-    pvHeld = false;  // the next window starts afresh
-    pvLast = now;
-    pvReady = w;
+    pvState.store(next);
+}
+
+// Nobody watching (Preview folded, page gone): the buffers back to the heap
+static void pvRelease() {
+    int was;
+    if (!pvLen || oscPreviewWanted() || !pvTake(was)) return;
+    pvFree();
+    pvState.store(PV_IDLE);
 }
 
 static void pushPreview() {
-    const int8_t r = pvReady;
-    if (r < 0) return;
-    pvSending = r;
-    pvReady = -1;
+    int x = PV_READY;
+    if (!pvState.compare_exchange_strong(x, PV_SENDING)) return;
     for (const Listener& l : listeners)
-        if (l.fd >= 0 && l.preview && !l.closing) sendFrame(l.fd, HTTPD_WS_TYPE_BINARY, pvBuf[r], pvLen);
-    pvSending = -1;
+        if (l.fd >= 0 && l.preview && !l.closing) sendFrame(l.fd, HTTPD_WS_TYPE_BINARY, pvOut, pvLen);
+    pvState.store(PV_IDLE);
 }
 
 static void pushChanges();
@@ -670,25 +693,30 @@ static void push(void*) {
 }
 
 static void pushChanges() {
-    for (int k = 0; k < MAX_LISTENERS; k++) bundleLen[k] = 16, bundleFlush(k);  // fresh, empty
+    // What changed since the last push
+    uint32_t changed[WORDS] = {};
     NodeInfo n;
-    char p[64];
     for (int id = 0; id < NUM_NODES; id++) {
         uint32_t v;
-        // Compare first; the address is built only for a value that goes out
         if (!nodeInfo(id, n, nullptr, 0) || !nodeValue(id, n.type, v)) continue;
         if (hasBit(known, id) && lastValue[id] == v) continue;
         lastValue[id] = v;
         setBit(known, id, true);
-        uint8_t m[96];
-        size_t len = 0;
-        for (int k = 0; k < MAX_LISTENERS; k++) {
-            if (listeners[k].fd < 0 || !hasBit(listeners[k].bits, id)) continue;
-            if (!len && nodeInfo(id, n, p, sizeof(p))) len = encode(p, n.type, v, m, sizeof(m));
+        setBit(changed, id, true);
+    }
+    // Each listener's share, as one bundle (or a few), in turn through the one buffer
+    char p[64];
+    for (int k = 0; k < MAX_LISTENERS; k++) {
+        if (listeners[k].fd < 0) continue;
+        bundleFlush(-1);  // fresh, empty
+        for (int id = 0; id < NUM_NODES; id++) {
+            if (!hasBit(changed, id) || !hasBit(listeners[k].bits, id) || !nodeInfo(id, n, p, sizeof(p))) continue;
+            uint8_t m[96];
+            const size_t len = encode(p, n.type, lastValue[id], m, sizeof(m));
             if (len) bundleAdd(k, m, len);
         }
+        bundleFlush(k);
     }
-    for (int k = 0; k < MAX_LISTENERS; k++) bundleFlush(k);
 
     // The web page: the status once a second
     static uint32_t lastStatus = 0;
@@ -861,7 +889,7 @@ static void start() {
 
     chunkBuf = (char*)malloc(CHUNK);
     lastValue = (uint32_t*)calloc(NUM_NODES, sizeof(uint32_t));
-    bundle = (uint8_t (*)[BUNDLE_MAX])malloc(MAX_LISTENERS * BUNDLE_MAX);
+    bundle = (uint8_t*)malloc(BUNDLE_MAX);
     httpd_config_t c = HTTPD_DEFAULT_CONFIG();
     c.server_port = cfg::OSCQUERY_PORT;
     c.ctrl_port = 32770;
@@ -903,6 +931,7 @@ void oscLoop() {
         if (!netServing()) return;  // the hotspot counts: with no cable it is the only way in
         start();
     }
+    pvRelease();
     EngineLock lock;  // the web API changes the same things from the HTTP server's task
     // OSC that came over the WebSocket (the page's sliders)
     if (wsIn) {

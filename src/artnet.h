@@ -38,6 +38,7 @@ private:
     uint16_t nx = 0, ny = 0, rowUni[MAX_Y];  // the layout of the frame being sent
     uint8_t order[MAX_Y];                   // and its colour order per row
     uint8_t seq = 1;
-    uint8_t* frame = nullptr;  // MAX_LEDS * 3, from the heap (static DRAM is full)
+    uint8_t* frame = nullptr;  // the layout's LEDs * 3, from the heap (static DRAM is full)
+    size_t frameCap = 0;
     uint8_t buf[18 + 512];
 };

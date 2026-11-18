@@ -5,7 +5,8 @@
 #include "osc.h"
 
 void ArtNetOut::begin() {
-    if (!frame) frame = (uint8_t*)malloc(MAX_LEDS * 3);
+    frameCap = (size_t)layout.nx * layout.ny * 3;  // the layout's LEDs, not MAX_LEDS (18 KB)
+    if (!frame) frame = (uint8_t*)malloc(frameCap);
     // Priority 6: above the HTTP/OSCQuery server (5), which otherwise kept it waiting past the
     // next frame (half the frames dropped); below lwIP and the Ethernet driver. It takes ~6 ms
     // of each 25 ms frame.
@@ -17,6 +18,14 @@ bool ArtNetOut::send(IPAddress to, const CRGB* leds, const uint8_t* lut) {
     if (busy) {
         dropped++;
         return false;
+    }
+    // A bigger layout: a bigger frame (the task is idle: busy is false)
+    const size_t need = (size_t)layout.nx * layout.ny * 3;
+    if (need > frameCap) {
+        uint8_t* f = (uint8_t*)realloc(frame, need);
+        if (!f) return false;
+        frame = f;
+        frameCap = need;
     }
     target = to;
     nx = layout.nx;

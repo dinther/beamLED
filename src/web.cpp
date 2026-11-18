@@ -118,7 +118,7 @@ struct ChunkOut {
         return len;
     }
     void print(const char* s) { write((const uint8_t*)s, strlen(s)); }
-    void unwrite() { if (n) n--; }  // takes back the last byte (a closing brace, to add more)
+    char unwrite() { return n ? buf[--n] : 0; }  // takes back the last byte (a closing ] or }, to add more)
 };
 // More members written after the reply document, each list item from a small document of its own:
 // a reply with every preset in one document took ~29 KB at once, and memory that low starved Link
@@ -301,11 +301,11 @@ static uint32_t effectsVersion() {
     return h;
 }
 
-static void handleEffects() {
-    JsonDocument d;
-    JsonArray ef = d.to<JsonArray>();
+// The effects, one at a time after an empty list (~25 KB as one document)
+static void effectsTail(ChunkOut& out) {
     for (int i = 0; i < NUM_EFFECTS; i++) {
-        JsonObject o = ef.add<JsonObject>();
+        JsonDocument d;
+        JsonObject o = d.to<JsonObject>();
         o["name"] = EFFECTS[i].name;
         o["sparkle"] = !EFFECTS[i].ownSparkle;
         if (EFFECTS[i].cycle) o["cycle"] = EFFECTS[i].cycle;
@@ -323,8 +323,16 @@ static void handleEffects() {
             q["step"] = pd.step;
             q["def"] = pd.def;
         }
+        if (i) out.write(',');
+        serializeJson(d, out);
     }
+}
+
+static void handleEffects() {
+    JsonDocument d;
+    d.to<JsonArray>();
     sendJson(d);
+    replyTail = effectsTail;
     replyCache = true;
 }
 
@@ -711,10 +719,6 @@ static void handleBackup() {
     d["paramOrder"] = 3;  // 3: one slider order, lengths and speeds in %; 2: in metres; missing: old order
     d["build"] = BUILD;
     d["current"] = settings.current;
-    JsonArray pr = d["presets"].to<JsonArray>();
-    for (int i = 0; i < presetCount; i++) presetJson(pr.add<JsonObject>(), i);
-    JsonArray pl = d["palettes"].to<JsonArray>();
-    for (int k = 0; k < paletteCount; k++) paletteJson(pl.add<JsonObject>(), palettes[k]);
     JsonObject o = d["output"].to<JsonObject>();
     o["target"] = IPAddress(settings.target).toString();
     o["brightness"] = settings.brightness;
@@ -747,6 +751,7 @@ static void handleBackup() {
     n["fallback"] = (uint32_t)netSettings.fallbackIp ? netSettings.fallbackIp.toString() : String("");
     n["hotspotPassword"] = netSettings.apPass;
     sendJson(d);
+    replyTail = listsTail;  // "palettes" and "presets", one at a time
 }
 
 // Loads a settings file: replaces everything, saves it all (no unsaved edits) and restarts.
@@ -1069,9 +1074,9 @@ bool webApi(httpd_req_t* req, esp_err_t& result) {
         serializeJson(replyDoc, out);
         replyDoc.clear();  // its memory back before the tail is written
         if (replyTail) {
-            out.unwrite();  // the document's closing brace
+            const char close = out.unwrite();  // the document's closing } (or ] of a list)
             replyTail(out);
-            out.write('}');
+            out.write(close);
             replyTail = nullptr;
         }
         out.flush();
