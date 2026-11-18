@@ -30,7 +30,7 @@ for this kind of installation (see [docs/background.md](docs/background.md)):
 ## Features
 
 - **14 effects**, each with its own sliders and a palette: Rolling bars, Searchlights, Lighthouse,
-  Clouds, Sparkle, Sweeps, Plaid, Rings, Drops, Gradient, Shapes, Strobe, Fibres and Tunnel, plus
+  Clouds, Sparkle, Sweeps, Plaid, Rings, Drops, Gradient, Shapes, Strobe, Rifling and Tunnel, plus
   one sparkle
   overlay over whichever plays (it stays on when the preset changes): white or in palette colours
   (random, or stepping along the palette twinkle by twinkle), twinkling freely or starting on
@@ -78,7 +78,7 @@ flash the whole layout, a band, a block or a circle or square, somewhere new eac
 Timing set to Frequency it is a plain strobe, 0 to 20 flashes a second, of the middle Size share of
 every row (fewer lit LEDs ask less of the power supply, so they flash brighter).
 
-**Fibres** is rifling seen down a barrel: grooves winding out from a centre as spirals, each a sharp
+**Rifling**: rifling seen down a barrel: grooves winding out from a centre as spirals, each a sharp
 highlight with thin halo lines beside it, darker towards the bore. Two riflings in each quarter of the
 layout, the second winding the other way, all turning; the quarter is mirrored across and along the
 bars. On the bars the grooves show as points sliding along them as the riflings turn.

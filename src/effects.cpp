@@ -1007,7 +1007,7 @@ static void tunnel(Ctx& c) {
     }
 }
 
-// ---------------------------------------------------------------- Fibres
+// ---------------------------------------------------------------- Rifling
 // Rifling seen down a barrel: grooves winding out from a centre as logarithmic spirals (each groove
 // crosses every circle at the same angle), each a sharp highlight with thin halo lines beside it,
 // darkening towards the bore. Two of them in each quarter of the layout, the second flipped so it
@@ -1049,7 +1049,7 @@ struct RiflingLook {
     }
 };
 
-static void fibres(Ctx& c) {
+static void rifling(Ctx& c) {
     enum { kSpeed, kSize, kGrooves, kSmooth, kWidth, kHalo, kSpacing, kCentreY };
     RiflingLook look;
     look.grooves = roundFast(c.p[kGrooves]);
@@ -1292,7 +1292,7 @@ const EffectDef EFFECTS[] = {
      strobe, false, "pattern", 0,
      "Flashes on all bars: the top, middle and bottom third as the pattern sets (Beats), or the first column's thirds at Speed (Frequency). Flashes ignore Effect brightness.",
      true, true},
-    {"Fibres", 8,
+    {"Rifling", 8,
      {{"Speed (deg/s)", -90, 90, -8.6f, 0.1f, "Rotation, degrees per second. Beats: beats per turn."},
       {"Size (%)", 20, 300, 100, 1, "Spiral size. 100% = the original."},
       {"Grooves", 1, 24, 12, 1, "Grooves per spiral."},
@@ -1301,7 +1301,7 @@ const EffectDef EFFECTS[] = {
       {"Halo", 0, 1, 0.2f, 0.01f, "Halo line brightness."},
       {"Spacing", 0, 0.5f, 0.35f, 0.01f, "Inset of the second spiral, share of the width across the bars."},
       {"Centre Y", 0.5f, 1, 0.75f, 0.01f, "Spiral centres along the bars (in the mirrored quarter)."}},
-     fibres, false, "turn", 0,
+     rifling, false, "turn", 0,
      "Rifling spirals seen down a barrel, mirrored four ways."},
     {"Tunnel", 8,
      {{"Speed", -4, 4, 0.9f, 0.05f, "Flight speed; negative = backwards. Beats: beats per fibre turn."},
