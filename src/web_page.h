@@ -53,6 +53,9 @@ select,input[type=text],input[type=password],input[type=number]{flex:1;min-width
 .pal .stop:hover,.pal .stop.drag{border-color:var(--acc)}
 #pv{display:block;margin:0 auto;border-radius:6px;background:#000}
 .card.pv-card{background:#000}
+.card.pv-card.pinned{position:sticky;top:0;z-index:5;box-shadow:0 6px 14px #000d}
+.pv-bar{display:flex;align-items:center;gap:10px}
+.pv-bar .row{flex:1}
 .pal .mid{position:absolute;top:19px;width:10px;height:10px;margin-left:-5px;background:#bbb;border:1px solid #000;transform:rotate(45deg);cursor:ew-resize;touch-action:none}
 .pal .mid.set{background:var(--acc)}
 .pal .mid:hover,.pal .mid.drag{background:#fff}
@@ -227,6 +230,7 @@ const H = {
   sparkleBurst: 'Off: single twinkles, each with the same soft rise and fade as in Free. On: a batch flashes at once on each tick and fades out before the next; Sparkle overlay sets how many (1 = 6% of the LEDs).',
   paletteLock: 'Lock every preset to one palette, for a show in one set of colours: whichever preset plays (picked here, by the button, by Auto or OSC) uses this palette instead of its own. The presets’ own palettes are kept, so Each preset’s own brings them back. Not saved: after a restart each preset has its own palette again.',
   preview: 'What the ceiling shows now, live from the board, up to 15 frames a second: seen from below, the first row on the left, the bars at their real places and spacing (drawn thicker than they are, so they show). The colours as the effects make them, without the LEDs’ gamma. The board sends frames only while this section is open, on screen and the tab is in view.',
+  previewPin: 'Pin: the preview stays at the top of the screen while you scroll and work the controls below it. Press again to let it scroll away. Kept in this browser.',
   previewLook: 'On: each bar as a soft continuous strip, as with a diffuser. Off: bare LEDs, each a point of light with dark between and a bloom (glare) around the bright ones, as bare LEDs look to the eye or a camera. Kept in this browser.',
   effectBrightness: 'Dims whatever preset plays, but not the Sparkle overlay’s twinkles: pull the effect down and let the sparkle shine. Under the master Brightness. Saved, like Brightness.',
   sparkleBrightness: 'How strongly the Sparkle overlay’s twinkles show over the effect: 0 = not at all, 50% = each twinkle covers half (a dark one darkens by half), 100% = fully. Under the master Brightness. Saved, like Brightness.',
@@ -451,12 +455,6 @@ function draw() {
   app.append(h('div', {className: 'top'}, h('h1', {textContent: 'beamLED'}), onb));
   app.append(h('div', {className: 'conn', id: 'status'}));  // only when the board can't be reached
   if (S.configMode) app.append(h('div', {className: 'conn', textContent: 'Config mode: hotspot and this page only, the lights get no data. Restart (at the bottom) to run normally.'}));
-  app.append(h('div', {className: 'card'},
-    slider('Brightness', 0, 255, 1, S.brightness, v => Math.round(v / 2.55) + '%',
-      v => { S.brightness = v; liveSend('/beamled/brightness', v / 255, () => post('/api/set', {brightness: v}), true); }, H.brightness, 'brightness'),
-    slider('Effect brightness', 0, 255, 1, S.effectBrightness == null ? 255 : S.effectBrightness, v => Math.round(v / 2.55) + '%',
-      v => { S.effectBrightness = v; liveSend('/beamled/effect_brightness', v / 255, () => post('/api/set', {effectBrightness: v}), true); }, H.effectBrightness, 'effectBrightness'),
-    lockRow(), ...sparkleRows(p, ef)));
 
   app.append(heading('Preview', H.preview));
   const diffuse = h('input', {type: 'checkbox', checked: !pvBare});
@@ -465,7 +463,23 @@ function draw() {
     try { localStorage.setItem('beamled.pvlook', pvBare ? 'bare' : 'diffused'); } catch (e) {}
   };
   const look = field('Diffuse', diffuse, H.previewLook);
-  app.append(h('div', {className: 'card pv-card'}, h('canvas', {id: 'pv'}), look));
+  const pin = button(pvPinned ? 'Pinned' : 'Pin', H.previewPin, {className: 'pv-pin' + (pvPinned ? ' on' : '')});
+  pin.onclick = () => {
+    pvPinned = !pvPinned;
+    try { localStorage.setItem('beamled.pvpin', pvPinned ? '1' : ''); } catch (e) {}
+    draw();
+  };
+  app.append(h('div', {className: 'card pv-card' + (pvPinned ? ' pinned' : '')}, h('canvas', {id: 'pv'}),
+    h('div', {className: 'pv-bar'}, look, pin)));
+
+  app.append(h('div', {className: 'card'},
+    slider('Brightness', 0, 255, 1, S.brightness, v => Math.round(v / 2.55) + '%',
+      v => { S.brightness = v; liveSend('/beamled/brightness', v / 255, () => post('/api/set', {brightness: v}), true); }, H.brightness, 'brightness'),
+    slider('Effect brightness', 0, 255, 1, S.effectBrightness == null ? 255 : S.effectBrightness, v => Math.round(v / 2.55) + '%',
+      v => { S.effectBrightness = v; liveSend('/beamled/effect_brightness', v / 255, () => post('/api/set', {effectBrightness: v}), true); }, H.effectBrightness, 'effectBrightness'),
+    lockRow(), ...sparkleRows(p, ef)));
+  app.lastChild.dataset.nofold = '';  // the controls under the preview: not part of its section
+
 
   app.append(heading('Presets', H.presets));
   const g = h('div', {className: 'presets'});
@@ -634,6 +648,7 @@ try { folded = JSON.parse(localStorage.getItem(FOLD_KEY) || '{}') || {}; } catch
 function applyFolds(app) {
   let key = null, head = null;
   for (const el of [...app.children]) {
+    if (el.dataset.nofold != null) { key = null; head = null; continue; }  // ends the section above it
     if (el.tagName == 'H2') {
       head = el;
       key = el.textContent.replace(/[0-9]+/g, '').trim();
@@ -1232,6 +1247,8 @@ document.getElementById('elsewhere-go').onclick = () => {
 // ---- Live preview: frames from the board while the Preview section is open and the tab shows
 let pvOn = false, pvOff = null, pvDots = null, pvDotImg = null;
 let pvBare = false;  // Look: bare LEDs with bloom (else diffused bars); kept in this browser
+let pvPinned = false;  // the preview stays at the top of the screen while scrolling; kept in this browser
+try { pvPinned = localStorage.getItem('beamled.pvpin') == '1'; } catch (e) {}
 try { pvBare = localStorage.getItem('beamled.pvlook') == 'bare'; } catch (e) {}
 let pvSeen = true, pvWatch = null;  // the preview on screen (not scrolled away)
 function previewSync() {
