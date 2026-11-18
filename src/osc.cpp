@@ -64,18 +64,21 @@ static void slug(const char* name, char* out, size_t len) {
 
 static bool paramPath(int preset, int effect, int j, char* buf, size_t len) {
     if (effect >= NUM_EFFECTS || j >= EFFECTS[effect].n) return false;
+    if (!buf) return true;  // only asked whether it exists
     char s[32];
     slug(EFFECTS[effect].params[j].name, s, sizeof(s));
     snprintf(buf, len, "/beamled/presets/%d/%s", preset + 1, s);
     return true;
 }
 
-// The node's address and description; false when it doesn't exist (now)
+// The node's address and description; false when it doesn't exist (now). path may be null:
+// building the address (snprintf) is most of the cost, and the change check needs it only for
+// the few values it sends
 static bool nodeInfo(int id, NodeInfo& n, char* path, size_t len) {
     n = {'f', 3, false, 0, 1, ""};
     if (id < 0 || id >= NUM_NODES) return false;
     if (id < PRESET_BASE) {
-        snprintf(path, len, "/beamled/%s", GLOBAL_NAME[id]);
+        if (path) snprintf(path, len, "/beamled/%s", GLOBAL_NAME[id]);
         switch (id) {
             case G_PRESET:
                 n = {'i', 3, true, 1, (float)presetCount, "The preset playing, by its number on the web page. Fades over to it, and switches on."};
@@ -98,7 +101,7 @@ static bool nodeInfo(int id, NodeInfo& n, char* path, size_t len) {
             const int m = (slot - M_BASE) / MSLOTS, k = (slot - M_BASE) % MSLOTS;
             const Motion& mo = presetMotion[i][m];
             const EffectDef& ef = EFFECTS[p.effect];
-            snprintf(path, len, "/beamled/presets/%d/motion%d_%s", i + 1, m + 1, MSLOT_NAME[k]);
+            if (path) snprintf(path, len, "/beamled/presets/%d/motion%d_%s", i + 1, m + 1, MSLOT_NAME[k]);
             float lo = 0, hi = 1;
             if (mo.target && mo.target <= ef.n) lo = ef.params[mo.target - 1].min, hi = ef.params[mo.target - 1].max;
             switch (k) {
@@ -119,7 +122,7 @@ static bool nodeInfo(int id, NodeInfo& n, char* path, size_t len) {
             n = {d.step >= 1 ? 'i' : 'f', 3, true, d.min, d.max, d.help};
             return true;
         }
-        snprintf(path, len, "/beamled/presets/%d/%s", i + 1, PSLOT_NAME[slot]);
+        if (path) snprintf(path, len, "/beamled/presets/%d/%s", i + 1, PSLOT_NAME[slot]);
         switch (slot) {
             case P_PLAY: n = {'T', 3, false, 0, 1, "True while this preset is the one playing (or being faded to). Send true to play it; false is ignored."}; break;
             case P_EFFECT: n = {'i', 3, true, 1, (float)NUM_EFFECTS, effectList}; break;
@@ -140,15 +143,15 @@ static bool nodeInfo(int id, NodeInfo& n, char* path, size_t len) {
     const int k = (id - PALETTE_BASE) / CSLOTS, slot = (id - PALETTE_BASE) % CSLOTS;
     if (k >= paletteCount) return false;
     if (slot > PAL_MAX) {
-        snprintf(path, len, "/beamled/palettes/%d/position%d", k + 1, slot - PAL_MAX);
+        if (path) snprintf(path, len, "/beamled/palettes/%d/position%d", k + 1, slot - PAL_MAX);
         n = {'f', 3, true, 0, 1, "Where this colour sits along the palette, 0..1 (0 = the start, 1 = the end). The colours stay in order: a position is kept between its neighbours'."};
         return true;
     }
     if (slot == 0) {
-        snprintf(path, len, "/beamled/palettes/%d/colours", k + 1);
+        if (path) snprintf(path, len, "/beamled/palettes/%d/colours", k + 1);
         n = {'i', 3, true, 2, PAL_MAX, "How many colours the palette uses, 2..7. Colours beyond the count keep their value for when it grows again."};
     } else {
-        snprintf(path, len, "/beamled/palettes/%d/colour%d", k + 1, slot);
+        if (path) snprintf(path, len, "/beamled/palettes/%d/colour%d", k + 1, slot);
         n = {'r', 3, false, 0, 0, "A colour of the palette (RGBA; alpha is ignored). Also takes \"#RRGGBB\" or three numbers (0..1, or 0..255). Setting a colour beyond the count adds it."};
     }
     return true;
@@ -810,9 +813,8 @@ static void sendFrame(int fd, httpd_ws_type_t type, const uint8_t* data, size_t 
 // The value as it is now counts as sent, so the next push doesn't send it either.
 static void markCurrent(int id) {
     NodeInfo n;
-    char p[64];
     uint32_t v;
-    if (hasBit(known, id) || !nodeInfo(id, n, p, sizeof(p)) || !nodeValue(id, n.type, v)) return;
+    if (hasBit(known, id) || !nodeInfo(id, n, nullptr, 0) || !nodeValue(id, n.type, v)) return;
     lastValue[id] = v;
     setBit(known, id, true);
 }
@@ -904,16 +906,34 @@ static void bundleAdd(int k, const uint8_t* m, size_t len) {
     bundleLen[k] += 4 + len;
 }
 
+static float pushAvgMs = 0;
+static uint32_t pushMaxUs = 0;
+void oscPushTiming(float& avgMs, float& maxMs) {
+    avgMs = pushAvgMs;
+    maxMs = pushMaxUs / 1000.f;
+    pushMaxUs = 0;
+}
+
+static void pushChanges();
 static void push(void*) {
     pushQueued = false;
     if (!listenerCount) return;
+    const uint32_t t0 = micros();
+    pushChanges();
+    const uint32_t took = micros() - t0;
+    if (took > pushMaxUs) pushMaxUs = took;
+    pushAvgMs += (took / 1000.f - pushAvgMs) * 0.05f;
+}
+
+static void pushChanges() {
     updateTree();
     for (int k = 0; k < MAX_LISTENERS; k++) bundleLen[k] = 16, bundleFlush(k);  // fresh, empty
     NodeInfo n;
     char p[64];
     for (int id = 0; id < NUM_NODES; id++) {
         uint32_t v;
-        if (!nodeInfo(id, n, p, sizeof(p)) || !nodeValue(id, n.type, v)) continue;
+        // Compare first; the address is built only for a value that goes out
+        if (!nodeInfo(id, n, nullptr, 0) || !nodeValue(id, n.type, v)) continue;
         if (hasBit(known, id) && lastValue[id] == v) continue;
         lastValue[id] = v;
         setBit(known, id, true);
@@ -921,7 +941,7 @@ static void push(void*) {
         size_t len = 0;
         for (int k = 0; k < MAX_LISTENERS; k++) {
             if (listeners[k].fd < 0 || !hasBit(listeners[k].bits, id)) continue;
-            if (!len) len = encode(p, n.type, v, m, sizeof(m));
+            if (!len && nodeInfo(id, n, p, sizeof(p))) len = encode(p, n.type, v, m, sizeof(m));
             if (len) bundleAdd(k, m, len);
         }
     }

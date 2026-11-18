@@ -192,6 +192,12 @@ static void statusJson(JsonObject o) {
     o["renderMs"] = roundf(engineRenderMs() * 10) / 10;
     o["sendMs"] = roundf(engineSendMs() * 10) / 10;
     {
+        float avg, mx;
+        oscPushTiming(avg, mx);
+        o["pushMs"] = roundf(avg * 10) / 10;     // listeners' change check, smoothed
+        o["pushMaxMs"] = roundf(mx * 10) / 10;   // longest since the last read
+    }
+    {
         uint32_t sent, failed, skipped;
         int err;
         engineArtNetStats(sent, failed, err, skipped);

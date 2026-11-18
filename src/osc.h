@@ -28,3 +28,6 @@
 void oscLoop();          // from loop(): starts once the network is up, then takes OSC in
 String oscStatusText();  // for the web page
 int oscUdpSocket();      // the OSC socket (UDP 8000), which Art-Net sends from too; -1 before the network
+// Time the listeners' change check takes (20 times a second while anyone listens), smoothed and
+// the longest since the last call, in ms
+void oscPushTiming(float& avgMs, float& maxMs);
