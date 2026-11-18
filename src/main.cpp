@@ -312,10 +312,11 @@ static void renderFrame(float dt) {
     }
     effectsToUnits(e, pp);  // lengths and speeds from % of the ceiling's shorter side to its units
     Ctx c{pp, edt, effState, lutWrap, lutLin, leds, beat.beat, (float)beat.bpm, cycleBeats, y.reverse != 0,
-          presetSteps[settings.current].lane};
+          presetSteps[settings.current].lane, levels.effect / 255.f};
     effectsRender(e, c, p.mirror != 0);
-    // Effect brightness: the effect alone, before the overlay's twinkles go on top
-    if (levels.effect < 255) {
+    // Effect brightness: the effect alone, before the overlay's twinkles go on top (an effect that
+    // applies it itself, Strobe, has done so)
+    if (levels.effect < 255 && !e.ownLevel) {
         const int L = levels.effect, n = layoutLeds();
         for (int i = 0; i < n; i++) leds[i] = CRGB(leds[i].r * L / 255, leds[i].g * L / 255, leds[i].b * L / 255);
     }

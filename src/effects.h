@@ -31,6 +31,7 @@ struct Ctx {
     bool reverse;         // timing in beats: run the cycle backwards
     // The preset's step pattern (effects with steps): 4 lanes of 32 steps, bit s = step s flashes
     const uint32_t* steps = nullptr;
+    float level = 1;  // Effect brightness 0..1, for effects that apply it themselves (ownLevel)
 };
 
 struct EffectDef {
@@ -45,6 +46,9 @@ struct EffectDef {
     int8_t speedParam;
     const char* help;  // what the effect looks like
     bool steps = false;  // plays the preset's step pattern (a drum machine: Strobe)
+    // Applies Effect brightness itself (c.level) instead of having all its output scaled: Strobe's
+    // flashes stay at full power (under the master Brightness), only its background follows it
+    bool ownLevel = false;
 };
 
 extern const EffectDef EFFECTS[];

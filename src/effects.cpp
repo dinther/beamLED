@@ -974,7 +974,7 @@ static void strobe(Ctx& c) {
         on[k] = lit && c.steps && (c.steps[k] >> step & 1);
         any |= on[k];
     }
-    const float bg = c.p[kBackground];
+    const float bg = c.p[kBackground] * c.level;  // Effect brightness dims the background, not the flashes
     const float iw = W > 0 ? 1.f / W : 0;
     if (!any) {  // between flashes: the background (or black)
         for (int b = 0; b < NY; b++)
@@ -1192,8 +1192,8 @@ const EffectDef EFFECTS[] = {
       {"Colour", 0, 1, 0, 0.01f, "0 = white flashes. Above 0 the flashes take the palette's colours: each step this much further along it, and each lane a quarter of the palette apart."},
       {"Background", 0, 0.5f, 0, 0.01f, "How brightly the palette shows between the flashes. 0 = black."}},
      strobe, false, "pattern", 0,
-     "A drum machine of flashes: set steps in a grid of four lanes and 32 steps (two bars of 1/16 notes), and the lanes flash the whole ceiling, a band, a block or a shape on those steps, somewhere new each time.",
-     true},
+     "A drum machine of flashes: set steps in a grid of four lanes and 32 steps (two bars of 1/16 notes), and the lanes flash the whole ceiling, a band, a block or a shape on those steps, somewhere new each time. The flashes stay at full power whatever Effect brightness is (the master Brightness still applies); Effect brightness dims only the Background.",
+     true, true},
 };
 const int NUM_EFFECTS = sizeof(EFFECTS) / sizeof(EFFECTS[0]);
 
