@@ -1010,18 +1010,18 @@ static void tunnel(Ctx& c) {
 // ---------------------------------------------------------------- Chain
 // All bars joined end to end into one long strip (with Snake every second bar runs back up, like
 // one cable zigzagging). Shots of the whole palette, first colour at the head, fired into the chain
-// on the beat (Beats timing) or so many a minute (Time), travel along it and fade out.
+// on the beat (Beats timing) or so many a minute (Time), travel along it and fade out. Each shot
+// keeps the speed and length it was fired with; each is drawn over only the LEDs it covers.
 
-struct Shot { float age; bool live; };
-static Shot shots[16];
+struct Shot { float head, speed, len, age; bool live; };  // head, speed, len in LEDs (of the chain)
+static const int MAX_SHOTS = 64;
+static Shot shots[MAX_SHOTS];
 
 static void chain(Ctx& c) {
     enum { kSpeed, kLength, kRate, kFade, kSnake, kSoft, kBg };
-    const float nxf = (float)NX, total = nxf * NY;           // chain length in LEDs
-    const float speed = c.p[kSpeed] * nxf;                   // LEDs per second
-    const float len = fmaxf(c.p[kLength] * nxf, 1.f);        // segment length in LEDs
-    const float fade = fmaxf(c.p[kFade], 0.05f), bg = c.p[kBg];
-    const bool snake = c.p[kSnake] >= 0.5f;
+    const int nx = NX, total = NX * NY;                      // chain length in LEDs
+    const float fade = fmaxf(c.p[kFade], 0.05f), bg = c.p[kBg], soft = c.p[kSoft];
+    const bool snake = c.p[kSnake] >= 0.5f, rev = c.reverse;  // Reverse (Beats): fired from the end
     if (c.s[7] == 0) {  // a fresh start: an empty chain, the first shot at once
         c.s[7] = 1;
         for (Shot& h : shots) h.live = false;
@@ -1040,37 +1040,34 @@ static void chain(Ctx& c) {
     }
     for (; fire > 0; fire--)
         for (Shot& h : shots)
-            if (!h.live) { h = {0, true}; break; }
-    // Age them; gone when faded or when the tail has left the chain
+            if (!h.live) { h = {0, c.p[kSpeed] * nx, fmaxf(c.p[kLength] * nx, 1.f), 0, true}; break; }
+    // Move them on at their own speed; gone when faded or when the tail has left the chain
     for (Shot& h : shots) {
         if (!h.live) continue;
+        h.head += h.speed * c.dt;
         h.age += c.dt;
-        if (h.age >= fade || speed * h.age - len > total) h.live = false;
+        if (h.age >= fade || h.head - h.len > total + 2) h.live = false;
     }
-    // Soft head and tail: the edge over Softness of the segment (at least one LED)
-    const float edge = fmaxf(c.p[kSoft] * len * 0.5f, 1.f), iedge = 1.f / edge, ilen = 1.f / len;
-    const bool rev = c.reverse;  // Beats timing: fired in from the end of the chain
-    for (int b = 0; b < NY; b++) {
-        CRGB* o = c.out + b * NX;
-        const bool back = snake && (b & 1);
-        for (int i = 0; i < NX; i++) {
-            float at = (float)b * nxf + (back ? nxf - 1 - i : i);  // place in the chain
-            if (rev) at = total - 1 - at;
-            float r = 0, g = 0, bl = 0;
-            if (bg > 0) {
-                const CRGB k = c.lutLin[0];
-                r = k.r * bg; g = k.g * bg; bl = k.b * bg;
-            }
-            for (const Shot& h : shots) {
-                if (!h.live) continue;
-                const float d = speed * h.age - at;  // how far behind the head this LED is
-                if (d < -edge || d > len + edge) continue;
-                const float w = sm((d + edge * 0.5f) * iedge) * sm((len - d + edge * 0.5f) * iedge);
-                const float a = w * (1.f - h.age / fade);
-                const CRGB k = lutL(c.lutLin, d * ilen);  // the whole palette along the segment
-                r += k.r * a; g += k.g * a; bl += k.b * a;
-            }
-            o[i] = CRGB((uint8_t)fminf(r, 255.f), (uint8_t)fminf(g, 255.f), (uint8_t)fminf(bl, 255.f));
+    // The background, then each shot added over its own LEDs
+    for (int b = 0; b < NY; b++)
+        for (int i = 0; i < nx; i++)
+            c.out[b * nx + i] = bg > 0 ? scaleF(c.lutLin[0], bg) : CRGB(0, 0, 0);
+    for (const Shot& h : shots) {
+        if (!h.live) continue;
+        const float edge = fmaxf(soft * h.len * 0.5f, 1.f), iedge = 1.f / edge, ilen = 1.f / h.len;
+        const float a0 = 1.f - h.age / fade;
+        const int from = clampi((int)floorf(h.head - h.len - edge), 0, total), to = clampi((int)ceilf(h.head + edge), 0, total);
+        for (int x = from; x < to; x++) {
+            const float d = h.head - x;  // how far behind the head this LED is
+            const float a = sm((d + edge * 0.5f) * iedge) * sm((h.len - d + edge * 0.5f) * iedge) * a0;
+            if (a <= 0.002f) continue;
+            const CRGB k = lutL(c.lutLin, d * ilen);  // the whole palette along the shot
+            const int at = rev ? total - 1 - x : x;   // place in the chain -> row and LED
+            const int b = at / nx;
+            int i = at - b * nx;
+            if (snake && (b & 1)) i = nx - 1 - i;
+            CRGB& o = c.out[b * nx + i];
+            o = CRGB((uint8_t)min(255, o.r + (int)(k.r * a)), (uint8_t)min(255, o.g + (int)(k.g * a)), (uint8_t)min(255, o.b + (int)(k.b * a)));
         }
     }
 }
