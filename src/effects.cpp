@@ -156,10 +156,11 @@ static inline CRGB bands(float u, float k, float step, float gap, const CRGB* lu
 
 // The same bands with k fixed (per row, say): the divisions are done once
 // hg: half the width of a dark core at each border, in band units (0 = none: the gaps are only the
-// colour transitions)
+// colour transitions); base: where in the palette the colour is taken (with step 0: every band)
 struct Bands {
-    float lo, rk, re, step, gap, hg;
-    Bands(float k, float step_, float gap_, float hg_ = 0) : step(step_), gap(gap_), hg(hg_) {
+    float lo, rk, re, step, gap, hg, base;
+    Bands(float k, float step_, float gap_, float hg_ = 0, float base_ = 0)
+        : step(step_), gap(gap_), hg(hg_), base(base_) {
         k = fminf(1.f, fmaxf(0.03f, k));
         lo = 0.5f - k * 0.5f;
         rk = 1.f / k;
@@ -168,7 +169,7 @@ struct Bands {
     CRGB at(float u, const CRGB* lut) const {
         const int n = floorI(u);
         const float f = u - n;
-        const float cpos = (n + sm((f - lo) * rk)) * step;
+        const float cpos = base + (n + sm((f - lo) * rk)) * step;
         const float w = 1.f - sm((fabsf(f - 0.5f) - hg) * re);
         return scaleF(lutW(lut, cpos), 1.f - gap * w);
     }
@@ -331,15 +332,15 @@ void sparkleOverlay(CRGB* out, float density, float dt, const CRGB* lut, double 
 // Wide bands rolling across the grid in the direction Angle sets.
 
 static void rolling(Ctx& c) {
-    enum { kSpeed, kWidth, kAngle, kSoft, kGaps, kGapWidth, kStep, kOffset };
+    enum { kSpeed, kWidth, kAngle, kSoft, kGaps, kGapWidth, kColour, kOffset };
     const float speed = c.p[kSpeed], width = c.p[kWidth], soft = c.p[kSoft], gap = c.p[kGaps],
-                angle = c.p[kAngle] * DEG, step = c.p[kStep], gapW = c.p[kGapWidth];
+                angle = c.p[kAngle] * DEG, colour = c.p[kColour], gapW = c.p[kGapWidth];
     advance(c, c.s[1], speed / width, 1.f);  // in beats: one band per cycle
     const float ca = cosf(angle), sa = sinf(angle), iw = 1.f / width;
     const float ph = c.s[1] + c.p[kOffset] * iw;  // where the bands are: their motion plus Offset
     for (int b = 0; b < NY; b++) {
         // Transition at least the row's footprint projected onto the roll direction
-        const Bands bd(fmaxf(soft, FY[b] * fabsf(sa) * iw), step, gap, gapW * 0.5f);
+        const Bands bd(fmaxf(soft, FY[b] * fabsf(sa) * iw), 0.f, gap, gapW * 0.5f, colour);
         const float dy = (Y[b] - CY) * sa;
         CRGB* o = c.out + b * NX;
         for (int i = 0; i < NX; i++) o[i] = bd.at(((X[i] - CX) * ca + dy) * iw - ph, c.lutWrap);
@@ -525,15 +526,15 @@ static void lighthouse(Ctx& c) {
 // Concentric rings flowing out of (or into) a slowly wandering centre.
 
 static void rings(Ctx& c) {
-    enum { kSpeed, kSpacing, kWander, kWanderSpeed, kSoft, kGaps, kStep, kOffset };
+    enum { kSpeed, kSpacing, kWander, kWanderSpeed, kSoft, kGaps, kColour, kOffset };
     const float spacing = c.p[kSpacing], speed = c.p[kSpeed], soft = c.p[kSoft], gap = c.p[kGaps],
-                wander = c.p[kWander], wspeed = c.p[kWanderSpeed], step = c.p[kStep];
+                wander = c.p[kWander], wspeed = c.p[kWanderSpeed], colour = c.p[kColour];
     advance(c, c.s[0], speed / spacing, 1.f);  // in beats: a ring per cycle
     c.s[1] += c.dt * wspeed;
     const float cx = CX + wander * W * 0.5f * sinf(c.s[1] * 0.37f);
     const float cy = CY + wander * H * 0.5f * sinf(c.s[1] * 0.29f + 1.3f);
     const float is = 1.f / spacing, ph = c.s[0] + c.p[kOffset] * is;  // their motion plus Offset
-    const Bands base(soft, step, gap);  // where the softness is wider than the row's footprint
+    const Bands base(soft, 0.f, gap, 0.f, colour);  // where the softness is wider than the row's footprint
     for (int b = 0; b < NY; b++) {
         const float dy = Y[b] - cy;
         // The ring crosses the rows at a slant |dy| / r: its edge spans FY * |dy| / r across
@@ -544,7 +545,7 @@ static void rings(Ctx& c) {
             const float r = sqrtf(dx * dx + dy * dy);
             const float u = r * is - ph;
             if (r > 1e-3f * M ? fy <= soft * r : FY[b] * is <= soft) o[i] = base.at(u, c.lutWrap);
-            else o[i] = Bands(r > 1e-3f * M ? fy / r : FY[b] * is, step, gap).at(u, c.lutWrap);
+            else o[i] = Bands(r > 1e-3f * M ? fy / r : FY[b] * is, 0.f, gap, 0.f, colour).at(u, c.lutWrap);
         }
     }
 }
@@ -557,9 +558,9 @@ struct Drop { float x, y, r, fade; uint8_t col; bool live; float draw; };  // r:
 static Drop drops[10];
 
 static void dropsFx(Ctx& c) {
-    enum { kSpeed, kWidth, kRate, kMaxRadius, kCentreX, kCentreY, kColourStep, kBg };
+    enum { kSpeed, kWidth, kRate, kMaxRadius, kCentreX, kCentreY, kColour, kBg };
     const float rate = c.p[kRate], speed = c.p[kSpeed], width = c.p[kWidth], maxR = c.p[kMaxRadius],
-                bg = c.p[kBg], step = c.p[kColourStep];
+                bg = c.p[kBg], colour = c.p[kColour];
     // Where drops land: at Centre X (across the bars), Centre Y (along them)
     const float landX = c.p[kCentreY] * W, landY = Y[0] + c.p[kCentreX] * H;
     if (c.s[7] == 0) {
@@ -590,14 +591,7 @@ static void dropsFx(Ctx& c) {
     for (; spawn > 0; spawn--) {
         for (Drop& d : drops) {
             if (d.live) continue;
-            // Its colour: random from the palette, or Colour step further along it than the last drop's
-            uint8_t col;
-            if (step > 0.001f) {
-                c.s[4] = fmodf(c.s[4] + step, 1.f);
-                col = (uint8_t)(c.s[4] * 256.f);
-            } else {
-                col = random8();
-            }
+            const uint8_t col = (uint8_t)(fminf(fmaxf(colour, 0.f), 1.f) * 255.f);  // where in the palette
             d = {landX, landY, 0, 0, col, true};
             break;
         }
@@ -779,7 +773,7 @@ static void gradient(Ctx& c) {
     const float ang = c.p[kAngle] * DEG, spread = c.p[kSpread], offset = c.p[kOffset];
     const bool radial = c.p[kRadial] >= 0.5f;
     const float cx = c.p[kCentreY] * W, cy = Y[0] + c.p[kCentreX] * H;
-    const float base = offset;  // a Motion on Colour offset moves the colours
+    const float base = offset;  // an Animation on Colour offset moves the colours
     float k, k0;  // t = k * (distance along the gradient) + k0
     const float ca = cosf(ang), sa = sinf(ang);
     if (radial) {
@@ -1226,7 +1220,7 @@ static void strobe(Ctx& c) {
 #define H_BG "Background in the palette's first colour. 0 = black."
 #define H_DRIFT "Colours slowly move through the palette. 0 = still."
 #define H_GAPS "Darkness between bands. 0 = none, 1 = black."
-#define H_STEP "Palette step from band to band. 0.5 = alternating opposites."
+#define H_COLOUR "Where in the palette the colour is taken. An Animation on it changes it."
 #define H_SOFT_BANDS "0 = crisp edges, 1 = smooth blend."
 
 // Every effect's sliders follow one order, so the same kind of slider sits in the same place:
@@ -1240,8 +1234,8 @@ const EffectDef EFFECTS[] = {
       {"Softness", 0, 1, 0.6f, 0.01f, H_SOFT_BANDS},
       {"Dark gaps", 0, 1, 0.3f, 0.01f, H_GAPS},
       {"Gap width", 0, 0.9f, 0, 0.01f, "Gap width as a share of a band. Needs Dark gaps."},
-      {"Colour step", 0, 1, 0.2f, 0.01f, H_STEP},
-      {"Offset (%)", -200, 200, 0, 0.2f, "Shifts the bands. A Motion on it moves them to and fro.", 1}},
+      {"Colour", 0, 1, 0, 0.01f, H_COLOUR},
+      {"Offset (%)", -200, 200, 0, 0.2f, "Shifts the bands. An Animation on it moves them to and fro.", 1}},
      rolling, false, "band", 0,
      "Wide soft bands rolling across the layout."},
     {"Searchlights", 5,
@@ -1299,7 +1293,7 @@ const EffectDef EFFECTS[] = {
       {"Turn (deg/s)", -10, 10, 1, 0.1f, "Rotation, degrees per second."},
       {"Dark gaps", 0, 1, 0.6f, 0.01f, "Darkness between stripes. 0 = none."},
       {"Colour drift", 0, 1, 0.2f, 0.01f, H_DRIFT},
-      {"Offset (%)", -200, 200, 0, 0.2f, "Shifts the stripes. A Motion on it moves them to and fro.", 1}},
+      {"Offset (%)", -200, 200, 0, 0.2f, "Shifts the stripes. An Animation on it moves them to and fro.", 1}},
      plaid, false, "stripe", 0,
      "Two crossing stripe sets, moving and turning."},
     {"Rings", 8,
@@ -1309,8 +1303,8 @@ const EffectDef EFFECTS[] = {
       {"Wander speed", 0, 1, 0.2f, 0.01f, "How fast the centre roams."},
       {"Softness", 0, 1, 0.6f, 0.01f, H_SOFT_BANDS},
       {"Dark gaps", 0, 1, 0.4f, 0.01f, H_GAPS},
-      {"Colour step", 0, 1, 0.2f, 0.01f, H_STEP},
-      {"Offset (%)", -200, 200, 0, 0.2f, "Shifts the rings. A Motion on it moves them in and out.", 1}},
+      {"Colour", 0, 1, 0, 0.01f, H_COLOUR},
+      {"Offset (%)", -200, 200, 0, 0.2f, "Shifts the rings. An Animation on it moves them in and out.", 1}},
      rings, false, "ring", 0,
      "Rings flowing out of a wandering centre."},
     {"Drops", 8,
@@ -1320,7 +1314,7 @@ const EffectDef EFFECTS[] = {
       {"Max radius (%)", 20, 240, 120, 1, "Radius where a ring has faded, % of the shorter side.", 1},
       {"Centre X", -0.2f, 1.2f, 0.5f, 0.01f, "Landing point across the bars: 0 = first bar, 1 = last."},
       {"Centre Y", -0.2f, 1.2f, 0.5f, 0.01f, "Landing point along the bars: 0 = start, 1 = end."},
-      {"Colour step", 0, 1, 0, 0.01f, "0 = random colours; above 0: each drop this far along the palette."},
+      {"Colour", 0, 1, 0, 0.01f, H_COLOUR},
       {"Background", 0, 0.5f, 0.03f, 0.01f, H_BG}},
      dropsFx, false, "drop", 2,
      "Rings spreading from where drops land, like rain on a pond. Reverse: rings shrink in."},
@@ -1330,7 +1324,7 @@ const EffectDef EFFECTS[] = {
       {"Angle (deg)", -180, 180, 0, 1, "Direction of a straight gradient. 0 = along the bars."},
       {"Centre X", -0.2f, 1.2f, 0.5f, 0.01f, "Round centre across the bars: 0 = first bar, 1 = last."},
       {"Centre Y", -0.2f, 1.2f, 0.5f, 0.01f, "Round centre along the bars: 0 = start, 1 = end."},
-      {"Colour offset", -2, 2, 0, 0.01f, "Shifts the colours; 1 = a whole palette. A Motion on it makes them flow."}},
+      {"Colour offset", -2, 2, 0, 0.01f, "Shifts the colours; 1 = a whole palette. An Animation on it makes them flow."}},
      gradient, false, nullptr, -1,
      "A palette gradient, straight or round."},
     {"Shapes", 8,

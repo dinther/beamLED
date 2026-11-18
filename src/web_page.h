@@ -596,8 +596,8 @@ function draw() {
       v => v.toFixed(decimals(d.step)),
       v => { p.params[j] = v; paramDeps(); markChanged(S.current); liveSend('/beamled/slider' + (j + 1), (v - d.min) / (d.max - d.min), () => post('/api/preset', {index: S.current, params: p.params})); },
       d.help + ' (' + d.min + ' to ' + d.max + ', default ' + d.def + ')' +
-        (by >= 0 ? ' Now moved by Motion ' + (by + 1) + ' (below): set its From and To there.' : ''), 'p' + j);
-    if (by >= 0) { row.classList.add('moving'); off(row, 'Motion ' + (by + 1) + ' moves it.'); }
+        (by >= 0 ? ' Animation ' + (by + 1) + ' moves it.' : ''), 'p' + j);
+    if (by >= 0) { row.classList.add('moving'); off(row, 'Animation ' + (by + 1) + ' moves it.'); }
     else if (inBeats && j == ef.speedParam) off(row, 'Timing is Beats: Beats per ' + ef.cycle + ' sets the speed.');
     else if (ef.steps && !inBeats && /^(Angle|Softness)/.test(d.name))
       off(row, 'Timing is ' + modes[timing] + ': only for the pattern (Beats).');
@@ -784,7 +784,7 @@ function curve(mo) {
 function motionEditor(p, ef, mo, m) {
   const send = o => post('/api/preset', Object.assign({index: S.current, motion: m}, o));
   const box = h('div', {className: 'motion'});
-  box.append(select('Motion ' + (m + 1), ['Off'].concat(ef.params.map(d => d.name)), mo.target, v => {
+  box.append(select('Animation ' + (m + 1), ['Off'].concat(ef.params.map(d => d.name)), mo.target, v => {
     mo.target = v;
     if (v) { const d = ef.params[v - 1]; mo.from = d.min; mo.to = d.max; }
     send({target: v, from: mo.from, to: mo.to}); draw();

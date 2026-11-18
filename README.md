@@ -46,7 +46,7 @@ for this kind of installation (see [docs/background.md](docs/background.md)):
 - **Mirror X and Mirror Y** per preset: the last rows mirror the first (X), and the second half of
   every bar mirrors the first (Y; only that half is rendered, so it takes about half the time); both
   together give four-way symmetry.
-- **Motions**: up to three per preset, each moving one slider back and forth by itself (a beam
+- **Animations**: up to three per preset, each moving one slider back and forth by itself (a beam
   swinging, bands scrolling to and fro, a width breathing) along a shape, in seconds or in beats.
 - **Palettes**: up to 16, of 2 to 5 colours, shared by the presets. Each colour has a position\n  along the palette: drag its marker to bunch colours together or give one a long blend.
 - **Ableton Link**: tempo and beat shared with Ableton Live and other Link apps. Per preset, an
@@ -55,7 +55,7 @@ for this kind of installation (see [docs/background.md](docs/background.md)):
 - **OSC and OSCQuery**: the live controls (preset, on/off, the brightness levels, Auto, Link, the
   sparkle overlay, palette lock) and the playing preset's eight sliders have OSC addresses, with
   their type, range and help, and changes are pushed back as feedback. Made for MIMa.
-- **A web page** on the board: presets, sliders, motions, palettes, layout and network settings,
+- **A web page** on the board: presets, sliders, animations, palettes, layout and network settings,
   with help on every control. It follows changes made anywhere (the button, OSC, another device)
   as they happen, without polling.
 - **Network** over Ethernet only: DHCP, a fallback address, `http://beamled.local`, and firmware
@@ -66,11 +66,11 @@ for this kind of installation (see [docs/background.md](docs/background.md)):
 
 | | |
 |---|---|
-| ![Rolling bars](docs/images/beam_rolling_ocean.jpg) **Rolling bars**: wide soft bands rolling across the layout at any angle (a Motion on Angle swings it). | ![Searchlights](docs/images/beam_searchlights.jpg) **Searchlights**: soft round beams wandering over the layout on slow looping paths. |
-| ![Lighthouse](docs/images/beam_lighthouse.jpg) **Lighthouse**: a beam turning around a point at the edge of the layout or beyond it; it can also be aimed, or swung with a Motion. | ![Clouds](docs/images/beam_clouds_sunset.jpg) **Clouds**: soft clouds drifting on a slowly turning wind, from clear sky to overcast. |
+| ![Rolling bars](docs/images/beam_rolling_ocean.jpg) **Rolling bars**: wide soft bands rolling across the layout at any angle (an Animation on Angle swings it). | ![Searchlights](docs/images/beam_searchlights.jpg) **Searchlights**: soft round beams wandering over the layout on slow looping paths. |
+| ![Lighthouse](docs/images/beam_lighthouse.jpg) **Lighthouse**: a beam turning around a point at the edge of the layout or beyond it; it can also be aimed, or swung with an Animation. | ![Clouds](docs/images/beam_clouds_sunset.jpg) **Clouds**: soft clouds drifting on a slowly turning wind, from clear sky to overcast. |
 | ![Sweeps](docs/images/beam_sweeps.jpg) **Sweeps**: bars sweeping across the layout one after another, each pass at a new angle, with a trail. | ![Plaid](docs/images/beam_plaid.jpg) **Plaid**: two sets of broad stripes crossing at an angle, moving and slowly turning. |
-| ![Rings](docs/images/beam_rings.jpg) **Rings**: concentric rings flowing out of, or into, a slowly wandering centre. | ![Drops](docs/images/beam_drops.jpg) **Drops**: big rings spreading from where drops land (a point you set and can move with Motions) and fading out, like raindrops on a pond. |
-| ![Sparkle overlay](docs/images/beam_rolling_ice_sparkle.jpg) **Sparkle**: twinkles in palette colours, as an effect of its own or as an overlay on any other. | ![Gradient](docs/images/beam_gradient.jpg) **Gradient**: a steady gradient through the palette, straight at any angle or round from a centre; a Motion on Colour offset makes the colours flow. |
+| ![Rings](docs/images/beam_rings.jpg) **Rings**: concentric rings flowing out of, or into, a slowly wandering centre. | ![Drops](docs/images/beam_drops.jpg) **Drops**: big rings spreading from where drops land (a point you set and can move with Animations) and fading out, like raindrops on a pond. |
+| ![Sparkle overlay](docs/images/beam_rolling_ice_sparkle.jpg) **Sparkle**: twinkles in palette colours, as an effect of its own or as an overlay on any other. | ![Gradient](docs/images/beam_gradient.jpg) **Gradient**: a steady gradient through the palette, straight at any angle or round from a centre; an Animation on Colour offset makes the colours flow. |
 
 **Strobe** is a drum machine of flashes: each preset holds a grid of four lanes and 32 steps (two
 bars of 1/16 notes on the beat), and on the steps set the lanes
@@ -89,7 +89,7 @@ faster, and the tube's axis sways, so its near end swings while the far end stay
 
 The scrolling effects have a position slider: **Offset** (Rolling bars, Plaid, Rings),
 **Offset X** and **Offset Y** (Clouds), and Lighthouse has **Angle**. With the speed
-at 0, a Motion on it moves the pattern back and forth.
+at 0, an Animation on it moves the pattern back and forth.
 
 ## The web page
 
@@ -106,18 +106,18 @@ saved yet.
 ![A preset's settings](docs/images/ui_preset.png)
 
 Each preset: its name, its place in the list (Earlier / Later / Delete), effect, palette, timing
-and the effect's sliders. **Save** keeps the changes; after a rename it reads **Save as new** and adds\na preset with the new name, leaving the original as it was. A preset just added takes its first\nSave in place. Sliders reach the layout within a frame. A slider moved by a Motion
+and the effect's sliders. **Save** keeps the changes; after a rename it reads **Save as new** and adds\na preset with the new name, leaving the original as it was. A preset just added takes its first\nSave in place. Sliders reach the layout within a frame. A slider moved by an Animation
 shows ↔ and follows it on screen.
 
-![A Motion](docs/images/ui_motion.png)
+![An Animation](docs/images/ui_motion.png)
 
-A **Motion** moves one slider between From and To. Shapes: Sine, Linear, Ease in-out, Hold at
+An **Animation** moves one slider between From and To. Shapes: Sine, Linear, Ease in-out, Hold at
 ends, Overshoot, Bounce, Random slide (a new random value each half period, glided to), Min max (From,
 then To, with no transition), Random jump (Random slide's values, jumped to at once and held) and
 Sawtooth (steadily From to To, then straight back: on an Angle from -180 to 180 a turn that never
 stops); the drawing shows one period. The period is in seconds or in
-beats; in beats it keeps to the bar. Phase sets where in its cycle it starts, so motions can
-run out of step. Motions run on the board, not in the browser: the page only shows them.
+beats; in beats it keeps to the bar. Phase sets where in its cycle it starts, so animations can
+run out of step. Animations run on the board, not in the browser: the page only shows them.
 
 ![Help on every control](docs/images/ui_tooltip.png)
 
@@ -176,7 +176,7 @@ browsed, sent to (a group's *Sends to* can name the OSCQuery application) and fo
 | `/beamled/slider1` ... `slider8` | f 0..1 | the playing preset's sliders, by their place on the page, each 0..1 over its whole range (ignored past the effect's last slider); they follow when the preset changes |
 
 Slider changes over OSC play at once and, like changes on the page, are kept with Save
-(`/beamled/save`). Everything else about a preset (effect, palette, timing, motions) and the
+(`/beamled/save`). Everything else about a preset (effect, palette, timing, animations) and the
 palettes is set on the web page. The tempo isn't on OSC: Ableton Link moves it by fractions of a BPM all the time.
 
 ## Hardware
