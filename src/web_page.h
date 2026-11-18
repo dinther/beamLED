@@ -475,6 +475,7 @@ function draw() {
   diffuse.onchange = () => {
     pvBare = !diffuse.checked;
     try { localStorage.setItem('beamled.pvlook', pvBare ? 'bare' : 'diffused'); } catch (e) {}
+    previewSync();  // bare LEDs get more points per row
   };
   const look = field('Diffuse', diffuse, H.previewLook);
   const pin = button('📌', H.previewPin, {className: 'pv-pin' + (pvPinned ? ' on' : '')});
@@ -1302,6 +1303,7 @@ document.getElementById('elsewhere-go').onclick = () => {
 
 // ---- Live preview: frames from the board while the Preview section is open and the tab shows
 let pvOn = false, pvOff = null, pvDots = null, pvDotImg = null;
+let pvMaxSent = 0;  // the points per row last asked for
 let pvBare = false;  // Look: bare LEDs with bloom (else diffused bars); kept in this browser
 let pvPinned = false;  // the preview stays at the top of the screen while scrolling; kept in this browser
 try { pvPinned = localStorage.getItem('beamled.pvpin') == '1'; } catch (e) {}
@@ -1316,9 +1318,25 @@ function previewSync() {
     pvWatch.observe(cv);
   }
   const want = !!cv && !cv.closest('[hidden]') && document.visibilityState == 'visible' && pvSeen;
-  if (want == pvOn || !sock || sock.readyState != 1 || !sock.accepted) return;
-  sock.send(JSON.stringify({COMMAND: 'PREVIEW', DATA: want}));
+  // Points per row: a preview this size can't show more (neighbouring LEDs merge on the board)
+  const max = pvBare ? 300 : 200;
+  if ((want == pvOn && (!want || max == pvMaxSent)) || !sock || sock.readyState != 1 || !sock.accepted) return;
+  sock.send(JSON.stringify({COMMAND: 'PREVIEW', DATA: want, MAX: max}));
   pvOn = want;
+  pvMaxSent = max;
+}
+// "BLP5": points per row, rows, then each point in 16-bit colour (RGB565): to the 8-bit RGB
+// frame the drawing takes
+function unpack565(buf) {
+  const s = new Uint8Array(buf), ns = s[4] | s[5] << 8, ny = s[6] | s[7] << 8, n = ns * ny;
+  if (s.length < 8 + n * 2) return null;
+  const v = new Uint16Array(buf.slice(8, 8 + n * 2)), o = new Uint8Array(8 + n * 3);
+  o.set(s.subarray(0, 8));
+  for (let i = 0, t = 8; i < n; i++, t += 3) {
+    const p = v[i], r = p >> 11, g = p >> 5 & 63, b = p & 31;
+    o[t] = r << 3 | r >> 2; o[t + 1] = g << 2 | g >> 4; o[t + 2] = b << 3 | b >> 2;
+  }
+  return o.buffer;
 }
 document.addEventListener('visibilitychange', previewSync);
 // The ceiling from below, the first row on the left: each row at its place, its LEDs up the
@@ -1438,7 +1456,7 @@ function live(take = false) {
   ws.onmessage = e => {
     if (typeof e.data != 'string') {
       const u8 = new Uint8Array(e.data);
-      if (u8[0] == 66 && u8[1] == 76 && u8[2] == 80 && u8[3] == 86) return drawPreview(e.data);  // "BLPV"
+      if (u8[0] == 66 && u8[1] == 76 && u8[2] == 80 && u8[3] == 53) { const f = unpack565(e.data); return f && drawPreview(f); }  // "BLP5"
       for (const [addr, v] of oscMessages(e.data)) oscValue(addr, v);
       return;
     }

@@ -593,13 +593,17 @@ void oscPushTiming(float& avgMs, float& maxMs) {
 // Two buffers on the heap, only while a page has its Preview open: the brightest of the frames
 // rendered since the last preview frame (the preview sends 15 a second and the board renders 40, so
 // a flash lit for a frame or two would mostly fall between two previews), and the frame to send.
+// Both in 16-bit colour (RGB565), and at most pvMax points per row (the page asks: a small window
+// can't show more): neighbouring LEDs merge into one point, the brightest of them.
 // The render loop (core 1) and the server's task (core 0) hand them over by the state below, so a
 // frame being sent is never written and buffers in use are never freed.
 enum { PV_IDLE, PV_READY, PV_SENDING, PV_BUSY };
 static std::atomic<int> pvState{PV_IDLE};
-static uint8_t* pvPeak = nullptr;  // nx * ny * 3
-static uint8_t* pvOut = nullptr;   // "BLPV", nx, ny, then the frame
-static size_t pvLen = 0;           // pvOut's length (0: no buffers)
+static uint16_t* pvPeak = nullptr;  // points per row * ny, RGB565
+static uint8_t* pvOut = nullptr;    // "BLP5", points per row, ny (16 bits each), then the points
+static size_t pvLen = 0;            // pvOut's length (0: no buffers)
+static int pvGroup = 1;             // LEDs per point
+static volatile int pvMax = 300;    // points per row at most, as the page asked
 static bool pvHeld = false;
 static uint32_t pvCalled = 0, pvLast = 0;
 
@@ -620,7 +624,8 @@ static bool pvTake(int& was) {
 
 static void pvFree() {
     free(pvPeak); free(pvOut);
-    pvPeak = pvOut = nullptr;
+    pvPeak = nullptr;
+    pvOut = nullptr;
     pvLen = 0;
     pvHeld = false;
 }
@@ -632,30 +637,36 @@ void oscPreviewFrame(const CRGB* leds, int nx, int ny, float bright) {
     const uint32_t now = millis();
     if (now - pvCalled > 200) pvHeld = false;  // after a pause the hold starts afresh
     pvCalled = now;
-    const size_t n = (size_t)nx * ny * 3, len = 8 + n;
-    if (len != pvLen) {  // first use, or another layout
+    const int max = constrain((int)pvMax, 16, 1024);
+    const int g = (nx + max - 1) / max, ns = (nx + g - 1) / g;  // LEDs per point, points per row
+    const size_t pts = (size_t)ns * ny, len = 8 + pts * 2;
+    if (len != pvLen || g != pvGroup) {  // first use, another layout, or the page asked otherwise
         pvFree();
-        pvPeak = (uint8_t*)malloc(n);
+        pvPeak = (uint16_t*)malloc(pts * 2);
         pvOut = (uint8_t*)malloc(len);
-        if (pvPeak && pvOut) pvLen = len;
+        if (pvPeak && pvOut) pvLen = len, pvGroup = g;
         else pvFree();
         next = PV_IDLE;
     }
     if (pvLen) {
-        const int k = (int)(constrain(bright, 0.f, 1.f) * 256.f);
-        const uint8_t* in = (const uint8_t*)leds;
-        if (!pvHeld)
-            for (size_t i = 0; i < n; i++) pvPeak[i] = (uint8_t)(in[i] * k >> 8);
-        else
-            for (size_t i = 0; i < n; i++) {
-                const uint8_t v = (uint8_t)(in[i] * k >> 8);
-                if (v > pvPeak[i]) pvPeak[i] = v;
+        const int kb = (int)(constrain(bright, 0.f, 1.f) * 256.f);
+        if (!pvHeld) memset(pvPeak, 0, pts * 2);
+        for (int b = 0; b < ny; b++) {
+            const CRGB* row = leds + b * nx;
+            uint16_t* out = pvPeak + b * ns;
+            for (int i = 0; i < nx; i++) {
+                const CRGB& c = row[i];
+                const int r = (c.r * kb >> 8) >> 3, gr = (c.g * kb >> 8) >> 2, bl = (c.b * kb >> 8) >> 3;
+                uint16_t& p = out[g == 1 ? i : i / g];
+                const int pr = p >> 11, pg = p >> 5 & 63, pb = p & 31;  // the brightest, per colour
+                p = (uint16_t)((r > pr ? r : pr) << 11 | (gr > pg ? gr : pg) << 5 | (bl > pb ? bl : pb));
             }
+        }
         pvHeld = true;
         if (now - pvLast >= 66) {  // at most 15 a second
-            memcpy(pvOut, "BLPV", 4);
-            pvOut[4] = nx & 0xFF; pvOut[5] = nx >> 8; pvOut[6] = ny & 0xFF; pvOut[7] = ny >> 8;
-            memcpy(pvOut + 8, pvPeak, n);
+            memcpy(pvOut, "BLP5", 4);
+            pvOut[4] = ns & 0xFF; pvOut[5] = ns >> 8; pvOut[6] = ny & 0xFF; pvOut[7] = ny >> 8;
+            memcpy(pvOut + 8, pvPeak, pts * 2);  // little-endian, as the page reads it
             pvHeld = false;  // the next window starts afresh
             pvLast = now;
             next = PV_READY;
@@ -765,8 +776,9 @@ static void command(int fd, const char* text) {
         sendStatus(fd);
         return;
     }
-    if (!strcmp(cmd, "PREVIEW")) {  // the page's Preview opened (true) or closed
+    if (!strcmp(cmd, "PREVIEW")) {  // the page's Preview opened (true) or closed; MAX: points per row
         l->preview = l->page && (d["DATA"] | false);
+        if (d["MAX"].is<int>()) pvMax = constrain(d["MAX"].as<int>(), 16, 1024);
         return;
     }
     const bool listen = !strcmp(cmd, "LISTEN");
