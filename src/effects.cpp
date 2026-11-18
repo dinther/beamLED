@@ -303,14 +303,13 @@ void sparkleOverlay(CRGB* out, float density, float dt, const CRGB* lut, double 
 }
 
 // ---------------------------------------------------------------- Rolling bars
-// Wide bands rolling across the grid; their direction slowly turns.
+// Wide bands rolling across the grid in the direction Angle sets.
 
 static void rolling(Ctx& c) {
-    const float speed = c.p[0], width = c.p[1], soft = c.p[2], gap = c.p[3], turn = c.p[4],
+    const float speed = c.p[0], width = c.p[1], soft = c.p[2], gap = c.p[3], angle = c.p[4] * DEG,
                 step = c.p[5], gapW = c.p[7];
-    c.s[0] += c.dt * turn * DEG;
     advance(c, c.s[1], speed / width, 1.f);  // in beats: one band per cycle
-    const float ca = cosf(c.s[0]), sa = sinf(c.s[0]), iw = 1.f / width;
+    const float ca = cosf(angle), sa = sinf(angle), iw = 1.f / width;
     const float ph = c.s[1] + c.p[6] * iw;  // where the bands are: their motion plus Offset
     for (int b = 0; b < NY; b++) {
         // Transition at least the row's footprint projected onto the roll direction
@@ -915,12 +914,12 @@ const EffectDef EFFECTS[] = {
       {"Band width (m)", 0.8f, 5, 2, 0.1f, "The width of one band, in metres. Narrow bands flicker as they cross the rows: with rows half a metre apart, for example, about 0.8 m is the narrowest that stays smooth."},
       {"Softness", 0, 1, 0.6f, 0.01f, H_SOFT_BANDS},
       {"Dark gaps", 0, 1, 0.3f, 0.01f, H_GAPS},
-      {"Turn (deg/s)", -10, 10, 1.5f, 0.1f, "How fast the rolling direction turns, in degrees per second; negative turns the other way. 1.5 = a full turn in 4 minutes, 0 = a fixed direction."},
+      {"Angle (deg)", -180, 180, 0, 1, "The direction the bands roll, in degrees: 0 = along the rows, 90 = across them (from the first row to the last), 180 = along the rows the other way. A Motion on it swings the direction to and fro."},
       {"Colour step", 0, 1, 0.2f, 0.01f, H_STEP},
       {"Offset (m)", -10, 10, 0, 0.01f, "Shifts the pattern by this many metres, the way Speed moves the bands (in the rolling direction). With Speed at 0 it stays put, so a Motion on Offset moves it back and forth (with easing). 0 = no shift."},
       {"Gap width", 0, 0.9f, 0, 0.01f, "How wide the dark gaps between the bands are, as a share of a band: 0 = only where the colours meet, 0.5 = half dark, 0.9 = thin bars of colour with wide gaps. Dark gaps sets how dark they get (at Dark gaps 0 they don't show)."}},
      rolling, false, "band", 0,
-     "Wide soft bands of palette colour rolling across the ceiling while their direction slowly turns. In Beats timing, each band takes the chosen number of beats to pass."},
+     "Wide soft bands of palette colour rolling across the ceiling, in the direction Angle sets. In Beats timing, each band takes the chosen number of beats to pass."},
     {"Searchlights", 5,
      {{"Beams", 1, 5, 3, 1, "How many round beams wander over the ceiling, each in its own palette colour. Where beams overlap their light adds up."},
       {"Beam radius (m)", 0.5f, 3, 1.2f, 0.1f, "The radius of each beam in metres: 1.2 m makes a beam about 2.4 m across."},

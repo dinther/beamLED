@@ -60,7 +60,7 @@ for this kind of installation (see [docs/background.md](docs/background.md)):
 
 | | |
 |---|---|
-| ![Rolling bars](docs/images/beam_rolling_ocean.jpg) **Rolling bars**: wide soft bands rolling across the ceiling while their direction slowly turns. | ![Searchlights](docs/images/beam_searchlights.jpg) **Searchlights**: soft round beams wandering over the ceiling on slow looping paths. |
+| ![Rolling bars](docs/images/beam_rolling_ocean.jpg) **Rolling bars**: wide soft bands rolling across the ceiling at any angle (a Motion on Angle swings it). | ![Searchlights](docs/images/beam_searchlights.jpg) **Searchlights**: soft round beams wandering over the ceiling on slow looping paths. |
 | ![Lighthouse](docs/images/beam_lighthouse.jpg) **Lighthouse**: a beam turning around a point at the edge of the ceiling or beyond it; it can also be aimed, or swung with a Motion. | ![Clouds](docs/images/beam_clouds_sunset.jpg) **Clouds**: soft clouds drifting on a slowly turning wind, from clear sky to overcast. |
 | ![Sweeps](docs/images/beam_sweeps.jpg) **Sweeps**: bars sweeping across the ceiling one after another, each pass at a new angle, with a trail. | ![Plaid](docs/images/beam_plaid.jpg) **Plaid**: two sets of broad stripes crossing at an angle, moving and slowly turning. |
 | ![Rings](docs/images/beam_rings.jpg) **Rings**: concentric rings flowing out of, or into, a slowly wandering centre. | ![Drops](docs/images/beam_drops.jpg) **Drops**: big rings spreading from where drops land (a point you set and can move with Motions, or random places) and fading out, like raindrops on a pond. |
