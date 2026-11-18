@@ -985,7 +985,7 @@ const EffectDef EFFECTS[] = {
      "Concentric rings flowing out of (or into) a centre that slowly wanders over the ceiling."},
     {"Drops", 8,
      {{"Drops per minute", 1, 60, 10, 1, "How many new drops fall per minute. At most 10 rings show at once. In Beats timing this slider is replaced by beats per drop, and each drop lands on the beat."},
-      {"Speed (m/s)", 0.1f, 2, 0.5f, 0.01f, "How fast a ring spreads, in metres per second."},
+      {"Speed (m/s)", 0.1f, 4, 0.5f, 0.01f, "How fast a ring spreads, in metres per second."},
       {"Ring width (m)", 0.4f, 2.5f, 1, 0.1f, "The width of a ring's bright band, in metres."},
       {"Max radius (m)", 1, 12, 6, 0.1f, "How far a ring spreads before it has faded out completely, in metres."},
       {"Background", 0, 0.3f, 0.03f, 0.01f, H_BG},
