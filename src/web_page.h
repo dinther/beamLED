@@ -475,7 +475,6 @@ function draw() {
   diffuse.onchange = () => {
     pvBare = !diffuse.checked;
     try { localStorage.setItem('beamled.pvlook', pvBare ? 'bare' : 'diffused'); } catch (e) {}
-    previewSync();  // bare LEDs get more points per row
   };
   const look = field('Diffuse', diffuse, H.previewLook);
   const pin = button('📌', H.previewPin, {className: 'pv-pin' + (pvPinned ? ' on' : '')});
@@ -1319,23 +1318,27 @@ function previewSync() {
   }
   const want = !!cv && !cv.closest('[hidden]') && document.visibilityState == 'visible' && pvSeen;
   // Points per row: a preview this size can't show more (neighbouring LEDs merge on the board)
-  const max = pvBare ? 300 : 200;
+  const max = 200;
   if ((want == pvOn && (!want || max == pvMaxSent)) || !sock || sock.readyState != 1 || !sock.accepted) return;
   sock.send(JSON.stringify({COMMAND: 'PREVIEW', DATA: want, MAX: max}));
   pvOn = want;
   pvMaxSent = max;
 }
 // "BLP5": points per row, rows, then each point in 16-bit colour (RGB565): to the 8-bit RGB
-// frame the drawing takes
+// frame the drawing takes, one entry per LED. With more LEDs than points (long rows: the board
+// merges neighbours), each point lights all the LEDs it stands for, so no LED is left out.
 function unpack565(buf) {
   const s = new Uint8Array(buf), ns = s[4] | s[5] << 8, ny = s[6] | s[7] << 8, n = ns * ny;
-  if (s.length < 8 + n * 2) return null;
-  const v = new Uint16Array(buf.slice(8, 8 + n * 2)), o = new Uint8Array(8 + n * 3);
-  o.set(s.subarray(0, 8));
-  for (let i = 0, t = 8; i < n; i++, t += 3) {
-    const p = v[i], r = p >> 11, g = p >> 5 & 63, b = p & 31;
-    o[t] = r << 3 | r >> 2; o[t + 1] = g << 2 | g >> 4; o[t + 2] = b << 3 | b >> 2;
-  }
+  if (s.length < 8 + n * 2 || !ns) return null;
+  const v = new Uint16Array(buf.slice(8, 8 + n * 2));
+  const L = S && S.layout, nx = L && L.ny == ny && L.nx >= ns ? L.nx : ns, g = Math.ceil(nx / ns);
+  const o = new Uint8Array(8 + nx * ny * 3);
+  o.set([66, 76, 80, 86, nx & 255, nx >> 8, ny & 255, ny >> 8]);
+  for (let b = 0, t = 8; b < ny; b++)
+    for (let i = 0; i < nx; i++, t += 3) {
+      const p = v[b * ns + Math.min(ns - 1, (i / g) | 0)], r = p >> 11, gr = p >> 5 & 63, bl = p & 31;
+      o[t] = r << 3 | r >> 2; o[t + 1] = gr << 2 | gr >> 4; o[t + 2] = bl << 3 | bl >> 2;
+    }
   return o.buffer;
 }
 document.addEventListener('visibilitychange', previewSync);
