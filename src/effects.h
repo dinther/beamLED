@@ -46,8 +46,11 @@ extern const int NUM_EFFECTS;
 
 // (Re)compute LED positions from the layout; call after a layout change
 void effectsInit();
+// Renders effect e into c.out. mirror: only the left half (the middle LED too, for an odd count)
+// is rendered, and the right half is its mirror image.
+void effectsRender(const EffectDef& e, Ctx& c, bool mirror);
 // ms per frame for effect e at its defaults (scratch buffer; the effect playing isn't disturbed)
-float effectsBenchmark(int e, const CRGB* lutWrap, const CRGB* lutLin, int frames);
+float effectsBenchmark(int e, const CRGB* lutWrap, const CRGB* lutLin, int frames, bool mirror = false);
 // Twinkles added on top of any effect. density 0..1. lut: their colours (a palette as a loop,
 // each twinkle a random place on it); nullptr = white.
 // div > 0: on the beat grid, div ticks per beat (1 = quarter notes ... 8 = 32nds): new twinkles

@@ -17,6 +17,8 @@ struct Preset {
                           // start only on 1/4, 1/8, 1/16 or 1/32 notes; bit 7 (SPARKLE_BURST):
                           // short flashes, gone before the next tick (in what was padding: older
                           // saves read as 0)
+    uint8_t mirror;       // the right half mirrors the left (only the left is rendered; in what was
+                          // padding: older saves read as 0)
     float p[MAXP];
     float sparkle;  // overlay density 0..1
 };

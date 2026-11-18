@@ -138,6 +138,7 @@ static void presetJson(JsonObject o, int i) {
     o["sparkle"] = p.sparkle;
     o["sparkleBeat"] = p.sparkleBeat & SPARKLE_GRID;  // 0 = free, 1..4 = 1/4, 1/8, 1/16, 1/32
     o["sparkleBurst"] = (p.sparkleBeat & SPARKLE_BURST) != 0;
+    o["mirror"] = p.mirror != 0;
     JsonArray a = o["params"].to<JsonArray>();
     for (int j = 0; j < EFFECTS[p.effect].n; j++) a.add(p.p[j]);
     JsonArray ms = o["motions"].to<JsonArray>();
@@ -398,6 +399,7 @@ static void handlePreset() {
     if (d["sparkle"].is<float>()) p.sparkle = constrain(d["sparkle"].as<float>(), 0.f, 1.f);
     if (d["sparkleBeat"].is<int>())
         p.sparkleBeat = (p.sparkleBeat & SPARKLE_BURST) | constrain(d["sparkleBeat"].as<int>(), 0, 4);
+    if (d["mirror"].is<bool>()) p.mirror = d["mirror"].as<bool>() ? 1 : 0;
     if (d["sparkleBurst"].is<bool>())
         p.sparkleBeat = (p.sparkleBeat & SPARKLE_GRID) | (d["sparkleBurst"].as<bool>() ? SPARKLE_BURST : 0);
     if (d["params"].is<JsonArray>()) {
@@ -681,6 +683,7 @@ static void handleRestore() {
         p.palette = constrain(q["palette"] | 0, 0, paletteCount - 1);
         p.sparkle = constrain(q["sparkle"] | 0.f, 0.f, 1.f);
         p.sparkleBeat = constrain(q["sparkleBeat"] | 0, 0, 4) | ((q["sparkleBurst"] | false) ? SPARKLE_BURST : 0);
+        p.mirror = (q["mirror"] | false) ? 1 : 0;
         JsonArray ps = q["params"].as<JsonArray>();
         for (int j = 0; j < e.n && j < (int)ps.size(); j++)
             p.p[j] = constrain(ps[j].as<float>(), e.params[j].min, e.params[j].max);
@@ -794,7 +797,7 @@ static void handleBench() {
     d["marks"] = storeMarks();
     d["dirtyMs"] = storeDirtyMs();
     d["effect"] = e < NUM_EFFECTS && e >= 0 ? EFFECTS[e].name : "?";
-    d["ms"] = effectsBenchmark(e, lw, ll, frames);
+    d["ms"] = effectsBenchmark(e, lw, ll, frames, hasArg("m") && arg("m").toInt() != 0);
     sendJson(d);
 }
 

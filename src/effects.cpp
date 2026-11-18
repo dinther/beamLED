@@ -15,8 +15,11 @@ static constexpr float TAU = 6.2831853f;
 static float X[MAX_X];   // m along a row
 static float Y[MAX_Y];   // m across the rows
 static float FY[MAX_Y];  // footprint of a row across the rows (m)
+// NX, NL: the LEDs per row and in all that an effect renders (in mirror, the left half only)
 static int NX = 1, NY = 1, NL = 1;
 static float CX, CY, W, H;
+static float PITCH = 1;  // m from one LED to the next along a row
+static int NXFULL = 1;   // LEDs per row in the layout
 static float noiseScale = 1.f / 15000.f;
 
 // ---------------------------------------------------------------- helpers
@@ -569,7 +572,7 @@ static void dropsFx(Ctx& c) {
     static float* ring = nullptr;  // one drop's light along a row, at every other LED
     if (!ring) ring = (float*)malloc((MAX_X + 2) * sizeof(float));
     if (!acc || !ring) return;
-    const float pitch = W / NX;
+    const float pitch = PITCH;
     const float invSig = 1.f / sig, invSig2 = invSig * invSig;
     // Per drop: its colour times fade and ring width, once; a ring under half a colour step is
     // left out (dk[n][3] = 0)
@@ -706,7 +709,8 @@ static void clouds(Ctx& c) {
         tz[oct] = (uint32_t)(wrap256(c.s[3] * (1 + oct * 0.7f) + oct * 47.1f) * 65536.f);
     }
     // Clouds are smooth along a row: sample every ~8 cm and interpolate
-    const int ns = clampi((int)(W / 0.08f) + 2, 2, NX);
+    const float span = NX == NXFULL ? W : NX * PITCH;  // the width rendered (in mirror, half)
+    const int ns = clampi((int)(span / 0.08f) + 2, 2, NX);
     static float v[MAX_X];
     const float istep = NX > 1 ? (float)(ns - 1) / (NX - 1) : 0;
     for (int b = 0; b < NY; b++) {
@@ -843,7 +847,7 @@ static void shapesFx(Ctx& c) {
         n++;
     }
     memset(c.out, 0, NL * sizeof(CRGB));
-    const float pitch = W / NX, ip = 1.f / pitch;
+    const float pitch = PITCH, ip = 1.f / pitch;
     for (int b = 0; b < NY; b++) {
         CRGB* o = c.out + b * NX;
         for (int j = 0; j < n; j++) {
@@ -1033,6 +1037,8 @@ void effectsInit() {
     NY = layout.ny;
     NL = NX * NY;
     const float pitch = layout.length / NX;
+    PITCH = pitch;
+    NXFULL = NX;
     for (int i = 0; i < NX; i++) X[i] = (i + 0.5f) * pitch;
     const bool measured = layout.measured && NY == cfg::CEILING_ROWS;
     const float spacing = layout.aspect * pitch;
@@ -1064,10 +1070,36 @@ void effectsInit() {
     if (sd > 100) noiseScale = (float)(0.45 / sd);
 }
 
+// ---------------------------------------------------------------- mirror
+
+void effectsRender(const EffectDef& e, Ctx& c, bool mirror) {
+    if (!mirror || NX < 2) {
+        e.render(c);
+        return;
+    }
+    // The effect sees a grid of the left half only (rows packed at that width), then each row is
+    // spread out to its full width from the last row back, so nothing is overwritten before it is read
+    const int full = NX, fullL = NL, half = (NX + 1) / 2;
+    NX = half;
+    NL = half * NY;
+    e.render(c);
+    NX = full;
+    NL = fullL;
+    for (int b = NY - 1; b >= 0; b--) {
+        const CRGB* src = c.out + b * half;
+        CRGB* dst = c.out + b * full;
+        for (int i = half - 1; i >= 0; i--) {
+            const CRGB v = src[i];
+            dst[full - 1 - i] = v;
+            dst[i] = v;
+        }
+    }
+}
+
 // ---------------------------------------------------------------- benchmark
 // Time to render effect e with its default parameters, in ms per frame, into a scratch buffer.
 // The effects' shared state is saved and put back, so the effect playing carries on as it was.
-float effectsBenchmark(int e, const CRGB* lutWrap, const CRGB* lutLin, int frames) {
+float effectsBenchmark(int e, const CRGB* lutWrap, const CRGB* lutLin, int frames, bool mirror) {
     if (e < 0 || e >= NUM_EFFECTS || frames < 1) return -1;
     CRGB* out = (CRGB*)malloc(NL * sizeof(CRGB));
     uint16_t* phase = (uint16_t*)malloc(NL * sizeof(uint16_t));
@@ -1088,11 +1120,11 @@ float effectsBenchmark(int e, const CRGB* lutWrap, const CRGB* lutLin, int frame
     float p[MAXP] = {}, s[MAXP] = {};
     for (int j = 0; j < d.n; j++) p[j] = d.params[j].def;
     Ctx c{p, 1.f / 40, s, lutWrap, lutLin, out, 0, 120, 0, false};
-    d.render(c);  // first frame: state set up
+    effectsRender(d, c, mirror);  // first frame: state set up
     const uint32_t t0 = micros();
     for (int k = 0; k < frames; k++) {
         c.beat += 0.05;
-        d.render(c);
+        effectsRender(d, c, mirror);
     }
     const float ms = (micros() - t0) / 1000.f / frames;
 

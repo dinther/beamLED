@@ -305,7 +305,7 @@ static void renderFrame(float dt) {
         pp[mo.target - 1] = v;
     }
     Ctx c{pp, edt, effState, lutWrap, lutLin, leds, beat.beat, (float)beat.bpm, cycleBeats, y.reverse != 0};
-    e.render(c);
+    effectsRender(e, c, p.mirror != 0);
     if (!e.ownSparkle && p.sparkle > 0) {
         // Its colours: white, the preset's palette, or another palette (its table on the heap,
         // rebuilt only when that palette changes)

@@ -39,6 +39,8 @@ for this kind of installation (see [docs/background.md](docs/background.md)):
   steps through them (short press: next and Auto off, double press: Auto on, long press:
   on/off); the one playing survives a power cut.
   Edits play at once and are kept with **Save**, or dropped with **Revert**. Rename a saved preset\n  and Save, and it becomes a new preset.
+- **Mirror** per preset: the right half of the ceiling mirrors the left, along the rows; only the
+  left half is rendered, so it takes about half the time.
 - **Motions**: up to three per preset, each moving one slider back and forth by itself (a beam
   swinging, bands scrolling to and fro, a width breathing) along a shape, in seconds or in beats.
 - **Palettes**: up to 16, of 2 to 5 colours, shared by the presets. Each colour has a position\n  along the palette: drag its marker to bunch colours together or give one a long blend.
@@ -145,6 +147,7 @@ browsed, sent to (a group's *Sends to* can name the OSCQuery application) and fo
 | `/beamled/presets/<n>/effect`, `palette` | i | by number, as on the page |
 | `/beamled/presets/<n>/sparkle`, `pulse` | f 0..1 | sparkle overlay, beat pulse |
 | `/beamled/presets/<n>/sparkle_timing`, `sparkle_burst` | i 0..4, T/F | sparkle overlay: 0 free, 1..4 twinkles start on 1/4, 1/8, 1/16, 1/32 notes; bursts or single twinkles |
+| `/beamled/presets/<n>/mirror` | T/F | the right half mirrors the left |
 | `/beamled/presets/<n>/sparkle_colour` | i | sparkle overlay colours: 0 white, 1 the preset's palette, 1 + k palette k |
 | `/beamled/presets/<n>/timing`, `beats`, `reverse` | i, i, T/F | 0 time, 1 follow tempo, 2 beats; beats per cycle |
 | `/beamled/presets/<n>/<slider>` | f or i | each slider of the preset's effect, named after it (`speed`, `band_width`, `angle`, `offset`, ...), in its own units |

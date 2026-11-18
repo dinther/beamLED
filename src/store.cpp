@@ -270,6 +270,7 @@ void storeLoad() {
         if (p.palette >= paletteCount) p.palette = 0;
         if ((p.sparkleBeat & SPARKLE_GRID) > 4 || (p.sparkleBeat & ~(SPARKLE_GRID | SPARKLE_BURST)))
             p.sparkleBeat = 0;
+        p.mirror = p.mirror ? 1 : 0;
     }
     for (PresetSync& y : presetSync) {
         if (y.timing > TIMING_BEATS) y.timing = TIMING_TIME;
@@ -361,7 +362,8 @@ void storeLoad() {
 // ---- Save / Revert per preset
 
 static bool samePreset(const Preset& a, const Preset& b) {
-    if (a.effect != b.effect || a.palette != b.palette || a.sparkle != b.sparkle || a.sparkleBeat != b.sparkleBeat)
+    if (a.effect != b.effect || a.palette != b.palette || a.sparkle != b.sparkle || a.sparkleBeat != b.sparkleBeat ||
+        a.mirror != b.mirror)
         return false;
     for (int j = 0; j < MAXP; j++)
         if (a.p[j] != b.p[j]) return false;
