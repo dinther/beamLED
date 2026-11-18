@@ -1018,7 +1018,7 @@ static const int MAX_SHOTS = 64;
 static Shot shots[MAX_SHOTS];
 
 static void chain(Ctx& c) {
-    enum { kSpeed, kLength, kRate, kFade, kSnake, kSoft, kBg };
+    enum { kSpeed, kLength, kRate, kFade, kSnake, kSoft, kBg, kAuto };
     const int nx = NX, total = NX * NY;                      // chain length in LEDs
     const float fade = fmaxf(c.p[kFade], 0.05f), bg = c.p[kBg], soft = c.p[kSoft];
     const bool snake = c.p[kSnake] >= 0.5f, rev = c.reverse;  // Reverse (Beats): fired from the end
@@ -1038,6 +1038,7 @@ static void chain(Ctx& c) {
         c.s[0] += c.dt * c.p[kRate] / 60.f;
         while (c.s[0] >= 1.f) { c.s[0] -= 1.f; fire++; }
     }
+    if (c.p[kAuto] < 0.5f) fire = 0;  // Auto fire off: no new shots (those in flight run on)
     for (; fire > 0; fire--)
         for (Shot& h : shots)
             if (!h.live) { h = {0, c.p[kSpeed] * nx, fmaxf(c.p[kLength] * nx, 1.f), 0, true}; break; }
@@ -1280,14 +1281,15 @@ const EffectDef EFFECTS[] = {
       {"Line width", 0.03f, 0.5f, 0.15f, 0.01f, "Fibre width."}},
      tunnel, false, "fibre turn", 0,
      "Flying down a fibre-lined tunnel. Its centre swings on a pendulum."},
-    {"Chain", 7,
+    {"Chain", 8,
      {{"Speed (bars/s)", 0.1f, 20, 4, 0.1f, "How many bars a shot travels per second."},
       {"Length (bars)", 0.1f, 5, 1, 0.05f, "Length of a shot, in bars: the whole palette over that stretch."},
       {"Shots per minute", 1, 240, 60, 1, "Time: shots fired per minute. Beats: beats per shot."},
       {"Fade (s)", 0.2f, 20, 4, 0.1f, "Seconds until a shot has faded out."},
       {"Snake", 0, 1, 1, 1, "0 = every bar runs top to bottom; 1 = every second bar runs back up, one zigzag chain."},
       {"Softness", 0, 1, 0.2f, 0.01f, "Soft head and tail. 0 = hard edges."},
-      {"Background", 0, 0.5f, 0, 0.01f, "Background in the palette's first colour. 0 = black."}},
+      {"Background", 0, 0.5f, 0, 0.01f, "Background in the palette's first colour. 0 = black."},
+      {"Auto fire", 0, 1, 1, 1, "1 = shots fire on the beat or at the rate; 0 = no new shots (those in flight run on)."}},
      chain, false, "shot", 2,
      "All bars joined into one chain; shots of the whole palette fired into it on the beat or in time, travelling and fading. Reverse: fired from the end."},
 };
