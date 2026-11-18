@@ -941,51 +941,6 @@ static void shapesFx(Ctx& c) {
     }
 }
 
-// ---------------------------------------------------------------- Fibres
-// Thin curves behind the bars: rings, or spiral arms (with Weave a second family twisted the other
-// way, crossing the first). The bars act as slits: a line shows only where it crosses a bar, as a
-// point, and the point slides along the bar at the line's speed / sin(angle to the bar), so it
-// races off as the line turns towards the bar's direction, and points overtake each other along
-// curves. Deliberately not softened across the rows: the streaks are the effect.
-// Each LED: its distance to the nearest line (the phase's distance to a whole number over the
-// phase's gradient), as a glow of Line width.
-
-static void fibres(Ctx& c) {
-    enum { kSpeed, kSize, kArms, kWeave, kTurn, kCentreX, kCentreY, kWidth };
-    const float size = fmaxf(c.p[kSize], 0.01f * M), arms = roundFast(c.p[kArms]), weave = c.p[kWeave];
-    advance(c, c.s[0], c.p[kSpeed], size);  // outwards: one line spacing per cycle
-    c.s[0] = fmodf(c.s[0], size * 4096.f);
-    c.s[1] = fmodf(c.s[1] + c.p[kTurn] * DEG * c.dt, TAU);
-    const float shift = c.s[0] / size;           // cycles the lines have moved out
-    const float spin = arms * c.s[1] / TAU;       // cycles the arms have turned
-    const float cx = c.p[kCentreY] * W, cy = Y[0] + c.p[kCentreX] * H;
-    const float isize = 1.f / size, k = 2.8f / (c.p[kWidth] * c.p[kWidth] + 1e-9f);
-    const float aT = arms / TAU, core = 1.f / (size * 0.6f);  // dark centre, where the arms crowd
-    const bool two = weave > 0.004f && arms > 0;
-    for (int b = 0; b < NY; b++) {
-        const float dy = Y[b] - cy;
-        CRGB* o = c.out + b * NX;
-        for (int i = 0; i < NX; i++) {
-            const float dx = X[i] - cx, r2 = dx * dx + dy * dy;
-            const float r = r2 > 1e-12f ? r2 * rsqrtFast(r2) : 0.f;
-            const float th = arms > 0 ? atan2Fast(dy, dx) : 0.f;
-            // the phase's gradient (cycles per unit): radially 1/size, around arms/(2 pi r)
-            const float ga = r > 1e-6f ? aT / r : 1e6f;
-            const float ig = rsqrtFast(isize * isize + ga * ga);
-            const float base = r * isize - shift;
-            float best = 0, pos = 0;
-            for (int f = 0; f < (two ? 2 : 1); f++) {
-                const float u = base + (f ? -1.f : 1.f) * (arms * th / TAU - spin);
-                const float n = roundFast(u), d = fabsf(u - n) * ig;  // distance to the line
-                const float I = expNeg(-k * d * d) * (f ? weave : 1.f);
-                if (I > best) { best = I; pos = n * 0.137f + f * 0.5f; }
-            }
-            best *= sm(r * core);
-            o[i] = best > 0.002f ? scaleF(lutW(c.lutWrap, pos - floorI(pos)), best) : CRGB(0, 0, 0);
-        }
-    }
-}
-
 // ---------------------------------------------------------------- Tunnel
 // Looking down a tube from inside it, its wall lined with helical fibres, flying along it. Each LED
 // is a ray from the eye through its place on the ceiling, straight ahead at the centre (Centre X
@@ -1074,6 +1029,90 @@ static void tunnel(Ctx& c) {
         if (NY & 1) {  // the middle row is its own mirror
             CRGB* r = c.out + (NY / 2) * NX;
             for (int i = 0; i < NX; i++) r[i] = add(r[i], r[i]);
+        }
+    }
+}
+
+// ---------------------------------------------------------------- Fibres
+// Rifling seen down a barrel: grooves winding out from a centre as logarithmic spirals (each groove
+// crosses every circle at the same angle), each a sharp highlight with thin halo lines beside it,
+// darkening towards the bore. Two of them in each quarter of the ceiling, the second flipped so it
+// winds the other way, both turning about their centres; the quarter mirrored both ways (across
+// the bars and along them): eight centres. The brighter of the two riflings wins at each LED.
+
+// ln(x) without the library call: the exponent times ln 2, plus a polynomial for ln of the
+// mantissa (1..2; error ~1e-4)
+static inline float lnFast(float x) {
+    union { float f; uint32_t i; } u{x};
+    const float e = (float)((int)((u.i >> 23) & 255) - 127);
+    u.i = (u.i & 0x007FFFFF) | 0x3F800000;
+    const float m = u.f;
+    return e * 0.69314718f + (-1.7417939f + (2.8212026f + (-1.4699568f + (0.44717955f - 0.056570851f * m) * m) * m) * m);
+}
+
+struct RiflingLook {
+    float grooves, twist, sharp, halo, glowW;
+    // Brightness at p (relative to the rifling's centre, in screen units: the height is 1)
+    float at(float px, float py) const {
+        const float r2 = px * px + py * py;
+        const float r = r2 > 1e-10f ? r2 * rsqrtFast(r2) : 0.f;
+        const float a = atan2Fast(py, px);
+        const float tw = a - twist * lnFast(fmaxf(r, 0.015f));  // radians
+        const float cs = cosCyc((tw * grooves - 0.5f) * (1.f / TAU));            // cos(phase - 0.5)
+        float sp = fmaxf(cs, 0.f);
+        const float s2 = sp * sp, s4 = s2 * s2, s8 = s4 * s4;
+        sp = s8 * s4;                                       // ^12: the sharp highlight
+        float red = fminf(sp * 1.4f, 1.f);
+        if (halo > 0) {  // thin lines where the cosine crosses 0
+            const float g = cs * glowW;
+            red += expNeg(-2.f * g * g) * halo;
+        }
+        return red * (0.25f + 0.75f * sm(r * 4.f));         // darker towards the bore
+    }
+};
+
+static void fibres(Ctx& c) {
+    enum { kSpeed, kSize, kGrooves, kTwist, kWidth, kHalo, kSpacing, kCentreY };
+    RiflingLook look;
+    look.grooves = roundFast(c.p[kGrooves]);
+    look.twist = c.p[kTwist];
+    look.halo = c.p[kHalo];
+    look.sharp = 1.f;
+    look.glowW = 32.f * c.p[kWidth];  // Line width 1 = the original's sharpness; higher = finer
+    advance(c, c.s[0], c.p[kSpeed] * (1.f / 360.f), 1.f);  // turns
+    c.s[0] = fmodf(c.s[0], 4096.f);
+    const float ca = cosCyc(c.s[0]), sa = cosCyc(c.s[0] - 0.25f);
+    const float size = fmaxf(c.p[kSize] * 0.01f, 0.05f);
+    // The screen: u across the bars (left to right in the preview), v along them (top to bottom),
+    // each 0..1 over the ceiling; distances in screen heights (the bars' length), as the original
+    const float aspect = W > 0 ? H / W : 1.f;
+    const float iH = H > 1e-6f ? 1.f / H : 0.f, iW = 1.f / W;
+    const float x1 = 1.f, x2 = 1.f - c.p[kSpacing], yc = c.p[kCentreY];
+    // Mirrored both ways: only one quarter is worked out, each LED copied to its mirror places
+    // (row NY-1-b, LED NX-1-i). In the preset's Mirror mode (half a row rendered) along the bars
+    // every LED is worked out.
+    const bool alongToo = NX == NXFULL;
+    const int nb = (NY + 1) / 2, ni = alongToo ? (NX + 1) / 2 : NX;
+    for (int b = 0; b < nb; b++) {
+        float u = (Y[b] - Y[0]) * iH;
+        if (u < 0.5f) u = 1.f - u;  // mirrored across the bars
+        CRGB* o = c.out + b * NX;
+        CRGB* om = c.out + (NY - 1 - b) * NX;
+        for (int i = 0; i < ni; i++) {
+            float v = 1.f - X[i] * iW;  // the top of the preview is the start of the bars
+            if (v < 0.5f) v = 1.f - v;  // mirrored along them
+            // First rifling (centred on the edge), second (flipped, winding the other way)
+            float px = u - x1, py = v - yc;
+            // GLSL's mat2(c, -s, s, c) fills columns: x' = c x + s y, y' = -s x + c y
+            float rx = ca * px + sa * py, ry = -sa * px + ca * py;
+            const float i1 = look.at(rx * aspect / size, ry / size);
+            px = -(u - x2);
+            rx = ca * px + sa * py; ry = -sa * px + ca * py;
+            const float i2 = look.at(rx * aspect / size, ry / size);
+            const float I = fminf(fmaxf(i1, i2), 1.f);
+            const CRGB col = I > 0.004f ? scaleF(lutL(c.lutLin, I), I) : CRGB(0, 0, 0);
+            o[i] = om[i] = col;
+            if (alongToo) o[NX - 1 - i] = om[NX - 1 - i] = col;
         }
     }
 }
@@ -1344,16 +1383,16 @@ const EffectDef EFFECTS[] = {
      "A drum machine of flashes: set steps in a grid of four lanes and 32 steps (two bars of 1/16 notes), and the lanes flash the whole ceiling, a band, a block or a shape on those steps, somewhere new each time. The flashes stay at full power whatever Effect brightness is (the master Brightness still applies); Effect brightness dims only the Background.",
      true, true},
     {"Fibres", 8,
-     {{"Speed (%/s)", -40, 40, 20, 0.2f, "How fast the lines move outwards, as a share of the ceiling's shorter side per second (below 0: inwards). In Beats timing this slider gives way to beats per line: one line spacing per cycle.", 1},
-      {"Size (%)", 5, 100, 20, 1, "The distance from one line to the next (between rings, or between the turns of an arm), as a share of the ceiling's shorter side.", 1},
-      {"Arms", 0, 8, 4, 1, "0 = rings around the centre; 1 to 8 = that many spiral arms. Lines that run nearly along the bars make the fastest streaks."},
-      {"Weave", 0, 1, 1, 0.01f, "A second set of arms twisted the other way, crossing the first: 0 = none, 1 = as bright as the first. Not with rings (Arms 0)."},
-      {"Turn (deg/s)", -90, 90, 30, 1, "How fast the arms turn around the centre. Not with rings (Arms 0)."},
-      {"Centre X", -0.2f, 1.2f, 0.5f, 0.01f, "Where across the bars the centre is: 0 = the first bar, 1 = the last bar."},
-      {"Centre Y", -0.2f, 1.2f, 0.5f, 0.01f, "Where along the bars the centre is: 0 = the first LED, 1 = the last."},
-      {"Line width (%)", 1, 12, 2.5f, 0.1f, "How thick the lines are, as a share of the ceiling's shorter side. Thin lines make crisp points racing along the bars; too thin and a point jumps from LED to LED instead of sliding.", 1}},
-     fibres, false, "line", 0,
-     "Thin rings or spiral arms moving behind the bars. A line shows only where it crosses a bar, as a point of light, so the points race along the bars, speeding up as a line turns towards the bar's direction and overtaking each other along the curves. Weave crosses a second set of arms over the first."},
+     {{"Speed (deg/s)", -90, 90, -8.6f, 0.1f, "How fast the riflings turn about their centres, in degrees per second (the second one the other way, as it is mirrored); 0 = still. In Beats timing this slider gives way to beats per turn."},
+      {"Size (%)", 20, 300, 100, 1, "How big the riflings are: 100% = as the original, smaller = tighter spirals with more of them showing."},
+      {"Grooves", 1, 24, 12, 1, "How many grooves each rifling has."},
+      {"Twist", -3, 3, -0.8f, 0.01f, "How tightly the grooves wind (below 0 the other way): 0 = straight spokes."},
+      {"Line width", 0.2f, 3, 1, 0.01f, "How fine the halo lines beside each groove are: 1 = as the original, higher = finer."},
+      {"Halo", 0, 1, 0.2f, 0.01f, "How bright the thin halo lines beside each groove are. 0 = only the sharp highlights."},
+      {"Spacing", 0, 0.5f, 0.35f, 0.01f, "How far in from the side the second rifling of each quarter is, as a share of the ceiling's width across the bars."},
+      {"Centre Y", 0.5f, 1, 0.75f, 0.01f, "Where along the bars the riflings' centres are (in the mirrored quarter): 0.5 = the middle, 1 = the end."}},
+     fibres, false, "turn", 0,
+     "Fibres like rifling seen down a barrel: grooves winding out from a centre as spirals, each a sharp highlight with thin halo lines beside it, darker towards the bore. Two riflings in each quarter, the second winding the other way, both turning; the quarter mirrored across and along the bars: eight centres. In palette colours: a palette from black to red gives red rifling on black steel."},
     {"Tunnel", 8,
      {{"Speed", -4, 4, 0.9f, 0.05f, "How fast you fly down the tunnel, in tube widths (radius) per second; below 0 backwards. The tunnel swings with it. In Beats timing this slider gives way to beats per fibre turn."},
       {"Bend", 0, 0.8f, 0.11f, 0.01f, "How far the tunnel swings around you and bends along its length, as a share of its width: the near part swings while the far end stays put, and the fibres twist and squeeze. 0 = a straight tunnel straight ahead."},

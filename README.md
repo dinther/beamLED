@@ -79,9 +79,10 @@ flash the whole ceiling, a band, a block or a circle or square, somewhere new ea
 Timing set to Frequency it is a plain strobe, 0 to 20 flashes a second, of the middle Size share of
 every row (fewer lit LEDs ask less of the power supply, so they flash brighter).
 
-**Fibres** uses the bars as slits: thin rings or spiral arms move behind them, and each line shows
-only where it crosses a bar, as a point of light. The points race along the bars, faster the more a
-line turns towards the bar's direction, and overtake each other along the curves.
+**Fibres** is rifling seen down a barrel: grooves winding out from a centre as spirals, each a sharp
+highlight with thin halo lines beside it, darker towards the bore. Two riflings in each quarter of the
+ceiling, the second winding the other way, all turning; the quarter is mirrored across and along the
+bars. On the bars the grooves show as points sliding along them as the riflings turn.
 
 **Tunnel** flies down a tube lined with fibres winding along its wall, seen from inside: each LED is
 a ray from the eye meeting the wall. The fibres come out of the middle slowly and race outwards ever
