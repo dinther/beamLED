@@ -285,7 +285,7 @@ const H = {
   measured: 'Uses measured, uneven row positions built into the firmware, when the number of rows matches them. Off: rows evenly spaced by Aspect.',
   rowUni: 'The Art-Net universe each row starts at. A row of more than 170 LEDs continues into the next universe(s). Set them to match how the pixel controller is patched.',
   fill: 'Numbers the rows one after another, starting at the number given, leaving each row the universes it needs.',
-  apply: 'Applies the layout at once and saves it. Presets and palettes are kept.',
+  apply: 'Applies the layout and saves it. Presets and palettes are kept. A new number of LEDs per row or rows restarts the board (the lights go dark for a few seconds), so its memory is set up afresh for the new size: the first click warns, a second within 4 s goes ahead. The other settings apply at once.',
   netName: 'The board’s name: http://<name>.local, the hotspot’s name and the firmware update name. Takes effect after the restart.',
   fallback: 'The address the board takes when no DHCP server answers within 10 seconds, for example when it is connected directly to a pixel controller. Keep it in the same subnet as the devices it talks to. Empty: an automatic 169.254.x.x address.',
   apPass: 'A password for the config-mode hotspot (button held at power-on), 8 characters or more. Empty: an open hotspot. Type - to remove a saved password.',
@@ -1028,9 +1028,29 @@ function layoutCard() {
   [len, sp, meas].forEach(e => e.oninput = upd);
   const apply = button('Apply', H.apply, {className: 'on'});
   const msg = h('div', {className: 'hint'});
-  apply.onclick = () => post('/api/layout', {nx: +nx.value, ny: +ny.value, length: +len.value, aspect: aspect(),
+  // A new LED count restarts the board: the first click warns, a second within 4 s applies
+  let apArmed = 0;
+  const disarm = () => { apArmed = 0; apply.textContent = 'Apply'; apply.className = 'on'; msg.textContent = ''; };
+  apply.onclick = () => {
+    const resize = +nx.value != L.nx || +ny.value != L.ny;
+    if (resize && Date.now() - apArmed > 4000) {
+      apArmed = Date.now();
+      apply.textContent = 'Restart and apply?'; apply.className = 'warn';
+      msg.textContent = 'A new number of LEDs (' + L.nx * L.ny + ' → ' + (+nx.value * +ny.value) +
+        ') restarts the board: the lights go dark for a few seconds. Click again to go ahead.';
+      setTimeout(() => { if (apArmed && Date.now() - apArmed >= 4000) disarm(); }, 4100);
+      return;
+    }
+    apArmed = 0;
+    post('/api/layout', {nx: +nx.value, ny: +ny.value, length: +len.value, aspect: aspect(),
       measured: meas.checked, rowUni: uni.slice(0, +ny.value), rowOrder: ord.slice(0, +ny.value)})
-    .then(useState).catch(e => { msg.textContent = e.message; });
+    .then(r => {
+      if (!r || !r.restarting) return useState(r);
+      apply.disabled = true;  // another LED count: the board restarts with it (this page reconnects)
+      apply.textContent = 'Restarting…';
+      msg.textContent = 'Restarting with ' + (+nx.value * +ny.value) + ' LEDs… the page reconnects by itself.';
+    }).catch(e => { msg.textContent = e.message; });
+  };
   table();
   upd();
   return h('div', {className: 'card'},

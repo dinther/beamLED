@@ -621,13 +621,23 @@ static void handleLayout() {
         reply(400, "text/plain", "at most " + String(MAX_LEDS) + " LEDs");
         return;
     }
+    // Another LED count: saved, then a restart, so every buffer is set up afresh at its size (resizing
+    // them while running left the memory in pieces). Length, spacing, universes, colour order: live.
+    const bool resize = l.nx != layout.nx || l.ny != layout.ny;
     layout = l;
     // rowOrder: colour order per row (0 RGB, 1 RBG, 2 GRB, 3 GBR, 4 BRG, 5 BGR)
     if (d["rowOrder"].is<JsonArray>()) {
         JsonArray a = d["rowOrder"].as<JsonArray>();
         for (int b = 0; b < (int)a.size() && b < MAX_Y; b++) rowOrder[b] = constrain(a[b].as<int>(), 0, NUM_ORDERS - 1);
     }
-    engineLayoutChanged();
+    engineLayoutChanged();  // saves it
+    if (resize) {
+        storeSaveNow();  // and anything else waiting to be saved
+        reply(200, "application/json", "{\"restarting\":true}");
+        restartRequested = true;
+        restartAt = millis();
+        return;
+    }
     webChanged();
     handleState();
 }
