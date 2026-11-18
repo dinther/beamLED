@@ -309,16 +309,27 @@ function select(label, items, val, onch, help) {
   return tip(h('div', {className: 'row'}, h('label', {textContent: label}), s), help);
 }
 // The palette picker: each palette drawn as its gradient with its name on top
+const hexRgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
 const palGrad = q => {
   const st = q.stops && q.stops.length == q.colors.length ? q.stops : evenStops(q.colors.length);
   const mids = q.mids && q.mids.length == q.colors.length - 1 ? q.mids : [];
   const parts = [];
   q.colors.forEach((c, j) => {
     parts.push(c + ' ' + (st[j] * 100).toFixed(1) + '%');
-    // A midpoint is a CSS colour hint: the same curve the board uses
+    // A midpoint: the board's curve. Above the middle that is a CSS colour hint's (f^k); below it
+    // its mirror image (1 - (1-f)^k), which CSS can't draw: there, colour stops along the curve
     const m = mids[j];
-    if (m != null && Math.abs(m - 0.5) > 1e-3 && j < q.colors.length - 1)
-      parts.push(((st[j] + m * (st[j + 1] - st[j])) * 100).toFixed(1) + '%');
+    if (m != null && Math.abs(m - 0.5) > 1e-3 && j < q.colors.length - 1) {
+      if (m > 0.5) parts.push(((st[j] + m * (st[j + 1] - st[j])) * 100).toFixed(1) + '%');
+      else {
+        const A = hexRgb(c), B = hexRgb(q.colors[j + 1]), k = Math.log(0.5) / Math.log(1 - m);
+        for (let s = 1; s < 12; s++) {
+          const f = s / 12, b = 1 - Math.pow(1 - f, k);
+          const rgb = A.map((v, n) => Math.round(v + (B[n] - v) * b));
+          parts.push('rgb(' + rgb.join(',') + ') ' + ((st[j] + f * (st[j + 1] - st[j])) * 100).toFixed(2) + '%');
+        }
+      }
+    }
   });
   return 'linear-gradient(90deg,' + parts.join(',') + ')';
 };

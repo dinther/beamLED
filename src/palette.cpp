@@ -30,10 +30,13 @@ void paletteSanitizeMids(Palette& p) {
 }
 
 // How far the blend has gone at f (0..1 of the stretch) with its midpoint at m/256: f itself at
-// the middle, else bent so that it is half-way at m (the curve of a CSS colour hint)
+// the middle, else bent so that it is half-way at m. Above the middle the curve of a CSS colour
+// hint (f^k); below it that curve's mirror image (1 - (1-f)^k of the mirrored midpoint), so a
+// midpoint and its mirror (0.16 and 0.84) give mirror-image blends.
 static inline float bias(float f, uint8_t m) {
     if (m == 128 || m == 0 || f <= 0.f || f >= 1.f) return f;
-    return powf(f, -0.6931472f / logf(m / 256.f));
+    if (m > 128) return powf(f, -0.6931472f / logf(m / 256.f));
+    return 1.f - powf(1.f - f, -0.6931472f / logf((256 - m) / 256.f));
 }
 
 static inline CRGB mix(const CRGB& A, const CRGB& B, float f) {
