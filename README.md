@@ -30,8 +30,9 @@ for this kind of installation (see [docs/background.md](docs/background.md)):
 
 ## Features
 
-- **14 effects**, each with its own sliders and a palette: Rolling bars, Searchlights, Lighthouse,
-  Clouds, Sparkle, Sweeps, Plaid, Rings, Drops, Interference, Gradient, Shapes, Strobe and Fibres, plus one sparkle
+- **15 effects**, each with its own sliders and a palette: Rolling bars, Searchlights, Lighthouse,
+  Clouds, Sparkle, Sweeps, Plaid, Rings, Drops, Interference, Gradient, Shapes, Strobe, Fibres and
+  Tunnel, plus one sparkle
   overlay over whichever plays (it stays on when the preset changes): white or in palette colours
   (random, or stepping along the palette twinkle by twinkle), twinkling freely or starting on
   quarter, eighth, sixteenth or 32nd notes, as single twinkles or in bursts.
@@ -81,6 +82,10 @@ every row (fewer lit LEDs ask less of the power supply, so they flash brighter).
 **Fibres** uses the bars as slits: thin rings or spiral arms move behind them, and each line shows
 only where it crosses a bar, as a point of light. The points race along the bars, faster the more a
 line turns towards the bar's direction, and overtake each other along the curves.
+
+**Tunnel** flies down a tube lined with fibres winding along its wall, seen from inside: each LED is
+a ray from the eye meeting the wall. The fibres come out of the middle slowly and race outwards ever
+faster, and the tube's axis sways, so its near end swings while the far end stays put.
 
 The scrolling effects have a position slider: **Offset** (Rolling bars, Plaid, Rings,
 Interference), **Offset X** and **Offset Y** (Clouds), and Lighthouse has **Angle**. With the speed

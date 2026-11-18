@@ -986,6 +986,57 @@ static void fibres(Ctx& c) {
     }
 }
 
+// ---------------------------------------------------------------- Tunnel
+// Looking down a tube from inside it, its wall lined with helical fibres, flying along it. Each LED
+// is a ray from the eye through its place on the ceiling (the ceiling's middle straight ahead); the
+// ray meets the wall where |t * d + o| = 1 (tube radius 1, its axis off by o), solved directly: the
+// depth t and the angle around the wall give the fibres' phase. The axis sways in a slow circle, so
+// the near part of the tube swings while the far end stays put: the fibres bend and squeeze. On the
+// bars the fibres come out of the middle slowly and race outwards ever faster.
+
+static void tunnel(Ctx& c) {
+    enum { kSpeed, kSize, kFibres, kTwist, kWeave, kSway, kSwayTime, kWidth };
+    const float fib = roundFast(c.p[kFibres]), twist = c.p[kTwist], weave = c.p[kWeave];
+    // Flight: one fibre turn along the tube (1 / twist radii) per cycle
+    const float period = twist > 0.01f ? 1.f / twist : 100.f;
+    advance(c, c.s[0], c.p[kSpeed], period);
+    c.s[0] = fmodf(c.s[0], period * 4096.f);
+    c.s[1] = fmodf(c.s[1] + c.dt / fmaxf(c.p[kSwayTime], 0.5f), 1.f);  // sway: cycles
+    const float sw = c.p[kSway], ox = sw * cosCyc(c.s[1]), oy = sw * cosCyc(c.s[1] - 0.25f);
+    const float cc = ox * ox + oy * oy - 1.f;  // < 0: the eye is inside the tube
+    // The ceiling's shorter side spans +-1 of the view at Size 100%
+    const float fov = 2.f / fmaxf(c.p[kSize] * 0.01f, 0.05f);  // Size in % (not a ceiling length)
+    const float w = fmaxf(c.p[kWidth], 0.01f), k = 2.8f / (w * w);
+    const float z0 = c.s[0];
+    const bool two = weave > 0.004f;
+    for (int b = 0; b < NY; b++) {
+        const float dy = (Y[b] - CY) * fov;
+        CRGB* o = c.out + b * NX;
+        for (int i = 0; i < NX; i++) {
+            const float dx = (X[i] - CX) * fov;
+            const float dd = dx * dx + dy * dy;
+            if (dd < 1e-6f) { o[i] = CRGB(0, 0, 0); continue; }  // straight down the tube: far, dark
+            const float bb = dx * ox + dy * oy, disc = bb * bb - dd * cc;
+            const float idd = rsqrtFast(dd);
+            const float t = (-bb + disc * rsqrtFast(disc)) * idd * idd;  // depth where the ray meets the wall
+            // Deep down the tunnel the fibres get finer than the LEDs: fade with depth, and a dark core
+            const float fade = expNeg(-0.22f * t) * sm((dd * idd - 0.04f) * 5.f);
+            if (fade < 0.004f) { o[i] = CRGB(0, 0, 0); continue; }
+            const float th = atan2Fast(t * dy + oy, t * dx + ox) * (1.f / TAU);  // turns around the wall
+            const float along = (t + z0) * twist;
+            float best = 0, pos = 0;
+            for (int f = 0; f < (two ? 2 : 1); f++) {
+                const float u = (f ? -fib : fib) * th + along;
+                const float n = roundFast(u), d = u - n;
+                const float I = expNeg(-k * d * d) * (f ? weave : 1.f);
+                if (I > best) { best = I; pos = n * 0.137f + f * 0.5f; }
+            }
+            best *= fade;
+            o[i] = best > 0.002f ? scaleF(lutW(c.lutWrap, pos - floorI(pos)), best) : CRGB(0, 0, 0);
+        }
+    }
+}
+
 // ---------------------------------------------------------------- Strobe
 // In Beats timing a drum machine of flashes: 32 steps (two bars of 1/16 notes), four lanes, each
 // flashing its own kind of thing on the steps set in the preset's pattern: the whole ceiling, a
@@ -1262,6 +1313,17 @@ const EffectDef EFFECTS[] = {
       {"Line width (%)", 1, 12, 2.5f, 0.1f, "How thick the lines are, as a share of the ceiling's shorter side. Thin lines make crisp points racing along the bars; too thin and a point jumps from LED to LED instead of sliding.", 1}},
      fibres, false, "line", 0,
      "Thin rings or spiral arms moving behind the bars. A line shows only where it crosses a bar, as a point of light, so the points race along the bars, speeding up as a line turns towards the bar's direction and overtaking each other along the curves. Weave crosses a second set of arms over the first."},
+    {"Tunnel", 8,
+     {{"Speed", -4, 4, 0.9f, 0.05f, "How fast you fly down the tunnel, in tube widths (radius) per second; below 0 backwards. In Beats timing this slider gives way to beats per fibre turn."},
+      {"Size (%)", 20, 300, 100, 1, "How much of the tunnel the ceiling shows: small = looking into a narrow view down the middle, big = a wide view with the wall close around the edges."},
+      {"Fibres", 1, 12, 6, 1, "How many fibres wind along the tunnel wall."},
+      {"Twist", 0.1f, 4, 1.3f, 0.01f, "How tightly the fibres wind: turns per tube width along the tunnel."},
+      {"Weave", 0, 1, 0, 0.01f, "A second set of fibres winding the other way, crossing the first: 0 = none, 1 = as bright."},
+      {"Sway", 0, 0.8f, 0.11f, 0.01f, "How far the tunnel's axis swings around you, as a share of its width: the near part of the tunnel swings while the far end stays put, so the fibres bend and squeeze. 0 = a straight tunnel."},
+      {"Sway time (s)", 1, 60, 5.2f, 0.1f, "How long one swing round takes, in seconds."},
+      {"Line width", 0.03f, 0.5f, 0.15f, 0.01f, "How thick the fibres are, as a share of the gap between them. Thin = crisp points racing along the bars."}},
+     tunnel, false, "fibre turn", 0,
+     "Flying down a tunnel lined with fibres winding along its wall, seen from inside. The fibres come out of the middle slowly and race outwards ever faster; the tunnel's axis sways, so the near part swings while the far end stays put and the fibres bend and squeeze. Weave crosses a second set over the first."},
 };
 const int NUM_EFFECTS = sizeof(EFFECTS) / sizeof(EFFECTS[0]);
 
