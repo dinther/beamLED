@@ -71,7 +71,7 @@ for this kind of installation (see [docs/background.md](docs/background.md)):
 | ![Sweeps](docs/images/beam_sweeps.jpg) **Sweeps**: bars sweeping across the ceiling one after another, each pass at a new angle, with a trail. | ![Plaid](docs/images/beam_plaid.jpg) **Plaid**: two sets of broad stripes crossing at an angle, moving and slowly turning. |
 | ![Rings](docs/images/beam_rings.jpg) **Rings**: concentric rings flowing out of, or into, a slowly wandering centre. | ![Drops](docs/images/beam_drops.jpg) **Drops**: big rings spreading from where drops land (a point you set and can move with Motions, or random places) and fading out, like raindrops on a pond. |
 | ![Interference](docs/images/beam_interference.jpg) **Interference**: two sets of ring waves around centres that circle each other. | ![Sparkle overlay](docs/images/beam_rolling_ice_sparkle.jpg) **Sparkle**: twinkles in palette colours, as an effect of its own or as an overlay on any other. |
-| ![Gradient](docs/images/beam_gradient.jpg) **Gradient**: a steady gradient through the palette, straight at any angle or round from a centre; Colour drift or a Motion on Colour offset makes the colours flow. | |
+| ![Gradient](docs/images/beam_gradient.jpg) **Gradient**: a steady gradient through the palette, straight at any angle or round from a centre; a Motion on Colour offset makes the colours flow. | |
 
 **Strobe** is a drum machine of flashes: each preset holds a grid of four lanes and 32 steps (two
 bars of 1/16 notes on the beat), and on the steps set the lanes

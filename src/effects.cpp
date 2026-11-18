@@ -807,13 +807,11 @@ static void sparkle(Ctx& c) {
 // never jumps from the last colour to the first.
 
 static void gradient(Ctx& c) {
-    enum { kSpread, kRadial, kAngle, kCentreX, kCentreY, kDrift, kOffset };
-    const float ang = c.p[kAngle] * DEG, spread = c.p[kSpread], offset = c.p[kOffset], drift = c.p[kDrift];
+    enum { kSpread, kRadial, kAngle, kCentreX, kCentreY, kOffset };
+    const float ang = c.p[kAngle] * DEG, spread = c.p[kSpread], offset = c.p[kOffset];
     const bool radial = c.p[kRadial] >= 0.5f;
     const float cx = c.p[kCentreY] * W, cy = Y[0] + c.p[kCentreX] * H;
-    c.s[0] += c.dt * drift * 0.02f;
-    c.s[0] -= floorf(c.s[0] * 0.5f) * 2.f;  // bounded: the ramp repeats every 2
-    const float base = offset + c.s[0];
+    const float base = offset;  // a Motion on Colour offset moves the colours
     float k, k0;  // t = k * (distance along the gradient) + k0
     const float ca = cosf(ang), sa = sinf(ang);
     if (radial) {
@@ -1368,16 +1366,15 @@ const EffectDef EFFECTS[] = {
       {"Offset (%)", -200, 200, 0, 0.2f, "Shifts the pattern by this share of the ceiling's shorter side, the way Speed moves the waves (positive outward). With Speed at 0 it stays put, so a Motion on Offset moves it back and forth (with easing). 0 = no shift.", 1}},
      interference, false, "wave", 0,
      "Two sets of ring waves around centres that slowly circle each other. Where the waves meet they reinforce or cancel, forming large moving patterns."},
-    {"Gradient", 7,
+    {"Gradient", 6,
      {{"Spread", 0.1f, 4, 1, 0.01f, "How much of the palette spans the ceiling. 1 = from the palette's first colour at one side to its last colour at the other; 2 = there and back; 0.5 = only the first half of the palette. Bigger means more colour changes across the ceiling."},
       {"Radial", 0, 1, 0, 1, "0 = a straight gradient in the direction of Angle; 1 = a round gradient, from the centre (Centre X, Centre Y) outwards."},
       {"Angle (deg)", -180, 180, 0, 1, "The direction of a straight gradient, in degrees: 0 = along the bars, 90 = across them (from the first bar to the last), 45 = diagonally. Not used when Radial is 1."},
       {"Centre X", -0.2f, 1.2f, 0.5f, 0.01f, "Radial: where the centre sits across the bars: 0 = the first bar, 0.5 = the middle, 1 = the last bar."},
       {"Centre Y", -0.2f, 1.2f, 0.5f, 0.01f, "Radial: where the centre sits along the bars: 0 = one end, 0.5 = the middle, 1 = the other end. Beyond 0 or 1 puts it outside the ceiling."},
-      {"Colour drift", 0, 1, 0, 0.01f, "Lets the colours flow slowly along the gradient by themselves. 0 = a steady gradient that never changes."},
       {"Colour offset", -2, 2, 0, 0.01f, "Shifts the colours along the gradient: 1 moves them by a whole palette (first colour to last). A Motion on Colour offset makes the colours flow back and forth."}},
      gradient, false, nullptr, -1,
-     "A steady gradient through the palette: straight in any direction, or round from a centre. The palette is used as a ramp, first colour to last and back. Calm light that doesn't move unless Colour drift or a Motion moves it."},
+     "A steady gradient through the palette: straight in any direction, or round from a centre. The palette is used as a ramp, first colour to last and back. Calm light that doesn't move unless a Motion moves it."},
     {"Shapes", 8,
      {{"New shape every (s)", 0.2f, 10, 1.5f, 0.1f, "How often a new shape appears, in seconds. Each lasts Count times this. In Beats timing this slider is replaced by beats per shape, and each lands on the beat."},
       {"Size (%)", 16, 160, 60, 1, "How big the shapes are, as a share of the ceiling's shorter side: a circle's diameter, a square's or a triangle's side. Below about 30% they get hard to read across rows half a metre apart on a 5 m ceiling.", 1},
