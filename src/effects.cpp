@@ -911,7 +911,7 @@ static void shapesFx(Ctx& c) {
 
 const EffectDef EFFECTS[] = {
     {"Rolling bars", 8,
-     {{"Speed (m/s)", 0, 1, 0.15f, 0.01f, "How fast the bands roll, in metres per second. 0 stops them; the direction still turns. Calm: 0.05 to 0.2."},
+     {{"Speed (m/s)", 0, 2, 0.15f, 0.01f, "How fast the bands roll, in metres per second. 0 stops them; the direction still turns. Calm: 0.05 to 0.2."},
       {"Band width (m)", 0.8f, 5, 2, 0.1f, "The width of one band, in metres. Narrow bands flicker as they cross the rows: with rows half a metre apart, for example, about 0.8 m is the narrowest that stays smooth."},
       {"Softness", 0, 1, 0.6f, 0.01f, H_SOFT_BANDS},
       {"Dark gaps", 0, 1, 0.3f, 0.01f, H_GAPS},
