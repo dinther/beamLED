@@ -99,6 +99,7 @@ select,input[type=text],input[type=password],input[type=number]{flex:1;min-width
 .seq .st{height:22px;border-radius:3px;background:#2f2f2f;cursor:pointer}
 .seq .st.q{background:#3a3a3a}
 .seq .st.on{background:var(--acc)}
+.na .st{pointer-events:none}
 
 #elsewhere{position:fixed;inset:0;z-index:20;display:none;align-items:center;justify-content:center;background:#121212e8;padding:16px}
 #elsewhere .card{max-width:360px;text-align:center}
@@ -244,7 +245,7 @@ const H = {
   preview: 'What the ceiling shows now, live from the board, up to 15 frames a second: seen from below, the first row on the left, the bars at their real places and spacing (drawn thicker than they are, so they show). The colours as the effects make them, without the LEDs’ gamma. The board sends frames only while this section is open, on screen and the tab is in view.',
   previewPin: 'Pin (📌): the preview stays at the top of the screen while you scroll and work the controls below it; lit while pinned. Press again to let it scroll away. Kept in this browser.',
   previewLook: 'On: each bar as a soft continuous strip, as with a diffuser. Off: bare LEDs, each a point of light with dark between and a bloom (glare) around the bright ones, as bare LEDs look to the eye or a camera. Kept in this browser.',
-  steps: 'The drum machine: 32 steps (two bars; in Beats timing with 8 beats per pattern each step is a 1/16 note, in Time timing Speed is beats a second, 4 steps each). Click a box to set or clear that step, or drag across boxes to set or clear several. On a set step its lane flashes: Whole = the whole ceiling, Band = a band at Angle, Block = one cell of a grid of about Size, Shape = a circle or square. Bands, blocks and shapes land somewhere new on every step. The lighter boxes are the beats.',
+  steps: 'The drum machine: 32 steps (two bars; in Beats timing with 8 beats per pattern each step is a 1/16 note, with Timing set to Frequency the pattern isn’t used: a plain strobe). Click a box to set or clear that step, or drag across boxes to set or clear several. On a set step its lane flashes: Whole = the whole ceiling, Band = a band at Angle, Block = one cell of a grid of about Size, Shape = a circle or square. Bands, blocks and shapes land somewhere new on every step. The lighter boxes are the beats.',
   stepsClear: 'Clears every step in all four lanes (Revert brings back the saved pattern).',
   effectBrightness: 'Dims whatever preset plays, but not the Sparkle overlay’s twinkles: pull the effect down and let the sparkle shine. On Strobe it dims only the Background: the flashes stay at full power. Under the master Brightness. Saved, like Brightness.',
   sparkleBrightness: 'How strongly the Sparkle overlay’s twinkles show over the effect: 0 = not at all, 50% = each twinkle covers half (a dark one darkens by half), 100% = fully. Under the master Brightness. Saved, like Brightness.',
@@ -553,7 +554,7 @@ function draw() {
   // In beats, the effect's cycle (a band, a revolution, ...) takes 1, 2, 4 ... 64 beats and the
   // speed slider is replaced by that choice.
   // Beats is always in the list; for an effect with no cycle it can't be picked, and says why
-  const modes = ['Time', 'Time, follow tempo', 'Beats'];
+  const modes = ef.steps ? ['Frequency', 'Frequency, follow tempo', 'Beats'] : ['Time', 'Time, follow tempo', 'Beats'];
   const timing = ef.cycle ? p.timing : Math.min(p.timing, 1);
   const inBeats = timing == 2;
   const noCycle = ef.name + ' has no repeating cycle (a band, a revolution, …) to fit to the beat, so it can’t run in Beats.';
@@ -569,7 +570,10 @@ function draw() {
   const rRow = field('Reverse', rev, H.reverse);
   if (!inBeats) for (const r of [bRow, rRow]) off(r, ef.cycle ? 'only with Timing set to Beats.' : noCycle);
   card.append(bRow, rRow);
-  if (ef.steps) card.append(stepGrid(p));
+  if (ef.steps) {
+    const g = card.appendChild(stepGrid(p));
+    if (!inBeats) for (const el of g.children) off(el, 'Timing is ' + modes[timing] + ': a plain strobe of the whole ceiling at Speed flashes a second. Set Timing to Beats to play the pattern.');
+  }
   const motions = p.motions || [];
   const rows = [], moved = j => motions.some(mo => mo.target == j + 1);
   ef.params.forEach((d, j) => {
@@ -581,6 +585,8 @@ function draw() {
         (by >= 0 ? ' Now moved by Motion ' + (by + 1) + ' (below): set its From and To there.' : ''), 'p' + j);
     if (by >= 0) { row.classList.add('moving'); off(row, 'Motion ' + (by + 1) + ' moves it: set its From and To there.'); }
     else if (inBeats && j == ef.speedParam) off(row, 'Timing is Beats: the speed comes from Beats per ' + ef.cycle + ' instead.');
+    else if (ef.steps && !inBeats && /^(Size|Angle|Softness)/.test(d.name))
+      off(row, 'Timing is ' + modes[timing] + ': the strobe lights the whole ceiling. It shapes the bands, blocks and shapes of the pattern (Timing: Beats).');
     rows[j] = row;
     card.append(row);
   });

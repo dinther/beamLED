@@ -72,8 +72,9 @@ for this kind of installation (see [docs/background.md](docs/background.md)):
 | ![Gradient](docs/images/beam_gradient.jpg) **Gradient**: a steady gradient through the palette, straight at any angle or round from a centre; Colour drift or a Motion on Colour offset makes the colours flow. | |
 
 **Strobe** is a drum machine of flashes: each preset holds a grid of four lanes and 32 steps (two
-bars of 1/16 notes on the beat, or at a set number of beats a second), and on the steps set the lanes
-flash the whole ceiling, a band, a block or a circle or square, somewhere new each time.
+bars of 1/16 notes on the beat), and on the steps set the lanes
+flash the whole ceiling, a band, a block or a circle or square, somewhere new each time. With
+Timing set to Frequency it is a plain strobe of the whole ceiling, 0 to 20 flashes a second.
 
 The scrolling effects have a position slider: **Offset** (Rolling bars, Plaid, Rings,
 Interference), **Offset X** and **Offset Y** (Clouds), and Lighthouse has **Angle**. With the speed
