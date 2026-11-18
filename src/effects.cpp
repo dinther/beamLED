@@ -1018,9 +1018,9 @@ static const int MAX_SHOTS = 64;
 static Shot shots[MAX_SHOTS];
 
 static void chain(Ctx& c) {
-    enum { kSpeed, kLength, kRate, kFade, kSnake, kSoft, kBg, kAuto };
+    enum { kSpeed, kLength, kRate, kFade, kSnake, kSoft, kFadeShape, kAuto };
     const int nx = NX, total = NX * NY;                      // chain length in LEDs
-    const float fade = fmaxf(c.p[kFade], 0.05f), bg = c.p[kBg], soft = c.p[kSoft];
+    const float fade = fmaxf(c.p[kFade], 0.05f), shape = c.p[kFadeShape], soft = c.p[kSoft];
     const bool snake = c.p[kSnake] >= 0.5f, rev = c.reverse;  // Reverse (Beats): fired from the end
     if (c.s[7] == 0) {  // a fresh start: an empty chain, the first shot at once
         c.s[7] = 1;
@@ -1049,14 +1049,21 @@ static void chain(Ctx& c) {
         h.age += c.dt;
         if (h.age >= fade || h.head - h.len > total + 2) h.live = false;
     }
-    // The background, then each shot added over its own LEDs
-    for (int b = 0; b < NY; b++)
-        for (int i = 0; i < nx; i++)
-            c.out[b * nx + i] = bg > 0 ? scaleF(c.lutLin[0], bg) : CRGB(0, 0, 0);
+    // Black, then each shot added over its own LEDs
+    for (int k = 0; k < total; k++) c.out[k] = CRGB(0, 0, 0);
     for (const Shot& h : shots) {
         if (!h.live) continue;
         const float edge = fmaxf(soft * h.len * 0.5f, 1.f), iedge = 1.f / edge, ilen = 1.f / h.len;
-        const float a0 = 1.f - h.age / fade;
+        // Brightness over the fade time t (0..1). Fade shape 0: even; above 0: holds bright for that
+        // share of the time, then drops faster; below 0: drops quickly, then a long dim glow
+        const float t = fminf(h.age / fade, 1.f);
+        float a0;
+        if (shape >= 0) {
+            const float hold = shape * 0.95f;
+            a0 = t <= hold ? 1.f : 1.f - (t - hold) / (1.f - hold);
+        } else {
+            a0 = powf(1.f - t, 1.f - 3.f * shape);
+        }
         const int from = clampi((int)floorf(h.head - h.len - edge), 0, total), to = clampi((int)ceilf(h.head + edge), 0, total);
         for (int x = from; x < to; x++) {
             const float d = h.head - x;  // how far behind the head this LED is
@@ -1288,7 +1295,7 @@ const EffectDef EFFECTS[] = {
       {"Fade (s)", 0.2f, 20, 4, 0.1f, "Seconds until a shot has faded out."},
       {"Snake", 0, 1, 1, 1, "0 = every bar runs top to bottom; 1 = every second bar runs back up, one zigzag chain."},
       {"Softness", 0, 1, 0.2f, 0.01f, "Soft head and tail. 0 = hard edges."},
-      {"Background", 0, 0.5f, 0, 0.01f, "Background in the palette's first colour. 0 = black."},
+      {"Fade shape", -1, 1, 0, 0.01f, "0 = even fade; above 0 holds bright longer, then drops faster; below 0 drops quickly, then glows dim. Same total time."},
       {"Auto fire", 0, 1, 1, 1, "1 = shots fire on the beat or at the rate; 0 = no new shots (those in flight run on)."}},
      chain, false, "shot", 2,
      "All bars joined into one chain; shots of the whole palette fired into it on the beat or in time, travelling and fading. Reverse: fired from the end."},
