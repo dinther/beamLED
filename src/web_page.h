@@ -561,17 +561,35 @@ function draw() {
   if (!inBeats) for (const r of [bRow, rRow]) off(r, ef.cycle ? 'only with Timing set to Beats.' : noCycle);
   card.append(bRow, rRow);
   const motions = p.motions || [];
+  const rows = [], moved = j => motions.some(mo => mo.target == j + 1);
   ef.params.forEach((d, j) => {
     const by = motions.findIndex(mo => mo.target == j + 1);
     const row = slider(d.name, d.min, d.max, d.step, p.params[j],
       v => v.toFixed(decimals(d.step)),
-      v => { p.params[j] = v; markChanged(S.current); liveSend(presetAddr(slug(d.name)), v, () => post('/api/preset', {index: S.current, params: p.params})); },
+      v => { p.params[j] = v; paramDeps(); markChanged(S.current); liveSend(presetAddr(slug(d.name)), v, () => post('/api/preset', {index: S.current, params: p.params})); },
       d.help + ' (' + d.min + ' to ' + d.max + ', default ' + d.def + ')' +
         (by >= 0 ? ' Now moved by Motion ' + (by + 1) + ' (below): set its From and To there.' : ''), 'p' + j);
     if (by >= 0) { row.classList.add('moving'); off(row, 'Motion ' + (by + 1) + ' moves it: set its From and To there.'); }
     else if (inBeats && j == ef.speedParam) off(row, 'Timing is Beats: the speed comes from Beats per ' + ef.cycle + ' instead.');
+    rows[j] = row;
     card.append(row);
   });
+  // Sliders that only count for one setting of a switch slider (Radial): greyed while it is the
+  // other way. A switch moved by a motion can be either, so nothing is greyed then.
+  const rad = ef.params.findIndex(d => d.name == 'Radial');
+  paramDeps = () => {
+    if (rad < 0) return;
+    const radial = p.params[rad] >= 0.5, free = moved(rad);
+    ef.params.forEach((d, j) => {
+      if (moved(j)) return;  // greyed for its motion already
+      const centre = /^Centre [XY]$/.test(d.name), angle = /^Angle/.test(d.name);
+      if (!centre && !angle) return;
+      if (!free && centre && !radial) off(rows[j], 'Radial is off: a straight gradient has no centre. Set Radial to 1 to use it.');
+      else if (!free && angle && radial) off(rows[j], 'Radial is on: a round gradient has no direction. Set Radial to 0 to use it.');
+      else on(rows[j]);
+    });
+  };
+  paramDeps();
   card.append(slider('Beat pulse', 0, 1, 0.01, p.pulse, v => v.toFixed(2),
     v => { p.pulse = v; markChanged(S.current); liveSend(presetAddr('pulse'), v, () => post('/api/preset', {index: S.current, pulse: v})); }, H.pulse, 'pulse'));
   motions.forEach((mo, m) => card.append(motionEditor(p, ef, mo, m)));
@@ -1163,6 +1181,7 @@ function oscMessages(buf, out = []) {
   return out;
 }
 
+let paramDeps = () => {};  // the playing preset's slider dependencies (greying), set by its card
 function oscValue(addr, v) {
   const a = addr.split('/');
   if (a[1] != 'beamled' || !S) return;
@@ -1214,7 +1233,7 @@ function oscValue(addr, v) {
       const j = S.effects[p.effect].params.findIndex(d => slug(d.name) == key);
       if (j < 0) return;
       p.params[j] = v;
-      if (mine) return moveSlider('p' + j, v);
+      if (mine) { moveSlider('p' + j, v); paramDeps(); }
     }
     if (mine) redraw();
   } else if (a[2] == 'palettes') {
