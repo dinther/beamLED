@@ -21,7 +21,8 @@ struct Preset {
     float unusedSparkle;  // was the preset's own Sparkle overlay amount (see unusedSparkleBeat)
 };
 static_assert(sizeof(Preset) == 60, "Preset is saved as is: its size must not change");
-constexpr uint8_t SPARKLE_GRID = 0x07, SPARKLE_BURST = 0x80;
+// SPARKLE_THROUGH: each twinkle runs through the sparkle palette, first colour to last, over its life
+constexpr uint8_t SPARKLE_GRID = 0x07, SPARKLE_BURST = 0x80, SPARKLE_THROUGH = 0x40;
 
 struct Settings {
     uint8_t brightness;  // 0..255

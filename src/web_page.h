@@ -221,6 +221,7 @@ const H = {
   mirror: 'The right half of the ceiling becomes the mirror image of the left, along the rows: anything moving right on the left half moves left on the right half. Only the left half is rendered, so the effect takes about half the time. The Sparkle overlay is not mirrored.',
   sparkleBurst: 'Off: single twinkles, each with the same soft rise and fade as in Free. On: a batch flashes at once on each tick and fades out before the next; Sparkle overlay sets how many (1 = 6% of the LEDs).',
   paletteLock: 'Lock every preset to one palette, for a show in one set of colours: whichever preset plays (picked here, by the button, by Auto or OSC) uses this palette instead of its own. The presets’ own palettes are kept, so Each preset’s own brings them back. Not saved: after a restart each preset has its own palette again.',
+  sparkleThrough: 'On: each twinkle runs through the sparkle palette over its life, from its first colour to its last: it covers what is under it at once, goes through the colours and fades back at the end. Black, black, red: goes dark, pops red, fades. Off: each twinkle has one colour.',
   sparkleStep: 'How the twinkles pick their colours from the palette. 0 = each one a random colour. Above 0 = each new twinkle this far along the palette from the one before. A hundred or more twinkles start every second, so tiny steps matter: about 0.0005 = the colours drift slowly through the palette (a burst in neighbouring colours), 0.01 and up already look mixed, 0.5 = opposite colours in turn. The left part of the slider is fine, the right part coarse.',
   sparkleColour: 'The colours of the Sparkle overlay’s twinkles: white, random colours from the playing preset’s palette (they change with the preset), or from any other palette. The twinkle’s colour replaces what is under it, so a palette of black gives dark twinkles.',
   pulse: 'A brightness accent on the beat: full on each beat and dipping in between, strongest on the bar’s first beat. 0 = steady. Follows Ableton Link, or the board’s own tempo.',
@@ -373,7 +374,7 @@ function lockRow() {
 }
 // The Sparkle overlay: one for all presets
 function sparkleRows(p, ef) {
-  const sk = S.sparkle || {amount: 0, beat: 0, burst: false, colour: 0, step: 0};
+  const sk = S.sparkle || {amount: 0, beat: 0, burst: false, colour: 0, step: 0, through: false};
   S.sparkle = sk;
   const send = o => post('/api/sparkle', o);
   const rows = [slider('Sparkle overlay', 0, 1, 0.01, sk.amount, v => v.toFixed(2),
@@ -401,7 +402,13 @@ function sparkleRows(p, ef) {
   const stepRow = slider('Colour step', 0, 1, 0.005, Math.cbrt(sk.step || 0),
     q => showStep(stepOf(q)),
     q => { const v = stepOf(q); sk.step = v; liveSend('/beamled/sparkle_colour_step', v, () => send({step: v}), true); }, H.sparkleStep, 'sparkleStep');
+  const thr = h('input', {type: 'checkbox', checked: !!sk.through});
+  thr.onchange = () => { sk.through = thr.checked; send({through: thr.checked}); draw(); };
+  const thrRow = field('Through the palette', thr, H.sparkleThrough);
+  if (!sk.colour) off(thrRow, 'Sparkle colour is White: there is no palette to go through. Pick a palette above.');
+  rows.push(thrRow);
   if (!sk.colour) off(stepRow, 'Sparkle colour is White: there is no palette to step along. Pick a palette above.');
+  else if (sk.through) off(stepRow, 'Through the palette is on: each twinkle runs through the whole palette.');
   rows.push(stepRow);
   return rows;
 }
@@ -1069,6 +1076,7 @@ function oscValue(addr, v) {
     else if (S.sparkle && a[2] == 'sparkle_burst') { if (S.sparkle.burst != !!v) { S.sparkle.burst = !!v; redraw(); } }
     else if (S.sparkle && a[2] == 'sparkle_colour') { if (S.sparkle.colour != v) { S.sparkle.colour = v; redraw(); } }
     else if (a[2] == 'palette') { if (S.paletteLock != v - 1) { S.paletteLock = v - 1; redraw(); } }
+    else if (S.sparkle && a[2] == 'sparkle_through') { if (S.sparkle.through != !!v) { S.sparkle.through = !!v; redraw(); } }
     else if (S.sparkle && a[2] == 'sparkle_colour_step') { S.sparkle.step = v; moveSlider('sparkleStep', Math.cbrt(v)); }
     return;
   }

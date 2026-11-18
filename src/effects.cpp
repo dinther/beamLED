@@ -296,7 +296,7 @@ static void gridStep(float density, double beat, float div, float dt) {
 }
 
 void sparkleOverlay(CRGB* out, float density, float dt, const CRGB* lut, double beat, float bpm, float div,
-                    bool burst, float colourStep) {
+                    bool burst, float colourStep, const CRGB* ramp) {
     burst = burst && div > 0;
     spStep = lut ? colourStep : 0;  // white: nothing to step along
     if (burst) burstStep(density, beat, bpm, div, dt);
@@ -307,9 +307,16 @@ void sparkleOverlay(CRGB* out, float density, float dt, const CRGB* lut, double 
         if (!spPhase[i]) continue;
         // The twinkle's colour replaces what is under it, as far as it has risen (not added on top):
         // a black palette gives dark twinkles
-        const int a = (int)((burst ? burstLevel(spPhase[i]) : sparkleLevel(spPhase[i])) * 255.f);
-        static const CRGB WHITE(255, 255, 255);
-        const CRGB& k = lut ? lut[spColour[i]] : WHITE;
+        int a;
+        CRGB k;
+        if (ramp) {  // through the palette: its colour by how far along its life it is
+            const uint16_t ph = spPhase[i];
+            k = ramp[ph >> 8];
+            a = ph < 3277 ? ph * 255 / 3277 : ph > 45875 ? (65535 - ph) * 255 / 19660 : 255;
+        } else {
+            a = (int)((burst ? burstLevel(spPhase[i]) : sparkleLevel(spPhase[i])) * 255.f);
+            k = lut ? lut[spColour[i]] : CRGB(255, 255, 255);
+        }
         CRGB& o = out[i];
         o = CRGB((uint8_t)(o.r + (k.r - o.r) * a / 255), (uint8_t)(o.g + (k.g - o.g) * a / 255),
                  (uint8_t)(o.b + (k.b - o.b) * a / 255));

@@ -317,29 +317,39 @@ static void renderFrame(float dt) {
     if (!e.ownSparkle && sk.amount > 0) {
         // Its colours: white, the playing preset's palette, or another palette (its table on the
         // heap, rebuilt only when that palette changes)
+        // Through the palette: the same palette as a ramp (first colour to last), not a loop
+        const bool through = (sk.beat & SPARKLE_THROUGH) != 0 && sk.colour >= 1;
         const CRGB* lut = nullptr;
-        if (sk.colour == 1) lut = lutWrap;
-        else if (sk.colour >= 2 && sk.colour - 2 < paletteCount) {
-            static CRGB* spLut = nullptr;
+        const CRGB* ramp = nullptr;
+        if (sk.colour == 1) {
+            lut = lutWrap;
+            if (through) ramp = lutLin;
+        } else if (sk.colour >= 2 && sk.colour - 2 < paletteCount) {
+            static CRGB* spLut = nullptr;     // loop
+            static CRGB* spLutLin = nullptr;  // ramp
             static Palette* spBuilt = nullptr;
             static bool spHave = false;
             if (!spLut) spLut = (CRGB*)malloc(256 * sizeof(CRGB));
+            if (!spLutLin) spLutLin = (CRGB*)malloc(256 * sizeof(CRGB));
             if (!spBuilt) spBuilt = (Palette*)calloc(1, sizeof(Palette));
             const Palette& sp = palettes[sk.colour - 2];
-            if (spLut && spBuilt) {
+            if (spLut && spLutLin && spBuilt) {
                 if (!spHave || memcmp(spBuilt, &sp, sizeof(sp)) != 0) {
                     buildLut(sp, spLut, true);
+                    buildLut(sp, spLutLin, false);
                     *spBuilt = sp;
                     spHave = true;
                 }
                 lut = spLut;
+                if (through) ramp = spLutLin;
             }
         }
         // Ticks per beat by timing code: 1..4 = every 1, 1/2, 1/4, 1/8 beat; 5 = every 2 beats, 6 = every 4
         static const float DIV[7] = {0, 1, 2, 4, 8, 0.5f, 0.25f};
         const int grid = sk.beat & SPARKLE_GRID;
         const float div = grid <= 6 ? DIV[grid] : 0;
-        sparkleOverlay(leds, sk.amount, dt, lut, beat.beat, (float)beat.bpm, div, (sk.beat & SPARKLE_BURST) != 0, sk.colourStep);
+        sparkleOverlay(leds, sk.amount, dt, lut, beat.beat, (float)beat.bpm, div, (sk.beat & SPARKLE_BURST) != 0, sk.colourStep,
+                       ramp);
     }
 }
 
