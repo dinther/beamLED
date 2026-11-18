@@ -1007,94 +1007,6 @@ static void tunnel(Ctx& c) {
     }
 }
 
-// ---------------------------------------------------------------- Rifling
-// Rifling seen down a barrel: grooves winding out from a centre as logarithmic spirals (each groove
-// crosses every circle at the same angle), each a sharp highlight with thin halo lines beside it,
-// darkening towards the bore. Two of them in each quarter of the layout, the second flipped so it
-// winds the other way, both turning about their centres; the quarter mirrored both ways (across
-// the bars and along them): eight centres. The brighter of the two riflings wins at each LED.
-
-// ln(x) without the library call: the exponent times ln 2, plus a polynomial for ln of the
-// mantissa (1..2; error ~1e-4)
-static inline float lnFast(float x) {
-    union { float f; uint32_t i; } u{x};
-    const float e = (float)((int)((u.i >> 23) & 255) - 127);
-    u.i = (u.i & 0x007FFFFF) | 0x3F800000;
-    const float m = u.f;
-    return e * 0.69314718f + (-1.7417939f + (2.8212026f + (-1.4699568f + (0.44717955f - 0.056570851f * m) * m) * m) * m);
-}
-
-struct RiflingLook {
-    float grooves, twist, power, halo, glowW;
-    // Brightness at p (relative to the rifling's centre, in screen units: the height is 1)
-    float at(float px, float py) const {
-        const float r2 = px * px + py * py;
-        const float r = r2 > 1e-10f ? r2 * rsqrtFast(r2) : 0.f;
-        const float a = atan2Fast(py, px);
-        const float tw = a - twist * lnFast(fmaxf(r, 0.015f));  // radians
-        const float cs = cosCyc((tw * grooves - 0.5f) * (1.f / TAU));            // cos(phase - 0.5)
-        float sp = fmaxf(cs, 0.f);
-        if (power == 12.f) {  // the original's sharp highlight, ^12 by squarings
-            const float s2 = sp * sp, s4 = s2 * s2, s8 = s4 * s4;
-            sp = s8 * s4;
-        } else {              // softer (Smooth): ^power
-            sp = sp > 1e-6f ? expNeg(power * lnFast(sp)) : 0.f;
-        }
-        float red = fminf(sp * 1.4f, 1.f);
-        if (halo > 0) {  // thin lines where the cosine crosses 0
-            const float g = cs * glowW;
-            red += expNeg(-2.f * g * g) * halo;
-        }
-        return red * (0.25f + 0.75f * sm(r * 4.f));         // darker towards the bore
-    }
-};
-
-static void rifling(Ctx& c) {
-    enum { kSpeed, kSize, kGrooves, kSmooth, kWidth, kHalo, kSpacing, kCentreY };
-    RiflingLook look;
-    look.grooves = roundFast(c.p[kGrooves]);
-    look.twist = -0.8f;  // as the original
-    look.halo = c.p[kHalo];
-    look.power = 12.f - 10.5f * c.p[kSmooth];  // Smooth 0: the original's ^12; 1: ^1.5
-    look.glowW = 32.f * c.p[kWidth];  // Line width 1 = the original's sharpness; higher = finer
-    advance(c, c.s[0], c.p[kSpeed] * (1.f / 360.f), 1.f);  // turns
-    c.s[0] = fmodf(c.s[0], 4096.f);
-    const float ca = cosCyc(c.s[0]), sa = cosCyc(c.s[0] - 0.25f);
-    const float size = fmaxf(c.p[kSize] * 0.01f, 0.05f);
-    // The screen: u across the bars (left to right in the preview), v along them (top to bottom),
-    // each 0..1 over the layout; distances in screen heights (the bars' length), as the original
-    const float aspect = W > 0 ? H / W : 1.f;
-    const float iH = H > 1e-6f ? 1.f / H : 0.f, iW = 1.f / W;
-    const float x1 = 1.f, x2 = 1.f - c.p[kSpacing], yc = c.p[kCentreY];
-    // Mirrored both ways: only one quarter is worked out, each LED copied to its mirror places
-    // (row NY-1-b, LED NX-1-i). In the preset's Mirror mode (half a row rendered) along the bars
-    // every LED is worked out.
-    const bool alongToo = NX == NXFULL;
-    const int nb = (NY + 1) / 2, ni = alongToo ? (NX + 1) / 2 : NX;
-    for (int b = 0; b < nb; b++) {
-        float u = (Y[b] - Y[0]) * iH;
-        if (u < 0.5f) u = 1.f - u;  // mirrored across the bars
-        CRGB* o = c.out + b * NX;
-        CRGB* om = c.out + (NY - 1 - b) * NX;
-        for (int i = 0; i < ni; i++) {
-            float v = 1.f - X[i] * iW;  // the top of the preview is the start of the bars
-            if (v < 0.5f) v = 1.f - v;  // mirrored along them
-            // First rifling (centred on the edge), second (flipped, winding the other way)
-            float px = u - x1, py = v - yc;
-            // GLSL's mat2(c, -s, s, c) fills columns: x' = c x + s y, y' = -s x + c y
-            float rx = ca * px + sa * py, ry = -sa * px + ca * py;
-            const float i1 = look.at(rx * aspect / size, ry / size);
-            px = -(u - x2);
-            rx = ca * px + sa * py; ry = -sa * px + ca * py;
-            const float i2 = look.at(rx * aspect / size, ry / size);
-            const float I = fminf(fmaxf(i1, i2), 1.f);
-            const CRGB col = I > 0.004f ? scaleF(lutL(c.lutLin, I), I) : CRGB(0, 0, 0);
-            o[i] = om[i] = col;
-            if (alongToo) o[NX - 1 - i] = om[NX - 1 - i] = col;
-        }
-    }
-}
-
 // ---------------------------------------------------------------- Strobe
 // Flashes on all bars. Beats timing: a drum machine of 32 steps (two bars of 1/16 notes) in three
 // lanes, Top, Center and Bottom: on a set step that third of every bar flashes (Size of it: Top from
@@ -1292,17 +1204,6 @@ const EffectDef EFFECTS[] = {
      strobe, false, "pattern", 0,
      "Flashes on all bars: the top, middle and bottom third as the pattern sets (Beats), or the first column's thirds at Speed (Frequency). Flashes ignore Effect brightness.",
      true, true},
-    {"Rifling", 8,
-     {{"Speed (deg/s)", -90, 90, -8.6f, 0.1f, "Rotation, degrees per second. Beats: beats per turn."},
-      {"Size (%)", 20, 300, 100, 1, "Spiral size. 100% = the original."},
-      {"Grooves", 1, 24, 12, 1, "Grooves per spiral."},
-      {"Smooth", 0, 1, 0, 0.01f, "0 = sharp, 1 = soft highlights."},
-      {"Line width", 0.2f, 3, 1, 0.01f, "Halo line fineness. 1 = the original."},
-      {"Halo", 0, 1, 0.2f, 0.01f, "Halo line brightness."},
-      {"Spacing", 0, 0.5f, 0.35f, 0.01f, "Inset of the second spiral, share of the width across the bars."},
-      {"Centre Y", 0.5f, 1, 0.75f, 0.01f, "Spiral centres along the bars (in the mirrored quarter)."}},
-     rifling, false, "turn", 0,
-     "Rifling spirals seen down a barrel, mirrored four ways."},
     {"Tunnel", 8,
      {{"Speed", -4, 4, 0.9f, 0.05f, "Flight speed; negative = backwards. Beats: beats per fibre turn."},
       {"Swing", 0, 1, 0.24f, 0.01f, "Pendulum arm of the centre, share of the shorter side. One swing every 31 s. 0 = still."},
