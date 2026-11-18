@@ -1251,10 +1251,6 @@ function stepGrid(p, firstOnly) {
   const grid = h('div', {className: 'seq'});
   // Frequency: at least one third in the first column (an empty one would never flash)
   const firstSet = () => [0, 1, 2].filter(k => p.steps[k] & 1).length;
-  if (firstOnly && !firstSet()) {
-    for (let k = 0; k < 3; k++) p.steps[k] = (p.steps[k] | 1) >>> 0;
-    post('/api/preset', {index: S.current, steps: p.steps});
-  }
   const set = (k, b, box, v) => {
     if (firstOnly && b == 0 && !v && firstSet() <= 1) return;  // the last one stays
     const bit = (1 << b) >>> 0;
