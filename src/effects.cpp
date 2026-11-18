@@ -724,12 +724,11 @@ static void interference(Ctx& c) {
 static inline uint32_t cell16(float v) { return (uint32_t)floorI(v * 65536.f) & 0xFFFFFFu; }
 
 static void clouds(Ctx& c) {
-    enum { kSpeed, kSize, kCover, kEvolve, kTurn, kSoft, kOffsetX, kOffsetY };
-    const float cover = c.p[kCover], size = c.p[kSize], wind = c.p[kSpeed], turn = c.p[kTurn],
+    enum { kSpeed, kSize, kCover, kEvolve, kAngle, kSoft, kOffsetX, kOffsetY };
+    const float cover = c.p[kCover], size = c.p[kSize], wind = c.p[kSpeed], dir = c.p[kAngle] * DEG,
                 evolve = c.p[kEvolve], soft = c.p[kSoft];
-    c.s[2] += c.dt * turn * DEG;
-    c.s[0] += cosf(c.s[2]) * wind * c.dt;
-    c.s[1] += sinf(c.s[2]) * wind * c.dt;
+    c.s[0] += cosf(dir) * wind * c.dt;  // the wind, from Angle (a Motion on it turns it)
+    c.s[1] += sinf(dir) * wind * c.dt;
     c.s[3] += c.dt * evolve * 0.05f;
     // Keep the offsets bounded (the noise repeats every 256 cells of the coarsest octave)
     const float period = 256.f * size;
@@ -1295,7 +1294,7 @@ const EffectDef EFFECTS[] = {
       {"Cloud size (%)", 20, 160, 60, 1, "The typical size of a cloud, as a share of the ceiling's shorter side. Smaller clouds still keep their detail coarse enough for the bar spacing.", 1},
       {"Coverage", 0, 1, 0.5f, 0.01f, "How much of the sky is cloud: 0 = clear, 0.5 = half cloudy, 1 = overcast."},
       {"Evolve", 0, 1, 0.2f, 0.01f, "How fast the cloud shapes change as they drift. 0 = rigid shapes sliding past, 1 = clouds forming and dissolving quickly."},
-      {"Turn (deg/s)", -5, 5, 0.5f, 0.1f, "How fast the wind direction turns, in degrees per second; negative turns the other way. 0 = a steady wind."},
+      {"Angle (deg)", -180, 180, 0, 1, "Which way the wind blows the clouds: 0 = along the bars, 90 = across them. A Motion on it turns the wind."},
       {"Softness", 0, 1, 0.4f, 0.01f, "How gradually a cloud fades into the sky. 0 = crisp edges, 1 = hazy."},
       {"Offset X (%)", -200, 200, 0, 0.2f, "Shifts the clouds along the bars by this share of the ceiling's shorter side, on top of the wind. With Speed at 0 they stay put, so a Motion on Offset X moves them back and forth. 0 = no shift.", 1},
       {"Offset Y (%)", -200, 200, 0, 0.2f, "Shifts the clouds across the bars by this share of the ceiling's shorter side, on top of the wind. With Speed at 0 they stay put, so a Motion on Offset Y moves them back and forth. 0 = no shift.", 1}},
