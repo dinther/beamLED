@@ -2,6 +2,8 @@
 
 #include <ArduinoJson.h>
 #include <esp_http_server.h>
+#include <esp_heap_caps.h>
+#include <esp_partition.h>
 #include <esp_system.h>
 #include <esp_timer.h>
 #include <lwip/sockets.h>
@@ -65,6 +67,10 @@ static bool replyCache = false;  // the same for this firmware build: may be cac
 // and the reply goes out cut off.
 static JsonDocument replyDoc;
 static bool replyJson = false;
+// A flash partition sent raw (the core dump), 1 KB at a time, after the engine lock is let go
+static const esp_partition_t* replyPart = nullptr;
+static int routeHeap[32];                   // per API route: the most heap its reply took while built
+static void routeHeapJson(JsonObject o);    // those, by path (after the routes)
 
 static void reply(int code, const char* type, const String& body) {
     replyCode = code;
@@ -101,16 +107,22 @@ struct ChunkOut {
         if (n && err == ESP_OK) err = httpd_resp_send_chunk(req, buf, n);
         n = 0;
     }
+    // Sent when the next byte doesn't fit, so the last byte written is always still here
     size_t write(uint8_t c) {
-        buf[n++] = (char)c;
         if (n == sizeof(buf)) flush();
+        buf[n++] = (char)c;
         return 1;
     }
     size_t write(const uint8_t* s, size_t len) {
         for (size_t i = 0; i < len; i++) write(s[i]);
         return len;
     }
+    void print(const char* s) { write((const uint8_t*)s, strlen(s)); }
+    void unwrite() { if (n) n--; }  // takes back the last byte (a closing brace, to add more)
 };
+// More members written after the reply document, each list item from a small document of its own:
+// a reply with every preset in one document took ~29 KB at once, and memory that low starved Link
+static void (*replyTail)(ChunkOut&) = nullptr;
 
 static bool readBody(JsonDocument& d) {
     if (deserializeJson(d, rqBody)) {
@@ -241,6 +253,11 @@ static void statusJson(JsonObject o) {
     o["net"] = netModeText();
     o["wifi"] = netWifiText();
     o["heap"] = ESP.getFreeHeap();
+    // How close memory has come to running out: the least free since start, and the biggest
+    // single free block now (a request bigger than that fails even with more free in all)
+    o["heapMin"] = esp_get_minimum_free_heap_size();
+    o["heapBlock"] = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
+    routeHeapJson(o["routeHeap"].to<JsonObject>());
     o["configMode"] = netConfigMode();
     const BeatTime& b = engineBeat();
     JsonObject l = o["link"].to<JsonObject>();
@@ -311,6 +328,33 @@ static void handleEffects() {
     replyCache = true;
 }
 
+// ,"palettes":[...],"presets":[...] written item by item (each under the engine lock, briefly)
+static void listsTail(ChunkOut& out) {
+    out.print(",\"palettes\":[");
+    for (int k = 0;; k++) {
+        JsonDocument e;
+        {
+            EngineLock lock;
+            if (k >= paletteCount) break;
+            paletteJson(e.to<JsonObject>(), palettes[k]);
+        }
+        if (k) out.write(',');
+        serializeJson(e, out);
+    }
+    out.print("],\"presets\":[");
+    for (int i = 0;; i++) {
+        JsonDocument e;
+        {
+            EngineLock lock;
+            if (i >= presetCount) break;
+            presetJson(e.to<JsonObject>(), i);
+        }
+        if (i) out.write(',');
+        serializeJson(e, out);
+    }
+    out.write(']');
+}
+
 static void handleState() {
     JsonDocument d;
     statusJson(d.to<JsonObject>());
@@ -341,10 +385,6 @@ static void handleState() {
     lay["measuredRows"] = cfg::CEILING_ROWS;
     d["build"] = BUILD;
     d["effectsVersion"] = effectsVersion();  // the page gets /api/effects?v=<this>, cached
-    JsonArray pl = d["palettes"].to<JsonArray>();
-    for (int k = 0; k < paletteCount; k++) paletteJson(pl.add<JsonObject>(), palettes[k]);
-    JsonArray pr = d["presets"].to<JsonArray>();
-    for (int i = 0; i < presetCount; i++) presetJson(pr.add<JsonObject>(), i);
     d["maxPresets"] = MAX_PRESETS;
     JsonObject au = d["auto"].to<JsonObject>();
     au["enabled"] = autoSettings.enabled != 0;
@@ -356,6 +396,7 @@ static void handleState() {
     d["maxPalettes"] = MAX_PALETTES;
     d["linkLatency"] = linkSettings.latencyMs;
     sendJson(d);
+    replyTail = listsTail;  // "palettes" and "presets", one at a time
 }
 
 static void handleStatus() {
@@ -871,6 +912,15 @@ static void handleRestart() {
     restartAt = millis();
 }
 
+// /api/coredump: the core dump partition as it is (64 KB). The firmware writes the crashed task's
+// stacks there when it panics; decode on the PC with esp-coredump and that build's firmware.elf.
+static void handleCoredump() {
+    replyPart = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_COREDUMP, nullptr);
+    if (!replyPart) { reply(404, "text/plain", "no coredump partition"); return; }
+    replyCode = 200;
+    replyType = "application/octet-stream";
+}
+
 // /api/bench?e=<effect>&frames=<n>: ms per frame to render it (palette 1, default parameters).
 // Holds the render loop for that long, so ask for one effect at a time.
 static void handleBench() {
@@ -918,7 +968,14 @@ static const Route ROUTES[] = {
     {"/api/restore", HTTP_POST, handleRestore},
     {"/api/net", HTTP_POST, handleNetSet},
     {"/api/bench", HTTP_GET, handleBench},
+    {"/api/coredump", HTTP_GET, handleCoredump},
 };
+static const int NUM_ROUTES = sizeof(ROUTES) / sizeof(ROUTES[0]);
+static_assert(sizeof(ROUTES) / sizeof(ROUTES[0]) <= 32, "routeHeap has 32 places");
+static void routeHeapJson(JsonObject o) {
+    for (int k = 0; k < NUM_ROUTES; k++)
+        if (routeHeap[k] > 0) o[ROUTES[k].path] = routeHeap[k];
+}
 
 static const char* statusLine(int code) {
     switch (code) {
@@ -983,9 +1040,14 @@ bool webApi(httpd_req_t* req, esp_err_t& result) {
     replyCode = 0;
     replyCache = false;
     replyJson = false;
+    const uint32_t heapBefore = ESP.getFreeHeap();
     {
         EngineLock lock;
         route->handler();
+    }
+    {  // memory the reply took while it was built (the most per route), for /api/state routeHeap
+        const int k = route - ROUTES, took = (int)heapBefore - (int)ESP.getFreeHeap();
+        if (k >= 0 && k < NUM_ROUTES && took > routeHeap[k]) routeHeap[k] = took;
     }
     rq = nullptr;
     rqBody = String();
@@ -993,9 +1055,25 @@ bool webApi(httpd_req_t* req, esp_err_t& result) {
     httpd_resp_set_status(req, statusLine(replyCode));
     httpd_resp_set_type(req, replyType);
     if (replyCache) httpd_resp_set_hdr(req, "Cache-Control", "public, max-age=31536000, immutable");
-    if (replyJson) {
+    if (replyPart) {
+        static char buf[1024];
+        result = ESP_OK;
+        for (size_t o = 0; o < replyPart->size && result == ESP_OK; o += sizeof(buf)) {
+            result = esp_partition_read(replyPart, o, buf, sizeof(buf));
+            if (result == ESP_OK) result = httpd_resp_send_chunk(req, buf, sizeof(buf));
+        }
+        if (result == ESP_OK) result = httpd_resp_send_chunk(req, nullptr, 0);
+        replyPart = nullptr;
+    } else if (replyJson) {
         ChunkOut out{req};
         serializeJson(replyDoc, out);
+        replyDoc.clear();  // its memory back before the tail is written
+        if (replyTail) {
+            out.unwrite();  // the document's closing brace
+            replyTail(out);
+            out.write('}');
+            replyTail = nullptr;
+        }
         out.flush();
         result = out.err == ESP_OK ? httpd_resp_send_chunk(req, nullptr, 0) : out.err;
         replyDoc.clear();
