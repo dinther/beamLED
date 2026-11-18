@@ -22,6 +22,8 @@ button{background:#2a2a2a;color:var(--fg);border:1px solid #444;border-radius:7p
 button.on{background:var(--acc);border-color:var(--acc);color:#000}
 button.warn{background:var(--warn);border-color:var(--warn);color:#fff}
 button:disabled{opacity:.4;cursor:default}
+.na{opacity:.4;cursor:not-allowed}
+.na input,.na select,.na .pdd{pointer-events:none}
 .top{display:flex;align-items:center;gap:10px}
 .top button{min-width:72px}
 .presets{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:6px}
@@ -89,11 +91,12 @@ select,input[type=text],input[type=password],input[type=number]{flex:1;min-width
 <script>
 let S, N;
 const h = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; };
-let saveBtn = null;  // the playing preset's Save button: lit by any edit
+let saveBtn = null, revertBtn = null;  // the playing preset's Save and Revert: lit by any edit
 function markChanged(i) {
   if (!S || !S.presets[i]) return;
   S.presets[i].changed = true;
-  if (saveBtn && i == S.current) { saveBtn.disabled = false; saveBtn.className = 'on'; saveBtn.textContent = 'Save •'; }
+  if (saveBtn && i == S.current) { on(saveBtn); saveBtn.className = 'on'; saveBtn.textContent = 'Save •'; }
+  if (revertBtn && i == S.current) on(revertBtn);
 }
 const post = (u, o) => {
   if (u == '/api/preset' && !o.save && !o.revert && o.auto == null) markChanged(o.index);  // In Auto isn't a preset edit
@@ -138,6 +141,32 @@ function throttle(k, fn) {
 const tipBox = document.getElementById('tip');
 let tipFor = null, touch = false;
 const tip = (el, text) => { if (text) el.dataset.tip = text; return el; };
+// A control that can't be used now stays on the page, greyed, and its hint says why. Inside a
+// row the inputs are disabled and let the pointer through to the row (whose hint shows); a lone
+// button keeps its hint and has its clicks stopped (on touch, a tap shows the hint instead).
+function off(el, why) {
+  if (el.dataset.tip0 == null) el.dataset.tip0 = el.dataset.tip || '';
+  el.dataset.tip = (el.dataset.tip0 ? el.dataset.tip0 + ' ' : '') + 'Not available now: ' + why;
+  el.classList.add('na');
+  el.setAttribute('aria-disabled', 'true');
+  el.querySelectorAll('input,select,button').forEach(c => { c.disabled = true; });
+  if (el.matches('button')) el.tabIndex = -1;
+  return el;
+}
+function on(el) {
+  if (el.dataset.tip0 != null) { el.dataset.tip = el.dataset.tip0; delete el.dataset.tip0; }
+  el.classList.remove('na');
+  el.removeAttribute('aria-disabled');
+  el.querySelectorAll('input,select,button').forEach(c => { c.disabled = false; });
+  if (el.matches('button')) el.removeAttribute('tabindex');
+  return el;
+}
+document.addEventListener('click', e => {
+  const o = e.target.closest && e.target.closest('.na');
+  if (!o) return;
+  e.preventDefault(); e.stopImmediatePropagation();
+  if (touch) showTip(o);
+}, true);
 function showTip(el) {
   tipFor = el; tipBox.textContent = el.dataset.tip; tipBox.style.display = 'block';
   const r = el.getBoundingClientRect(), b = tipBox.getBoundingClientRect();
@@ -342,11 +371,11 @@ function sparkleRows(p, ef) {
     H.sparkle + (ef.sparkle ? '' : ' (The playing effect is Sparkle itself: no overlay on it.)'), 'sparkle')];
   rows.push(select('Sparkle timing', ['Free', '1/4', '1/8', '1/16', '1/32'], sk.beat || 0, v => {
     sk.beat = v; send({beat: v}); draw(); }, H.sparkleBeat));
-  if (sk.beat) {
-    const burst = h('input', {type: 'checkbox', checked: !!sk.burst});
-    burst.onchange = () => { sk.burst = burst.checked; send({burst: burst.checked}); };
-    rows.push(field('Bursts', burst, H.sparkleBurst));
-  }
+  const burst = h('input', {type: 'checkbox', checked: !!sk.burst});
+  burst.onchange = () => { sk.burst = burst.checked; send({burst: burst.checked}); };
+  const bRow = field('Bursts', burst, H.sparkleBurst);
+  if (!sk.beat) off(bRow, 'Bursts need a Sparkle timing other than Free: with Free, twinkles start at any moment, so there is no tick to flash on.');
+  rows.push(bRow);
   const own = S.palettes[p.palette] || S.palettes[0];
   const items = [{name: 'White', bg: 'linear-gradient(90deg,#8a8a8a,#e0e0e0)'},
                  {name: 'Preset’s palette (now ' + own.name + ')', bg: palGrad(own)}]
@@ -379,11 +408,10 @@ function draw() {
     b.onclick = () => { S.current = i; S.on = true; post('/api/set', {current: i}); draw(); };
     g.append(b);
   });
-  if (S.presets.length < S.maxPresets) {
-    const add = button('+ Add', H.add, {className: 'add'});
-    add.onclick = () => presetList({add: S.current});
-    g.append(add);
-  }
+  const add = button('+ Add', H.add, {className: 'add'});
+  add.onclick = () => presetList({add: S.current});
+  if (S.presets.length >= S.maxPresets) off(add, 'all ' + S.maxPresets + ' preset places are used; delete one first.');
+  g.append(add);
   app.append(g);
   app.append(autoRow());
 
@@ -396,11 +424,14 @@ function draw() {
     p.name = nm.value; post('/api/preset', {index: S.current, name: nm.value}); draw();
   };
   card.append(field('Name', nm, H.name));
-  const earlier = button('◀ Earlier', H.earlier, {disabled: S.current == 0});
+  const earlier = button('◀ Earlier', H.earlier);
   earlier.onclick = () => presetList({move: S.current, to: S.current - 1});
-  const later = button('Later ▶', H.later, {disabled: S.current == S.presets.length - 1});
+  if (S.current == 0) off(earlier, 'this is already the first preset.');
+  const later = button('Later ▶', H.later);
   later.onclick = () => presetList({move: S.current, to: S.current + 1});
-  const del = button('Delete', H.del, {disabled: S.presets.length <= 1});
+  if (S.current == S.presets.length - 1) off(later, 'this is already the last preset.');
+  const del = button('Delete', H.del);
+  if (S.presets.length <= 1) off(del, 'it is the only preset, and the board always needs one.');
   let armed = null;
   del.onclick = () => {
     if (armed) { clearTimeout(armed); presetList({delete: S.current}); return; }
@@ -422,29 +453,33 @@ function draw() {
   // Timing: tempo and beat come from Ableton Link (or the board's own clock when it is disabled).
   // In beats, the effect's cycle (a band, a revolution, ...) takes 1, 2, 4 ... 64 beats and the
   // speed slider is replaced by that choice.
-  const modes = ['Time', 'Time, follow tempo'].concat(ef.cycle ? ['Beats'] : []);
-  const timing = Math.min(p.timing, modes.length - 1);
+  // Beats is always in the list; for an effect with no cycle it can't be picked, and says why
+  const modes = ['Time', 'Time, follow tempo', 'Beats'];
+  const timing = ef.cycle ? p.timing : Math.min(p.timing, 1);
   const inBeats = timing == 2;
-  card.append(select('Timing', modes, timing, v => {
-    p.timing = v; post('/api/preset', {index: S.current, timing: v}); draw(); }, H.timing));
-  if (inBeats) {
-    const beats = [1, 2, 4, 8, 16, 32, 64].map(b => b + ' beat' + (b > 1 ? 's' : '') + (b >= 4 ? ' (' + b / 4 + ' bar' + (b > 4 ? 's' : '') + ')' : ''));
-    card.append(select('Beats per ' + ef.cycle, beats, p.beatsExp, v => {
-      p.beatsExp = v; post('/api/preset', {index: S.current, beatsExp: v}); }, H.beats + ' One cycle here: one ' + ef.cycle + '.'));
-    const rev = h('input', {type: 'checkbox', checked: p.reverse});
-    rev.onchange = () => { p.reverse = rev.checked; post('/api/preset', {index: S.current, reverse: rev.checked}); };
-    card.append(field('Reverse', rev, H.reverse));
-  }
+  const noCycle = ef.name + ' has no repeating cycle (a band, a revolution, …) to fit to the beat, so it can’t run in Beats.';
+  const tRow = select('Timing', modes, timing, v => {
+    p.timing = v; post('/api/preset', {index: S.current, timing: v}); draw(); }, H.timing + (ef.cycle ? '' : ' Beats is not available here: ' + noCycle));
+  if (!ef.cycle) tRow.querySelector('option[value="2"]').disabled = true;
+  card.append(tRow);
+  const beats = [1, 2, 4, 8, 16, 32, 64].map(b => b + ' beat' + (b > 1 ? 's' : '') + (b >= 4 ? ' (' + b / 4 + ' bar' + (b > 4 ? 's' : '') + ')' : ''));
+  const bRow = select('Beats per ' + (ef.cycle || 'cycle'), beats, p.beatsExp, v => {
+    p.beatsExp = v; post('/api/preset', {index: S.current, beatsExp: v}); }, H.beats + (ef.cycle ? ' One cycle here: one ' + ef.cycle + '.' : ''));
+  const rev = h('input', {type: 'checkbox', checked: p.reverse});
+  rev.onchange = () => { p.reverse = rev.checked; post('/api/preset', {index: S.current, reverse: rev.checked}); };
+  const rRow = field('Reverse', rev, H.reverse);
+  if (!inBeats) for (const r of [bRow, rRow]) off(r, ef.cycle ? 'only with Timing set to Beats.' : noCycle);
+  card.append(bRow, rRow);
   const motions = p.motions || [];
   ef.params.forEach((d, j) => {
-    if (inBeats && j == ef.speedParam) return;
     const by = motions.findIndex(mo => mo.target == j + 1);
     const row = slider(d.name, d.min, d.max, d.step, p.params[j],
       v => v.toFixed(decimals(d.step)),
       v => { p.params[j] = v; markChanged(S.current); liveSend(presetAddr(slug(d.name)), v, () => post('/api/preset', {index: S.current, params: p.params})); },
       d.help + ' (' + d.min + ' to ' + d.max + ', default ' + d.def + ')' +
         (by >= 0 ? ' Now moved by Motion ' + (by + 1) + ' (below): set its From and To there.' : ''), 'p' + j);
-    if (by >= 0) { row.classList.add('moving'); row.querySelector('input').disabled = true; }
+    if (by >= 0) { row.classList.add('moving'); off(row, 'Motion ' + (by + 1) + ' moves it: set its From and To there.'); }
+    else if (inBeats && j == ef.speedParam) off(row, 'Timing is Beats: the speed comes from Beats per ' + ef.cycle + ' instead.');
     card.append(row);
   });
   card.append(slider('Beat pulse', 0, 1, 0.01, p.pulse, v => v.toFixed(2),
@@ -454,13 +489,16 @@ function draw() {
   reset.onclick = () => { p.params = ef.params.map(d => d.def); p.changed = true; post('/api/preset', {index: S.current, params: p.params}); draw(); };
   const asNew = p.savedName != null;
   const save = button(asNew ? 'Save as new •' : p.changed ? 'Save •' : 'Saved', asNew ? H.saveAsNew : H.save,
-    {className: p.changed || asNew ? 'on' : '', disabled: !p.changed && !asNew});
+    {className: p.changed || asNew ? 'on' : ''});
+  if (!p.changed && !asNew) off(save, 'this preset has no unsaved changes.');
   save.onclick = () => post('/api/preset', {index: S.current, save: true}).then(np => {
     if (np.savedAs != null) { S.current = np.savedAs; load(); return; }  // a new preset: the list changed
     S.presets[S.current] = np; draw();
   });
   saveBtn = save;
-  const revert = button('Revert', H.revert, {disabled: !p.changed});
+  const revert = button('Revert', H.revert);
+  if (!p.changed) off(revert, 'there are no unsaved changes to drop.');
+  revertBtn = revert;
   revert.onclick = () => post('/api/preset', {index: S.current, revert: true}).then(np => { S.presets[S.current] = np; draw(); });
   card.append(h('div', {className: 'btns'}, save, revert, reset));
   app.append(card);
@@ -468,9 +506,10 @@ function draw() {
   app.append(heading('Palettes', H.palettes));
   const pc = h('div', {className: 'card'});
   S.palettes.forEach((q, i) => pc.append(paletteEditor(q, i)));
-  if (S.palettes.length < (S.maxPalettes || 16)) {
+  {
     const add = button('+ Add palette', H.palAddPalette, {className: 'pal-add'});
     add.onclick = () => post('/api/palettes', {add: S.palettes.length - 1}).then(st => { S = Object.assign(st, {effects: S.effects}); draw(); });
+    if (S.palettes.length >= (S.maxPalettes || 16)) off(add, 'all ' + (S.maxPalettes || 16) + ' palette places are used; delete one first.');
     pc.append(add);
   }
   app.append(pc);
@@ -601,23 +640,25 @@ function motionEditor(p, ef, mo, m) {
     if (v) { const d = ef.params[v - 1]; mo.from = d.min; mo.to = d.max; }
     send({target: v, from: mo.from, to: mo.to}); draw();
   }, H.motion));
-  if (!mo.target || mo.target > ef.params.length) return box;
-  const d = ef.params[mo.target - 1], fmt = v => v.toFixed(decimals(d.step));
+  // With the motion off, its settings stay on the page, greyed (From and To then on a 0..1 scale)
+  const live = mo.target && mo.target <= ef.params.length;
+  const d = live ? ef.params[mo.target - 1] : {min: 0, max: 1, step: 0.01}, fmt = v => v.toFixed(decimals(d.step));
+  const at = box.childElementCount;
   const pic = h('div');
   const repaint = () => pic.replaceChildren(curve(mo));
   box.append(select('Shape', SHAPES, mo.shape, v => { mo.shape = v; send({shape: v}); repaint(); }, H.shape));
   box.append(select('Period in', ['Seconds', 'Beats'], mo.inBeats ? 1 : 0, v => { mo.inBeats = v == 1; send({inBeats: mo.inBeats}); draw(); }, H.periodIn));
-  if (mo.inBeats) {
-    const beats = [1, 2, 4, 8, 16, 32, 64].map(b => b + ' beat' + (b > 1 ? 's' : '') + (b >= 4 ? ' (' + b / 4 + ' bar' + (b > 4 ? 's' : '') + ')' : ''));
-    box.append(select('Period', beats, mo.beatsExp, v => { mo.beatsExp = v; send({beatsExp: v}); }, H.periodBeats));
-  } else {
-    box.append(slider('Period (s)', 0.5, 120, 0.5, mo.seconds, v => v.toFixed(1), v => { mo.seconds = v; throttle('ms' + m, () => send({seconds: v})); }, H.periodSec));
-  }
+  const secRow = slider('Period (s)', 0.5, 120, 0.5, mo.seconds, v => v.toFixed(1), v => { mo.seconds = v; throttle('ms' + m, () => send({seconds: v})); }, H.periodSec);
+  const beats = [1, 2, 4, 8, 16, 32, 64].map(b => b + ' beat' + (b > 1 ? 's' : '') + (b >= 4 ? ' (' + b / 4 + ' bar' + (b > 4 ? 's' : '') + ')' : ''));
+  const beatRow = select('Period (beats)', beats, mo.beatsExp, v => { mo.beatsExp = v; send({beatsExp: v}); }, H.periodBeats);
+  if (live) off(mo.inBeats ? secRow : beatRow, 'Period in is ' + (mo.inBeats ? 'Beats: the period is set in beats below.' : 'Seconds: the period is set in seconds above.'));
+  box.append(secRow, beatRow);
   box.append(slider('From', d.min, d.max, d.step, mo.from, fmt, v => { mo.from = v; throttle('mf' + m, () => send({from: v})); }, H.from));
   box.append(slider('To', d.min, d.max, d.step, mo.to, fmt, v => { mo.to = v; throttle('mt' + m, () => send({to: v})); }, H.to));
   box.append(slider('Phase', 0, 1, 0.01, mo.phase, v => v.toFixed(2), v => { mo.phase = v; repaint(); throttle('mp' + m, () => send({phase: v})); }, H.phase));
   repaint();
   box.append(tip(pic, H.shape));
+  if (!live) [...box.children].slice(at).forEach(r => off(r, 'Motion ' + (m + 1) + ' is Off: pick the slider it moves first.'));
   return box;
 }
 // The moved sliders follow their motions on screen: the board pushes each motion's phase and rate
@@ -653,15 +694,15 @@ function autoRow() {
   const mode = tip(h('select'), H.autoEvery);
   ['Every … seconds', 'Every … bars'].forEach((l, k) => mode.append(h('option', {value: k, textContent: l, selected: (A.inBars ? 1 : 0) == k})));
   mode.onchange = () => { send({inBars: mode.value == 1}); draw(); };
-  let amount;
-  if (A.inBars) {
-    amount = tip(h('select'), H.autoEvery);
-    [1, 2, 4, 8, 16, 32, 64].forEach((b, k) => amount.append(h('option', {value: k, textContent: b + ' bar' + (b > 1 ? 's' : ''), selected: A.barsExp == k})));
-    amount.onchange = () => send({barsExp: +amount.value});
-  } else {
-    amount = tip(h('input', {type: 'number', min: 2, max: 3600, step: 1, value: A.seconds}), H.autoEvery);
-    amount.onchange = () => send({seconds: Math.max(2, Math.min(3600, +amount.value || 60))});
-  }
+  // Seconds and bars both stay on the page; the one not in use is greyed
+  const bars = h('select');
+  [1, 2, 4, 8, 16, 32, 64].forEach((b, k) => bars.append(h('option', {value: k, textContent: b + ' bar' + (b > 1 ? 's' : ''), selected: A.barsExp == k})));
+  bars.onchange = () => send({barsExp: +bars.value});
+  const secs = h('input', {type: 'number', min: 2, max: 3600, step: 1, value: A.seconds});
+  secs.onchange = () => send({seconds: Math.max(2, Math.min(3600, +secs.value || 60))});
+  const secsBox = tip(h('span', {}, secs, ' s'), H.autoEvery), barsBox = tip(h('span', {}, bars), H.autoEvery);
+  off(A.inBars ? secsBox : barsBox, 'Auto counts in ' + (A.inBars ? 'bars: pick “Every … seconds” to use seconds.' : 'seconds: pick “Every … bars” to use bars.'));
+  const amount = h('span', {}, secsBox, ' ', barsBox);
   const order = tip(h('select'), H.autoOrder);
   ['In order', 'Shuffle'].forEach((l, k) => order.append(h('option', {value: k, textContent: l, selected: (A.shuffle ? 1 : 0) == k})));
   order.onchange = () => send({shuffle: order.value == 1});
@@ -677,7 +718,7 @@ function paletteEditor(q, i) {
   const nm = tip(h('input', {type: 'text', value: q.name, maxLength: 15}), H.palName);
   nm.onchange = () => { q.name = nm.value; send(); draw(); };
   box.append(nm);
-  if (S.palettes.length > 1) {
+  {
     const del = button('✕', H.palDelete, {className: 'del'});
     del.setAttribute('aria-label', 'Delete palette ' + q.name);
     let armed = null;
@@ -686,6 +727,7 @@ function paletteEditor(q, i) {
       del.textContent = 'Delete?'; del.className = 'del warn';
       armed = setTimeout(() => { armed = null; del.textContent = '✕'; del.className = 'del'; }, 3000);
     };
+    if (S.palettes.length <= 1) off(del, 'it is the only palette, and every preset needs one.');
     box.append(del);
   }
   // Click the bar to add a colour there, in the colour the palette already has at that point
@@ -739,21 +781,21 @@ function paletteEditor(q, i) {
         if (e.target == ci) return;
         e.preventDefault(); mk.setPointerCapture(e.pointerId);
         const x0 = e.clientX, y0 = e.clientY;
-        let moved = false, off = false;
+        let moved = false, outside = false;
         mk.onpointermove = ev => {
           if (!moved && Math.abs(ev.clientX - x0) < 4 && Math.abs(ev.clientY - y0) < 4) return;  // a tap so far
           moved = true; mk.classList.add('drag');
           const r = sw.getBoundingClientRect();
           // Pulled well away from the bar: let go there to remove this colour
-          off = q.colors.length > 2 && (ev.clientY > r.bottom + 36 || ev.clientY < r.top - 36);
-          mk.classList.toggle('off', off);
+          outside = q.colors.length > 2 && (ev.clientY > r.bottom + 36 || ev.clientY < r.top - 36);
+          mk.classList.toggle('off', outside);
           const lo = j > 0 ? q.stops[j - 1] : 0, hi = j < q.stops.length - 1 ? q.stops[j + 1] : 1;
           q.stops[j] = Math.round(Math.min(hi, Math.max(lo, (ev.clientX - r.left) / r.width)) * 1000) / 1000;
           mk.style.left = (q.stops[j] * 100) + '%'; paint(); send();
         };
         mk.onpointerup = () => {
           mk.onpointermove = null; mk.classList.remove('drag');
-          if (off) remove(j);
+          if (outside) remove(j);
           else if (!moved) pick();
         };
       };
@@ -865,10 +907,12 @@ function backupCard() {
     } catch (e) { msg.textContent = 'Could not download: ' + e.message; }
   };
   const file = h('input', {type: 'file', accept: '.json,application/json', id: 'settingsFile'});
-  const load = button('Load and restart', 'Replaces everything on this board with the file, saves it and restarts. Tap twice.', {disabled: true});
+  const load = button('Load and restart', 'Replaces everything on this board with the file, saves it and restarts. Tap twice.');
+  const noFile = 'choose a beamLED settings file first.';
+  off(load, noFile);
   let text = null, armed = 0;
   file.onchange = async () => {
-    text = null; load.disabled = true; load.textContent = 'Load and restart'; load.className = '';
+    text = null; load.textContent = 'Load and restart'; load.className = ''; off(load, noFile);
     const f = file.files && file.files[0];
     if (!f) { msg.textContent = ''; return; }
     try {
@@ -880,8 +924,8 @@ function backupCard() {
         (o.target ? ', Art-Net to ' + o.target : '') +
         (n.fallback != null ? ', fallback IP ' + (n.fallback || 'automatic') : '') +
         '. Loading replaces everything on this board.';
-      text = t; load.disabled = false;
-    } catch (e) { msg.textContent = 'Can’t use this file: ' + e.message; }
+      text = t; on(load);
+    } catch (e) { msg.textContent = 'Can’t use this file: ' + e.message; off(load, 'that file can’t be used (the message says why); choose another.'); }
   };
   load.onclick = async () => {
     if (!text) return;
