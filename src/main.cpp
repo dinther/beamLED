@@ -477,6 +477,9 @@ void loop() {
         if (netOtaActive()) return;  // keep the network free for the update
         if (level > 0) renderFrame(dt);
         else memset(leds, 0, layoutLeds() * sizeof(CRGB));
+        // The page's live preview: the colours as rendered, dimmed as the output is (no gamma)
+        if (oscPreviewWanted())
+            oscPreviewFrame(leds, layout.nx, layout.ny, settings.brightness / 255.f * level * level * beatPulse());
         buildOutLut();
         t1 = micros();
         const IPAddress to(settings.target);

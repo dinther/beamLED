@@ -316,7 +316,7 @@ void sparkleOverlay(CRGB* out, float density, float dt, const CRGB* lut, double 
             a = (int)((burst ? burstLevel(spPhase[i]) : sparkleLevel(spPhase[i])) * 255.f);
             k = lut ? lut[spColour[i]] : CRGB(255, 255, 255);
         }
-        if (level < 255) k = CRGB(k.r * level / 255, k.g * level / 255, k.b * level / 255);
+        if (level < 255) a = a * level / 255;  // how strongly it shows: 0 = not at all
         CRGB& o = out[i];
         o = CRGB((uint8_t)(o.r + (k.r - o.r) * a / 255), (uint8_t)(o.g + (k.g - o.g) * a / 255),
                  (uint8_t)(o.b + (k.b - o.b) * a / 255));

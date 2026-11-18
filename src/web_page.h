@@ -51,6 +51,7 @@ select,input[type=text],input[type=password],input[type=number]{flex:1;min-width
 .pal .sw{cursor:copy}
 .pal .stop input{position:absolute;left:0;top:100%;width:1px;height:1px;opacity:0;pointer-events:none;border:0;padding:0}
 .pal .stop:hover,.pal .stop.drag{border-color:var(--acc)}
+#pv{display:block;width:100%;border-radius:6px;background:#050505}
 .pal .mid{position:absolute;top:19px;width:10px;height:10px;margin-left:-5px;background:#bbb;border:1px solid #000;transform:rotate(45deg);cursor:ew-resize;touch-action:none}
 .pal .mid.set{background:var(--acc)}
 .pal .mid:hover,.pal .mid.drag{background:#fff}
@@ -224,8 +225,9 @@ const H = {
   mirror: 'The right half of the ceiling becomes the mirror image of the left, along the rows: anything moving right on the left half moves left on the right half. Only the left half is rendered, so the effect takes about half the time. The Sparkle overlay is not mirrored.',
   sparkleBurst: 'Off: single twinkles, each with the same soft rise and fade as in Free. On: a batch flashes at once on each tick and fades out before the next; Sparkle overlay sets how many (1 = 6% of the LEDs).',
   paletteLock: 'Lock every preset to one palette, for a show in one set of colours: whichever preset plays (picked here, by the button, by Auto or OSC) uses this palette instead of its own. The presets’ own palettes are kept, so Each preset’s own brings them back. Not saved: after a restart each preset has its own palette again.',
+  preview: 'What the ceiling shows now, live from the board, up to 15 frames a second: seen from below, the stage on the left, the bars at their real places and spacing (drawn thicker than they are, so they show). The colours as the effects make them, without the LEDs’ gamma. Fold this section away when you don’t need it: the board then sends nothing.',
   effectBrightness: 'Dims whatever preset plays, but not the Sparkle overlay’s twinkles: pull the effect down and let the sparkle shine. Under the master Brightness. Saved, like Brightness.',
-  sparkleBrightness: 'Dims the Sparkle overlay’s twinkles, but not the effect under them. Under the master Brightness. Saved, like Brightness.',
+  sparkleBrightness: 'How strongly the Sparkle overlay’s twinkles show over the effect: 0 = not at all, 50% = each twinkle covers half (a dark one darkens by half), 100% = fully. Under the master Brightness. Saved, like Brightness.',
   sparkleTime: 'How long one twinkle lasts, in seconds; with Through the palette, how long it takes to go through the palette. The amount lit at any moment stays the same: longer twinkles start less often.',
   sparkleThrough: 'On: each twinkle runs through the sparkle palette over its life, from its first colour to its last: it covers what is under it at once, goes through the colours and fades back at the end. Black, black, red: goes dark, pops red, fades. Off: each twinkle has one colour.',
   sparkleStep: 'How the twinkles pick their colours from the palette. 0 = each one a random colour. Above 0 = each new twinkle this far along the palette from the one before. A hundred or more twinkles start every second, so tiny steps matter: about 0.0005 = the colours drift slowly through the palette (a burst in neighbouring colours), 0.01 and up already look mixed, 0.5 = opposite colours in turn. The left part of the slider is fine, the right part coarse.',
@@ -453,6 +455,9 @@ function draw() {
       v => { S.effectBrightness = v; liveSend('/beamled/effect_brightness', v / 255, () => post('/api/set', {effectBrightness: v}), true); }, H.effectBrightness, 'effectBrightness'),
     lockRow(), ...sparkleRows(p, ef)));
 
+  app.append(heading('Preview', H.preview));
+  app.append(h('div', {className: 'card'}, h('canvas', {id: 'pv'})));
+
   app.append(heading('Presets', H.presets));
   const g = h('div', {className: 'presets'});
   S.presets.forEach((q, i) => {
@@ -609,6 +614,7 @@ function draw() {
   app.append(h('div', {className: 'card'}, stats, h('div', {className: 'btns'}, rs)));
   applyFolds(app);
   showStatus();
+  previewSync();
 }
 
 // Each section folds under its heading; this browser remembers which (a convenience: the page
@@ -632,6 +638,7 @@ function applyFolds(app) {
         if (!folded[k]) delete folded[k];
         try { localStorage.setItem(FOLD_KEY, JSON.stringify(folded)); } catch (e) {}
         applyFolds(app);
+        previewSync();
       };
       el.onclick = toggle;
       el.onkeydown = e => { if (e.key == 'Enter' || e.key == ' ') { e.preventDefault(); toggle(); } };
@@ -1209,12 +1216,68 @@ document.getElementById('elsewhere-go').onclick = () => {
   load().then(() => live(true));
 };
 
+// ---- Live preview: frames from the board while the Preview section is open and the tab shows
+let pvOn = false, pvOff = null;
+function previewSync() {
+  const cv = document.getElementById('pv');
+  const want = !!cv && !cv.closest('[hidden]') && document.visibilityState == 'visible';
+  if (want == pvOn || !sock || sock.readyState != 1 || !sock.accepted) return;
+  sock.send(JSON.stringify({COMMAND: 'PREVIEW', DATA: want}));
+  pvOn = want;
+}
+document.addEventListener('visibilitychange', previewSync);
+// The ceiling from below, the stage on the left: each row at its measured place, its LEDs up the
+// bar. The frame goes into a small image (a column per row) and each column is stretched to scale.
+function drawPreview(buf) {
+  const cv = document.getElementById('pv');
+  if (!cv || !S) return;
+  const u8 = new Uint8Array(buf), nx = u8[4] | u8[5] << 8, ny = u8[6] | u8[7] << 8;
+  if (u8.length < 8 + nx * ny * 3 || !nx || !ny) return;
+  const L = S.layout || {};
+  const ry = L.rowY && L.rowY.length == ny ? L.rowY : Array.from({length: ny}, (_, b) => b * 0.5);
+  const len = L.length || 5, y0 = ry[0], depth = Math.max(ry[ny - 1] - y0, 0.5), pad = 0.4;
+  const dpr = window.devicePixelRatio || 1, W = cv.clientWidth, scale = W / (depth + 2 * pad);
+  const H = Math.round((len + 2 * pad) * scale);
+  if (cv.width != Math.round(W * dpr) || cv.height != Math.round(H * dpr)) {
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); cv.style.height = H + 'px';
+  }
+  if (!pvOff || pvOff.width != ny || pvOff.height != nx) { pvOff = document.createElement('canvas'); pvOff.width = ny; pvOff.height = nx; }
+  const oc = pvOff.getContext('2d'), img = oc.createImageData(ny, nx), d = img.data;
+  for (let b = 0; b < ny; b++)
+    for (let i = 0; i < nx; i++) {
+      const s = 8 + (b * nx + i) * 3, t = (i * ny + b) * 4;
+      d[t] = u8[s]; d[t + 1] = u8[s + 1]; d[t + 2] = u8[s + 2]; d[t + 3] = 255;
+    }
+  oc.putImageData(img, 0, 0);
+  const c = cv.getContext('2d');
+  c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  c.imageSmoothingEnabled = true;
+  c.fillStyle = '#050505'; c.fillRect(0, 0, W, H);
+  const top = pad * scale, tall = len * scale;
+  const glow = 'filter' in c;
+  for (const pass of glow ? [0, 1] : [1]) {
+    c.filter = pass == 0 ? 'blur(6px)' : 'none';
+    c.globalAlpha = pass == 0 ? 0.9 : 1;
+    const w = pass == 0 ? 14 : 5;
+    for (let b = 0; b < ny; b++) c.drawImage(pvOff, b, 0, 1, nx, (pad + ry[b] - y0) * scale - w / 2, top, w, tall);
+  }
+  c.filter = 'none'; c.globalAlpha = 1;
+  c.save(); c.translate(11, H / 2); c.rotate(-Math.PI / 2);
+  c.fillStyle = '#666'; c.font = '10px system-ui'; c.textAlign = 'center'; c.fillText('STAGE', 0, 0);
+  c.restore();
+}
+
 function live(take = false) {
   const ws = sock = new WebSocket('ws://' + location.host + '/');
   ws.binaryType = 'arraybuffer';
   ws.onopen = () => ws.send(JSON.stringify({COMMAND: 'PAGE', ID: pageId, TAKE: take}));
   ws.onmessage = e => {
-    if (typeof e.data != 'string') { for (const [addr, v] of oscMessages(e.data)) oscValue(addr, v); return; }
+    if (typeof e.data != 'string') {
+      const u8 = new Uint8Array(e.data);
+      if (u8[0] == 66 && u8[1] == 76 && u8[2] == 80 && u8[3] == 86) return drawPreview(e.data);  // "BLPV"
+      for (const [addr, v] of oscMessages(e.data)) oscValue(addr, v);
+      return;
+    }
     const m = JSON.parse(e.data);
     if (m.COMMAND == 'BUSY') {
       elsewhere('beamLED is open in another window or on another device. Continue to use it here?');
@@ -1223,7 +1286,7 @@ function live(take = false) {
       elsewhere('beamLED is now open in another window or on another device. Continue to use it here?');
       ws.close();
     } else if (m.COMMAND == 'STATUS') {
-      if (!ws.accepted) { ws.accepted = true; ws.send(JSON.stringify({COMMAND: 'LISTEN', DATA: '/'})); }
+      if (!ws.accepted) { ws.accepted = true; ws.send(JSON.stringify({COMMAND: 'LISTEN', DATA: '/'})); pvOn = false; previewSync(); }
       const st = m.DATA;
       if (!S) return;
       if (st.rev != S.rev || st.presetCount != S.presets.length) { S.rev = st.rev; reload(); }

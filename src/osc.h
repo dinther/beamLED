@@ -31,6 +31,7 @@
 // as edits on the web page, aren't saved until Save on the page or /beamled/save (all presets).
 #pragma once
 #include <Arduino.h>
+#include <FastLED.h>  // CRGB, for the preview
 
 void oscLoop();          // from loop(): starts once the network is up, then takes OSC in
 String oscStatusText();  // for the web page
@@ -38,3 +39,9 @@ int oscUdpSocket();      // the OSC socket (UDP 8000), which Art-Net sends from 
 // Time the listeners' change check takes (20 times a second while anyone listens), smoothed and
 // the longest since the last call, in ms
 void oscPushTiming(float& avgMs, float& maxMs);
+// Live preview for the web page: wanted while a page has its Preview open. The render loop hands
+// over each finished frame (the colours before gamma, times the master brightness and fade); at
+// most 15 a second are kept and sent to that page as a binary frame "BLPV", nx, ny (16 bit
+// little endian), then nx * ny RGB, row by row.
+bool oscPreviewWanted();
+void oscPreviewFrame(const CRGB* leds, int nx, int ny, float bright);

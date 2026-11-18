@@ -69,4 +69,4 @@ float effectsBenchmark(int e, const CRGB* lutWrap, const CRGB* lutLin, int frame
 void sparkleOverlay(CRGB* out, float density, float dt, const CRGB* lut = nullptr, double beat = 0,
                     float bpm = 120, float div = 0, bool burst = false, float colourStep = 0,
                     const CRGB* ramp = nullptr, float life = 1.2f,  // life: s, without bursts
-                    uint8_t level = 255);                           // the twinkles' brightness
+                    uint8_t level = 255);                           // how strongly twinkles show

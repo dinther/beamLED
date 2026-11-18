@@ -100,7 +100,7 @@ static bool nodeInfo(int id, NodeInfo& n, char* path, size_t len) {
             case G_SPARKLE_THROUGH: n = {'T', 3, false, 0, 1, "Sparkle overlay: true = each twinkle runs through its palette, first colour to last, over its life (a palette black, black, red: goes dark, pops red, fades); false = each twinkle one colour. Not with white twinkles. No argument toggles."}; break;
             case G_SPARKLE_TIME: n = {'f', 3, true, 0.2f, 5, "Sparkle overlay: how long a twinkle lasts, in seconds (with Through the palette, how long it takes to go through the palette). Not with bursts: they last until the next tick."}; break;
             case G_EFFECT_BRIGHTNESS: n = {'f', 3, true, 0, 1, "Effect brightness, 0..1: dims whatever preset plays (not the Sparkle overlay's twinkles), under the master brightness."}; break;
-            case G_SPARKLE_BRIGHTNESS: n = {'f', 3, true, 0, 1, "Sparkle brightness, 0..1: dims the Sparkle overlay's twinkles, under the master brightness."}; break;
+            case G_SPARKLE_BRIGHTNESS: n = {'f', 3, true, 0, 1, "Sparkle brightness, 0..1: how strongly the Sparkle overlay's twinkles show over the effect (0 = not at all, a dark twinkle darkens less), under the master brightness."}; break;
             case G_SAVE: n = {'N', 2, false, 0, 0, "Saves every preset as it plays now (as Save on each preset on the web page), with the palettes and settings, so they survive a power cut. Until then, preset changes from OSC or the web page play but are not saved."}; break;
         }
         return true;
@@ -809,6 +809,7 @@ struct Listener {
     int fd = -1;
     bool closing = false;  // a send failed: closed, and skipped until onClose frees the slot
     bool page = false;  // the web page: also gets the status, the change counter and scan results
+    bool preview = false;  // the page has its Preview open: gets the live frames
     char pageId[24] = "";  // which browser tab (it reconnects under the same id)
     uint32_t bits[WORDS];
 };
@@ -955,12 +956,61 @@ void oscPushTiming(float& avgMs, float& maxMs) {
     pushMaxUs = 0;
 }
 
+// ---------------------------------------------------------------- live preview
+// Two buffers on the heap: the render loop (core 1) fills the one not being sent, the server's task
+// (core 0) sends the newest. A frame being sent is never written.
+static uint8_t* pvBuf[2] = {nullptr, nullptr};
+static size_t pvLen = 0;
+static volatile int8_t pvReady = -1;    // the newest frame not yet sent
+static volatile int8_t pvSending = -1;  // the one going out now
+static uint32_t pvLast = 0;
+
+bool oscPreviewWanted() {
+    for (const Listener& l : listeners)
+        if (l.fd >= 0 && l.preview && !l.closing) return true;
+    return false;
+}
+
+void oscPreviewFrame(const CRGB* leds, int nx, int ny, float bright) {
+    const uint32_t now = millis();
+    if (now - pvLast < 66) return;  // at most 15 a second
+    const size_t len = 8 + (size_t)nx * ny * 3;
+    if (len != pvLen) {  // first use, or another layout
+        if (pvSending >= 0) return;
+        for (uint8_t*& b : pvBuf) { free(b); b = (uint8_t*)malloc(len); }
+        pvLen = (pvBuf[0] && pvBuf[1]) ? len : 0;
+        pvReady = -1;
+        if (!pvLen) return;
+    }
+    const int8_t w = pvReady == 0 ? 1 : (pvReady == 1 ? 0 : (pvSending == 0 ? 1 : 0));
+    if (w == pvSending) return;  // both busy: skip this one
+    uint8_t* o = pvBuf[w];
+    memcpy(o, "BLPV", 4);
+    o[4] = nx & 0xFF; o[5] = nx >> 8; o[6] = ny & 0xFF; o[7] = ny >> 8;
+    const int k = (int)(constrain(bright, 0.f, 1.f) * 256.f);
+    const uint8_t* in = (const uint8_t*)leds;
+    for (size_t i = 0, n = (size_t)nx * ny * 3; i < n; i++) o[8 + i] = (uint8_t)(in[i] * k >> 8);
+    pvLast = now;
+    pvReady = w;
+}
+
+static void pushPreview() {
+    const int8_t r = pvReady;
+    if (r < 0) return;
+    pvSending = r;
+    pvReady = -1;
+    for (const Listener& l : listeners)
+        if (l.fd >= 0 && l.preview && !l.closing) sendFrame(l.fd, HTTPD_WS_TYPE_BINARY, pvBuf[r], pvLen);
+    pvSending = -1;
+}
+
 static void pushChanges();
 static void push(void*) {
     pushQueued = false;
     if (!listenerCount) return;
     const uint32_t t0 = micros();
     pushChanges();
+    pushPreview();
     const uint32_t took = micros() - t0;
     if (took > pushMaxUs) pushMaxUs = took;
     pushAvgMs += (took / 1000.f - pushAvgMs) * 0.05f;
@@ -1026,12 +1076,17 @@ static void command(int fd, const char* text) {
             static const char taken[] = "{\"COMMAND\":\"TAKEN\"}";
             sendFrame(o.fd, HTTPD_WS_TYPE_TEXT, (const uint8_t*)taken, sizeof(taken) - 1);
             o.page = false;
+            o.preview = false;
             memset(o.bits, 0, sizeof(o.bits));
             httpd_sess_trigger_close(server, o.fd);
         }
         l->page = true;
         strlcpy(l->pageId, id, sizeof(l->pageId));
         sendStatus(fd);
+        return;
+    }
+    if (!strcmp(cmd, "PREVIEW")) {  // the page's Preview opened (true) or closed
+        l->preview = l->page && (d["DATA"] | false);
         return;
     }
     const bool listen = !strcmp(cmd, "LISTEN");
@@ -1072,6 +1127,7 @@ static esp_err_t onRequest(httpd_req_t* req) {
                 slot->fd = fd;
                 slot->closing = false;
                 slot->page = false;
+                slot->preview = false;
                 slot->pageId[0] = 0;
                 memset(slot->bits, 0, sizeof(slot->bits));
                 listenerCount = listenerCount + 1;
