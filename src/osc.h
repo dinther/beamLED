@@ -17,6 +17,7 @@
 //   sparkle_colour i (0 white, 1 the playing preset's palette, 1 + n palette n) |
 //   sparkle_colour_step f 0..1 (0 random): the Sparkle overlay, one for all presets
 //   /beamled/sparkle_through T: each twinkle runs through its palette, first colour to last
+//   /beamled/sparkle_time f 0.2..5: s a twinkle lasts (not with bursts)
 //   /beamled/palette i: palette lock, 0 = each preset's own, k = every preset plays palette k (not saved)
 //   /beamled/presets/<n>/play T | effect i | palette i | timing i | beats i |
 //                        reverse T | pulse f | mirror T |

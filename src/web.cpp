@@ -128,6 +128,7 @@ static void sparkleJson(JsonObject o) {
     o["through"] = (sparkleSettings.beat & SPARKLE_THROUGH) != 0;  // each twinkle runs through the palette
     o["colour"] = sparkleSettings.colour;  // 0 = white, 1 = the playing preset's palette, 2 + k = palette k
     o["step"] = sparkleSettings.colourStep;  // 0 = random colours, else along the palette by this much
+    o["time"] = sparkleSettings.life;  // s a twinkle lasts (bursts: until the next tick)
 }
 static void sparkleFromJson(JsonObject d) {
     SparkleSettings& s = sparkleSettings;
@@ -137,6 +138,7 @@ static void sparkleFromJson(JsonObject d) {
     if (d["through"].is<bool>()) s.beat = (s.beat & ~SPARKLE_THROUGH) | (d["through"].as<bool>() ? SPARKLE_THROUGH : 0);
     if (d["colour"].is<int>()) s.colour = constrain(d["colour"].as<int>(), 0, 1 + paletteCount);
     if (d["step"].is<float>()) s.colourStep = constrain(d["step"].as<float>(), 0.f, 1.f);
+    if (d["time"].is<float>()) s.life = constrain(d["time"].as<float>(), 0.2f, 5.f);
 }
 
 static void presetJson(JsonObject o, int i) {
@@ -793,7 +795,7 @@ static void handleRestore() {
     autoSettings.barsExp = constrain(a["barsExp"] | (int)autoSettings.barsExp, 0, 6);
     autoSettings.seconds = constrain(a["seconds"] | autoSettings.seconds, 2.f, 3600.f);
     autoSettings.shuffle = (a["shuffle"] | (autoSettings.shuffle != 0)) ? 1 : 0;
-    sparkleSettings = {0, 0, 0, 0};
+    sparkleSettings = {0, 0, 0, 0, 1.2f};
     if (d["sparkle"].is<JsonObject>()) sparkleFromJson(d["sparkle"].as<JsonObject>());
     // Layout
     if (d["layout"].is<JsonObject>()) {

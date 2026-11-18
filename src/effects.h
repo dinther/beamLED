@@ -68,4 +68,4 @@ float effectsBenchmark(int e, const CRGB* lutWrap, const CRGB* lutLin, int frame
 // back over the last 30% of its life
 void sparkleOverlay(CRGB* out, float density, float dt, const CRGB* lut = nullptr, double beat = 0,
                     float bpm = 120, float div = 0, bool burst = false, float colourStep = 0,
-                    const CRGB* ramp = nullptr);
+                    const CRGB* ramp = nullptr, float life = 1.2f);  // life: s, without bursts

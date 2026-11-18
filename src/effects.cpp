@@ -269,8 +269,7 @@ static void burstStep(float density, double beat, float bpm, float div, float dt
 
 // Twinkles as in free sparkle, but each starts on a tick: the ones that would have started at
 // random since the last tick all start on it
-static void gridStep(float density, double beat, float div, float dt) {
-    const float life = 1.2f;
+static void gridStep(float density, double beat, float div, float dt, float life) {
     static int64_t lastTick = INT64_MIN;
     static float due = 0;  // twinkles owed since the last tick
     const uint32_t inc = (uint32_t)fmaxf(1.f, 65535.f * dt / life);
@@ -296,12 +295,12 @@ static void gridStep(float density, double beat, float div, float dt) {
 }
 
 void sparkleOverlay(CRGB* out, float density, float dt, const CRGB* lut, double beat, float bpm, float div,
-                    bool burst, float colourStep, const CRGB* ramp) {
+                    bool burst, float colourStep, const CRGB* ramp, float life) {
     burst = burst && div > 0;
     spStep = lut ? colourStep : 0;  // white: nothing to step along
     if (burst) burstStep(density, beat, bpm, div, dt);
-    else if (div > 0) gridStep(density, beat, div, dt);
-    else sparkleStep(density, 1.2f, dt);
+    else if (div > 0) gridStep(density, beat, div, dt, life);
+    else sparkleStep(density, life, dt);
     spStep = 0;  // the Sparkle effect keeps random colours
     for (int i = 0; i < NL; i++) {
         if (!spPhase[i]) continue;

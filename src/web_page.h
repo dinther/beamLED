@@ -225,6 +225,7 @@ const H = {
   mirror: 'The right half of the ceiling becomes the mirror image of the left, along the rows: anything moving right on the left half moves left on the right half. Only the left half is rendered, so the effect takes about half the time. The Sparkle overlay is not mirrored.',
   sparkleBurst: 'Off: single twinkles, each with the same soft rise and fade as in Free. On: a batch flashes at once on each tick and fades out before the next; Sparkle overlay sets how many (1 = 6% of the LEDs).',
   paletteLock: 'Lock every preset to one palette, for a show in one set of colours: whichever preset plays (picked here, by the button, by Auto or OSC) uses this palette instead of its own. The presets’ own palettes are kept, so Each preset’s own brings them back. Not saved: after a restart each preset has its own palette again.',
+  sparkleTime: 'How long one twinkle lasts, in seconds; with Through the palette, how long it takes to go through the palette. The amount lit at any moment stays the same: longer twinkles start less often.',
   sparkleThrough: 'On: each twinkle runs through the sparkle palette over its life, from its first colour to its last: it covers what is under it at once, goes through the colours and fades back at the end. Black, black, red: goes dark, pops red, fades. Off: each twinkle has one colour.',
   sparkleStep: 'How the twinkles pick their colours from the palette. 0 = each one a random colour. Above 0 = each new twinkle this far along the palette from the one before. A hundred or more twinkles start every second, so tiny steps matter: about 0.0005 = the colours drift slowly through the palette (a burst in neighbouring colours), 0.01 and up already look mixed, 0.5 = opposite colours in turn. The left part of the slider is fine, the right part coarse.',
   sparkleColour: 'The colours of the Sparkle overlay’s twinkles: white, random colours from the playing preset’s palette (they change with the preset), or from any other palette. The twinkle’s colour replaces what is under it, so a palette of black gives dark twinkles.',
@@ -388,19 +389,23 @@ function lockRow() {
 }
 // The Sparkle overlay: one for all presets
 function sparkleRows(p, ef) {
-  const sk = S.sparkle || {amount: 0, beat: 0, burst: false, colour: 0, step: 0, through: false};
+  const sk = S.sparkle || {amount: 0, beat: 0, burst: false, colour: 0, step: 0, through: false, time: 1.2};
   S.sparkle = sk;
   const send = o => post('/api/sparkle', o);
   const rows = [slider('Sparkle overlay', 0, 1, 0.01, sk.amount, v => v.toFixed(2),
     v => { sk.amount = v; liveSend('/beamled/sparkle', v, () => send({amount: v}), true); },
     H.sparkle + (ef.sparkle ? '' : ' (The playing effect is Sparkle itself: no overlay on it.)'), 'sparkle')];
+  const timeRow = slider('Twinkle time (s)', 0.2, 5, 0.1, sk.time || 1.2, v => v.toFixed(1),
+    v => { sk.time = v; liveSend('/beamled/sparkle_time', v, () => send({time: v}), true); }, H.sparkleTime, 'sparkleTime');
+  if (sk.beat && sk.burst) off(timeRow, 'Bursts last until the next tick, so their length comes from Sparkle timing. Turn Bursts off to set it here.');
+  rows.push(timeRow);
   // Listed slow to fast; the codes are the board's (1..4 = 1, 1/2, 1/4, 1/8 beat; 5 = 2, 6 = 4 beats)
   const beatCodes = [0, 6, 5, 1, 2, 3, 4];
   rows.push(select('Sparkle timing', ['Free', '4 beats (1 bar)', '2 beats', '1 beat', '1/2 beat', '1/4 beat', '1/8 beat'],
     Math.max(0, beatCodes.indexOf(sk.beat || 0)), i => {
       sk.beat = beatCodes[i]; send({beat: sk.beat}); draw(); }, H.sparkleBeat));
   const burst = h('input', {type: 'checkbox', checked: !!sk.burst});
-  burst.onchange = () => { sk.burst = burst.checked; send({burst: burst.checked}); };
+  burst.onchange = () => { sk.burst = burst.checked; send({burst: burst.checked}); draw(); };
   const bRow = field('Bursts', burst, H.sparkleBurst);
   if (!sk.beat) off(bRow, 'Bursts need a Sparkle timing other than Free: with Free, twinkles start at any moment, so there is no tick to flash on.');
   rows.push(bRow);
@@ -1126,6 +1131,7 @@ function oscValue(addr, v) {
     else if (S.sparkle && a[2] == 'sparkle_burst') { if (S.sparkle.burst != !!v) { S.sparkle.burst = !!v; redraw(); } }
     else if (S.sparkle && a[2] == 'sparkle_colour') { if (S.sparkle.colour != v) { S.sparkle.colour = v; redraw(); } }
     else if (a[2] == 'palette') { if (S.paletteLock != v - 1) { S.paletteLock = v - 1; redraw(); } }
+    else if (S.sparkle && a[2] == 'sparkle_time') { S.sparkle.time = v; moveSlider('sparkleTime', v); }
     else if (S.sparkle && a[2] == 'sparkle_through') { if (S.sparkle.through != !!v) { S.sparkle.through = !!v; redraw(); } }
     else if (S.sparkle && a[2] == 'sparkle_colour_step') { S.sparkle.step = v; moveSlider('sparkleStep', Math.cbrt(v)); }
     return;

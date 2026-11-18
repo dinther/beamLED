@@ -349,7 +349,7 @@ static void renderFrame(float dt) {
         const int grid = sk.beat & SPARKLE_GRID;
         const float div = grid <= 6 ? DIV[grid] : 0;
         sparkleOverlay(leds, sk.amount, dt, lut, beat.beat, (float)beat.bpm, div, (sk.beat & SPARKLE_BURST) != 0, sk.colourStep,
-                       ramp);
+                       ramp, sk.life);
     }
 }
 

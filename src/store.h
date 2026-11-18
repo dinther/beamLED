@@ -87,6 +87,8 @@ struct SparkleSettings {
     uint8_t colour;  // 0 = white, 1 = the playing preset's palette, 2 + k = palette k
     float colourStep;  // 0 = random colours; else each new twinkle this far along the palette
                        // from the one before (added later: an 8-byte save loads it as 0)
+    float life;        // s a twinkle lasts, free or on a timing without bursts (added later: older
+                       // saves load it as 0, taken as the 1.2 s it was)
 };
 
 struct LinkSettings {
