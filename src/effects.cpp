@@ -305,13 +305,14 @@ void sparkleOverlay(CRGB* out, float density, float dt, const CRGB* lut, double 
     spStep = 0;  // the Sparkle effect keeps random colours
     for (int i = 0; i < NL; i++) {
         if (!spPhase[i]) continue;
-        uint8_t a = (uint8_t)((burst ? burstLevel(spPhase[i]) : sparkleLevel(spPhase[i])) * 255.f);
-        if (!lut) {
-            out[i] += CRGB(a, a, a);
-            continue;
-        }
-        const CRGB& k = lut[spColour[i]];
-        out[i] += CRGB(k.r * a / 255, k.g * a / 255, k.b * a / 255);
+        // The twinkle's colour replaces what is under it, as far as it has risen (not added on top):
+        // a black palette gives dark twinkles
+        const int a = (int)((burst ? burstLevel(spPhase[i]) : sparkleLevel(spPhase[i])) * 255.f);
+        static const CRGB WHITE(255, 255, 255);
+        const CRGB& k = lut ? lut[spColour[i]] : WHITE;
+        CRGB& o = out[i];
+        o = CRGB((uint8_t)(o.r + (k.r - o.r) * a / 255), (uint8_t)(o.g + (k.g - o.g) * a / 255),
+                 (uint8_t)(o.b + (k.b - o.b) * a / 255));
     }
 }
 
