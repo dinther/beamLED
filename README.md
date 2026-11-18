@@ -31,9 +31,9 @@ for this kind of installation (see [docs/background.md](docs/background.md)):
 
 - **12 effects**, each with its own sliders and a palette: Rolling bars, Searchlights, Lighthouse,
   Clouds, Sparkle, Sweeps, Plaid, Rings, Drops, Interference, Gradient and Shapes, plus one sparkle
-  overlay over whichever plays (it stays on when the preset changes): white or in palette colours,
-  twinkling freely or starting on quarter, eighth, sixteenth or 32nd notes, as single twinkles or
-  in bursts.
+  overlay over whichever plays (it stays on when the preset changes): white or in palette colours
+  (random, or stepping along the palette twinkle by twinkle), twinkling freely or starting on
+  quarter, eighth, sixteenth or 32nd notes, as single twinkles or in bursts.
 - **Auto**: the presets change by themselves every so many seconds, or every so many bars on the
   beat, in order or shuffled, among the presets you choose.
 - **Presets**: up to 32, each an effect with its settings and a palette. The button on the board
