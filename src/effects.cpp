@@ -691,38 +691,6 @@ static void dropsFx(Ctx& c) {
     }
 }
 
-// ---------------------------------------------------------------- Interference
-// Two sets of concentric waves around centres that slowly circle each other.
-
-static void interference(Ctx& c) {
-    enum { kSpeed, kSpacing, kDistance, kTurn, kGaps, kDrift, kOffset };
-    const float lambda = c.p[kSpacing], speed = c.p[kSpeed], sep = c.p[kDistance], rot = c.p[kTurn],
-                contrast = c.p[kGaps], drift = c.p[kDrift];
-    advance(c, c.s[0], speed / lambda, 1.f);
-    c.s[1] += c.dt * rot * DEG;
-    c.s[2] += c.dt * drift * 0.02f;
-    const float half = sep * 0.5f * fmaxf(W, H) * 0.5f;
-    const float x1 = CX + half * cosf(c.s[1]), y1 = CY + half * sinf(c.s[1]);
-    const float x2 = CX - half * cosf(c.s[1]), y2 = CY - half * sinf(c.s[1]);
-    const float il = 1.f / lambda, ph = c.s[0] + c.p[kOffset] * il;  // their motion plus Offset
-    for (int b = 0; b < NY; b++) {
-        const float dy1 = Y[b] - y1, dy2 = Y[b] - y2;
-        // footAtten as exp(kb * sin^2), sin^2 = dy^2 / r^2 (1 at the centre)
-        const float kb = -1.645f * FY[b] * FY[b] * il * il;
-        const float q1 = dy1 * dy1, q2 = dy2 * dy2;
-        CRGB* o = c.out + b * NX;
-        for (int i = 0; i < NX; i++) {
-            const float dx1 = X[i] - x1, dx2 = X[i] - x2;
-            const float s1 = dx1 * dx1 + q1, s2 = dx2 * dx2 + q2;
-            const float r1 = sqrtf(s1), r2 = sqrtf(s2);
-            const float v1 = cosCyc(r1 * il - ph) * expNeg(kb * (s1 > 1e-6f * M * M ? q1 / s1 : 1.f));
-            const float v2 = cosCyc(r2 * il - ph) * expNeg(kb * (s2 > 1e-6f * M * M ? q2 / s2 : 1.f));
-            const float v = (v1 + v2) * 0.25f + 0.5f;  // 0..1
-            o[i] = scaleF(lutW(c.lutWrap, c.s[2] + v * 0.5f), 1.f - contrast * (1.f - v));
-        }
-    }
-}
-
 // ---------------------------------------------------------------- Clouds
 // Soft cloud shapes drifting on a wind that slowly turns; coverage from clear to overcast.
 // Palette as a ramp: first colour = sky, last = cloud.
@@ -1356,16 +1324,6 @@ const EffectDef EFFECTS[] = {
       {"Background", 0, 0.5f, 0.03f, 0.01f, H_BG}},
      dropsFx, false, "drop", 2,
      "Big rings spreading from where drops land and fading out, like raindrops on a pond, at the point Centre X, Y sets (Motions on them move it). Each drop takes a palette colour: random, or Colour step further along the palette than the last."},
-    {"Interference", 7,
-     {{"Speed (%/s)", -20, 20, 3, 0.2f, "How fast the waves travel, as a share of the ceiling's shorter side per second (100%/s crosses it in a second): positive outward, negative inward. In Beats timing this slider is replaced by beats per wave.", 1},
-      {"Wave spacing (%)", 16, 100, 36, 1, "The distance from one wave to the next, as a share of the ceiling's shorter side.", 1},
-      {"Centre distance", 0, 1, 0.5f, 0.01f, "How far apart the two wave centres are. 0 = the same point (plain rings), 1 = about the ceiling's size apart."},
-      {"Turn (deg/s)", -10, 10, 2, 0.1f, "How fast the two centres circle each other, in degrees per second; negative the other way."},
-      {"Dark gaps", 0, 1, 0.7f, 0.01f, "How dark the troughs get where the waves cancel. 0 = even brightness, 1 = black."},
-      {"Colour drift", 0, 1, 0.2f, 0.01f, H_DRIFT},
-      {"Offset (%)", -200, 200, 0, 0.2f, "Shifts the pattern by this share of the ceiling's shorter side, the way Speed moves the waves (positive outward). With Speed at 0 it stays put, so a Motion on Offset moves it back and forth (with easing). 0 = no shift.", 1}},
-     interference, false, "wave", 0,
-     "Two sets of ring waves around centres that slowly circle each other. Where the waves meet they reinforce or cancel, forming large moving patterns."},
     {"Gradient", 6,
      {{"Spread", 0.1f, 4, 1, 0.01f, "How much of the palette spans the ceiling. 1 = from the palette's first colour at one side to its last colour at the other; 2 = there and back; 0.5 = only the first half of the palette. Bigger means more colour changes across the ceiling."},
       {"Radial", 0, 1, 0, 1, "0 = a straight gradient in the direction of Angle; 1 = a round gradient, from the centre (Centre X, Centre Y) outwards."},
@@ -1434,21 +1392,20 @@ static const int8_t OLD_POS[][MAXP] = {
     {1, 0, 3, 2, 4, 5, 6, -1},      // Plaid
     {1, 0, 4, 5, 2, 3, 6, 7},       // Rings
     {1, 2, 0, 3, 5, 6, 7, 4},       // Drops
-    {1, 0, 2, 3, 4, 5, 6, -1},      // Interference
     {1, 4, 0, 5, 6, 3, 2, -1},      // Gradient
     {6, 1, 0, 5, 2, 7, 4, 3},       // Shapes
 };
-static_assert(sizeof(OLD_POS) / sizeof(OLD_POS[0]) == 12, "one row per effect of 2026-11-19");
+static_assert(sizeof(OLD_POS) / sizeof(OLD_POS[0]) == 11, "one row per effect of 2026-11-19 still there");
 
 void effectsParamsFromOldOrder(int e, float* p) {
-    if (e < 0 || e >= 12) return;
+    if (e < 0 || e >= 11) return;
     float t[MAXP];
     memcpy(t, p, sizeof(t));
     for (int j = 0; j < EFFECTS[e].n; j++) p[j] = t[OLD_POS[e][j]];
 }
 
 void effectsParamsToOldOrder(int e, float* p) {
-    if (e < 0 || e >= 12) return;
+    if (e < 0 || e >= 11) return;
     float t[MAXP];
     memcpy(t, p, sizeof(t));
     for (int j = 0; j < EFFECTS[e].n; j++) p[OLD_POS[e][j]] = t[j];
@@ -1497,7 +1454,7 @@ int effectsSwapCentreParam(int e, int j) {
 }
 
 int effectsParamFromOldOrder(int e, int old) {
-    if (e < 0 || e >= 12) return old;
+    if (e < 0 || e >= 11) return old;
     for (int j = 0; j < EFFECTS[e].n; j++)
         if (OLD_POS[e][j] == old) return j;
     return old;

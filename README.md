@@ -30,9 +30,9 @@ for this kind of installation (see [docs/background.md](docs/background.md)):
 
 ## Features
 
-- **15 effects**, each with its own sliders and a palette: Rolling bars, Searchlights, Lighthouse,
-  Clouds, Sparkle, Sweeps, Plaid, Rings, Drops, Interference, Gradient, Shapes, Strobe, Fibres and
-  Tunnel, plus one sparkle
+- **14 effects**, each with its own sliders and a palette: Rolling bars, Searchlights, Lighthouse,
+  Clouds, Sparkle, Sweeps, Plaid, Rings, Drops, Gradient, Shapes, Strobe, Fibres and Tunnel, plus
+  one sparkle
   overlay over whichever plays (it stays on when the preset changes): white or in palette colours
   (random, or stepping along the palette twinkle by twinkle), twinkling freely or starting on
   quarter, eighth, sixteenth or 32nd notes, as single twinkles or in bursts.
@@ -70,9 +70,8 @@ for this kind of installation (see [docs/background.md](docs/background.md)):
 | ![Rolling bars](docs/images/beam_rolling_ocean.jpg) **Rolling bars**: wide soft bands rolling across the ceiling at any angle (a Motion on Angle swings it). | ![Searchlights](docs/images/beam_searchlights.jpg) **Searchlights**: soft round beams wandering over the ceiling on slow looping paths. |
 | ![Lighthouse](docs/images/beam_lighthouse.jpg) **Lighthouse**: a beam turning around a point at the edge of the ceiling or beyond it; it can also be aimed, or swung with a Motion. | ![Clouds](docs/images/beam_clouds_sunset.jpg) **Clouds**: soft clouds drifting on a slowly turning wind, from clear sky to overcast. |
 | ![Sweeps](docs/images/beam_sweeps.jpg) **Sweeps**: bars sweeping across the ceiling one after another, each pass at a new angle, with a trail. | ![Plaid](docs/images/beam_plaid.jpg) **Plaid**: two sets of broad stripes crossing at an angle, moving and slowly turning. |
-| ![Rings](docs/images/beam_rings.jpg) **Rings**: concentric rings flowing out of, or into, a slowly wandering centre. | ![Drops](docs/images/beam_drops.jpg) **Drops**: big rings spreading from where drops land (a point you set and can move with Motions, or random places) and fading out, like raindrops on a pond. |
-| ![Interference](docs/images/beam_interference.jpg) **Interference**: two sets of ring waves around centres that circle each other. | ![Sparkle overlay](docs/images/beam_rolling_ice_sparkle.jpg) **Sparkle**: twinkles in palette colours, as an effect of its own or as an overlay on any other. |
-| ![Gradient](docs/images/beam_gradient.jpg) **Gradient**: a steady gradient through the palette, straight at any angle or round from a centre; a Motion on Colour offset makes the colours flow. | |
+| ![Rings](docs/images/beam_rings.jpg) **Rings**: concentric rings flowing out of, or into, a slowly wandering centre. | ![Drops](docs/images/beam_drops.jpg) **Drops**: big rings spreading from where drops land (a point you set and can move with Motions) and fading out, like raindrops on a pond. |
+| ![Sparkle overlay](docs/images/beam_rolling_ice_sparkle.jpg) **Sparkle**: twinkles in palette colours, as an effect of its own or as an overlay on any other. | ![Gradient](docs/images/beam_gradient.jpg) **Gradient**: a steady gradient through the palette, straight at any angle or round from a centre; a Motion on Colour offset makes the colours flow. |
 
 **Strobe** is a drum machine of flashes: each preset holds a grid of four lanes and 32 steps (two
 bars of 1/16 notes on the beat), and on the steps set the lanes
@@ -89,8 +88,8 @@ bars. On the bars the grooves show as points sliding along them as the riflings 
 a ray from the eye meeting the wall. The fibres come out of the middle slowly and race outwards ever
 faster, and the tube's axis sways, so its near end swings while the far end stays put.
 
-The scrolling effects have a position slider: **Offset** (Rolling bars, Plaid, Rings,
-Interference), **Offset X** and **Offset Y** (Clouds), and Lighthouse has **Angle**. With the speed
+The scrolling effects have a position slider: **Offset** (Rolling bars, Plaid, Rings),
+**Offset X** and **Offset Y** (Clouds), and Lighthouse has **Angle**. With the speed
 at 0, a Motion on it moves the pattern back and forth.
 
 ## The web page
@@ -235,7 +234,7 @@ another. The Art-Net destination and the gamma curve are under **Output**.
 - **Effects** avoid what the ESP32's FPU can't do in hardware (divide, square root, exp, trig) in
   their per-LED loops: tables with interpolation, reciprocals, and work moved out to once per row or
   per frame. On the board, at default settings, a frame takes 4 to 9 ms to draw (Rolling bars 4.0,
-  Interference 9.0); `/api/bench?e=<effect>` measures it.
+  Tunnel about 10); `/api/bench?e=<effect>` measures it.
 - **Settings** are kept in NVS. Edits to presets play at once but are only written on Save; other
   settings are saved a few seconds after the last change.
 
