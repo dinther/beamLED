@@ -640,10 +640,9 @@ function motionEditor(p, ef, mo, m) {
     if (v) { const d = ef.params[v - 1]; mo.from = d.min; mo.to = d.max; }
     send({target: v, from: mo.from, to: mo.to}); draw();
   }, H.motion));
-  // With the motion off, its settings stay on the page, greyed (From and To then on a 0..1 scale)
-  const live = mo.target && mo.target <= ef.params.length;
-  const d = live ? ef.params[mo.target - 1] : {min: 0, max: 1, step: 0.01}, fmt = v => v.toFixed(decimals(d.step));
-  const at = box.childElementCount;
+  // A motion that is Off shows only its selector: picking a slider is what brings its settings
+  if (!mo.target || mo.target > ef.params.length) return box;
+  const d = ef.params[mo.target - 1], fmt = v => v.toFixed(decimals(d.step));
   const pic = h('div');
   const repaint = () => pic.replaceChildren(curve(mo));
   box.append(select('Shape', SHAPES, mo.shape, v => { mo.shape = v; send({shape: v}); repaint(); }, H.shape));
@@ -651,14 +650,13 @@ function motionEditor(p, ef, mo, m) {
   const secRow = slider('Period (s)', 0.5, 120, 0.5, mo.seconds, v => v.toFixed(1), v => { mo.seconds = v; throttle('ms' + m, () => send({seconds: v})); }, H.periodSec);
   const beats = [1, 2, 4, 8, 16, 32, 64].map(b => b + ' beat' + (b > 1 ? 's' : '') + (b >= 4 ? ' (' + b / 4 + ' bar' + (b > 4 ? 's' : '') + ')' : ''));
   const beatRow = select('Period (beats)', beats, mo.beatsExp, v => { mo.beatsExp = v; send({beatsExp: v}); }, H.periodBeats);
-  if (live) off(mo.inBeats ? secRow : beatRow, 'Period in is ' + (mo.inBeats ? 'Beats: the period is set in beats below.' : 'Seconds: the period is set in seconds above.'));
+  off(mo.inBeats ? secRow : beatRow, 'Period in is ' + (mo.inBeats ? 'Beats: the period is set in beats below.' : 'Seconds: the period is set in seconds above.'));
   box.append(secRow, beatRow);
   box.append(slider('From', d.min, d.max, d.step, mo.from, fmt, v => { mo.from = v; throttle('mf' + m, () => send({from: v})); }, H.from));
   box.append(slider('To', d.min, d.max, d.step, mo.to, fmt, v => { mo.to = v; throttle('mt' + m, () => send({to: v})); }, H.to));
   box.append(slider('Phase', 0, 1, 0.01, mo.phase, v => v.toFixed(2), v => { mo.phase = v; repaint(); throttle('mp' + m, () => send({phase: v})); }, H.phase));
   repaint();
   box.append(tip(pic, H.shape));
-  if (!live) [...box.children].slice(at).forEach(r => off(r, 'Motion ' + (m + 1) + ' is Off: pick the slider it moves first.'));
   return box;
 }
 // The moved sliders follow their motions on screen: the board pushes each motion's phase and rate
