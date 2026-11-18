@@ -961,6 +961,12 @@ void oscPushTiming(float& avgMs, float& maxMs) {
 // (core 0) sends the newest. A frame being sent is never written.
 static uint8_t* pvBuf[2] = {nullptr, nullptr};
 static size_t pvLen = 0;
+// The brightest of the frames rendered since the last preview frame went out: the preview sends 15
+// a second and the board renders 40, so a flash lit for a frame or two (Strobe, twinkles) would
+// mostly fall between two previews
+static uint8_t* pvPeak = nullptr;
+static bool pvHeld = false;
+static uint32_t pvCalled = 0;  // the last frame offered: after a pause (preview closed) the hold starts afresh
 static volatile int8_t pvReady = -1;    // the newest frame not yet sent
 static volatile int8_t pvSending = -1;  // the one going out now
 static uint32_t pvLast = 0;
@@ -973,23 +979,39 @@ bool oscPreviewWanted() {
 
 void oscPreviewFrame(const CRGB* leds, int nx, int ny, float bright) {
     const uint32_t now = millis();
-    if (now - pvLast < 66) return;  // at most 15 a second
-    const size_t len = 8 + (size_t)nx * ny * 3;
+    if (now - pvCalled > 200) pvHeld = false;
+    pvCalled = now;
+    const size_t n = (size_t)nx * ny * 3, len = 8 + n;
     if (len != pvLen) {  // first use, or another layout
         if (pvSending >= 0) return;
         for (uint8_t*& b : pvBuf) { free(b); b = (uint8_t*)malloc(len); }
-        pvLen = (pvBuf[0] && pvBuf[1]) ? len : 0;
+        free(pvPeak);
+        pvPeak = (uint8_t*)malloc(n);
+        pvLen = (pvBuf[0] && pvBuf[1] && pvPeak) ? len : 0;
         pvReady = -1;
+        pvHeld = false;
         if (!pvLen) return;
     }
+    {
+        const int k = (int)(constrain(bright, 0.f, 1.f) * 256.f);
+        const uint8_t* in = (const uint8_t*)leds;
+        if (!pvHeld)
+            for (size_t i = 0; i < n; i++) pvPeak[i] = (uint8_t)(in[i] * k >> 8);
+        else
+            for (size_t i = 0; i < n; i++) {
+                const uint8_t v = (uint8_t)(in[i] * k >> 8);
+                if (v > pvPeak[i]) pvPeak[i] = v;
+            }
+        pvHeld = true;
+    }
+    if (now - pvLast < 66) return;  // at most 15 a second
     const int8_t w = pvReady == 0 ? 1 : (pvReady == 1 ? 0 : (pvSending == 0 ? 1 : 0));
     if (w == pvSending) return;  // both busy: skip this one
     uint8_t* o = pvBuf[w];
     memcpy(o, "BLPV", 4);
     o[4] = nx & 0xFF; o[5] = nx >> 8; o[6] = ny & 0xFF; o[7] = ny >> 8;
-    const int k = (int)(constrain(bright, 0.f, 1.f) * 256.f);
-    const uint8_t* in = (const uint8_t*)leds;
-    for (size_t i = 0, n = (size_t)nx * ny * 3; i < n; i++) o[8 + i] = (uint8_t)(in[i] * k >> 8);
+    memcpy(o + 8, pvPeak, n);
+    pvHeld = false;  // the next window starts afresh
     pvLast = now;
     pvReady = w;
 }
