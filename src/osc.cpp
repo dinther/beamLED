@@ -16,9 +16,9 @@
 #include "web.h"
 
 // ---------------------------------------------------------------- the address space
-// Every address has a fixed number (node id), so feedback can remember values and
-// subscriptions in small arrays: the globals, then MAX_PRESETS blocks of PSLOTS, then
-// MAX_PALETTES blocks of CSLOTS. A preset's parameters take the slots after its fixed ones.
+// Every address has a fixed number (node id), so feedback can remember values and subscriptions
+// in small arrays: the global controls, then slider1..slider8, the playing preset's sliders. Kept
+// small on purpose (2026-11-19): per-preset settings, motions and palettes are the web page's.
 
 enum Global : uint8_t { G_PRESET, G_NEXT, G_PREV, G_ON, G_BRIGHTNESS, G_LINK, G_SAVE, G_AUTO,
                         G_SPARKLE, G_SPARKLE_TIMING, G_SPARKLE_BURST, G_SPARKLE_COLOUR, G_SPARKLE_STEP, G_PALETTE, G_SPARKLE_THROUGH, G_SPARKLE_TIME, G_EFFECT_BRIGHTNESS, G_SPARKLE_BRIGHTNESS, NUM_GLOBALS };
@@ -27,19 +27,8 @@ static const char* const GLOBAL_NAME[NUM_GLOBALS] = {"preset", "next", "prev", "
                                                      "sparkle_colour_step", "palette", "sparkle_through",
                                                      "sparkle_time", "effect_brightness", "sparkle_brightness"};
 
-enum PSlot : uint8_t { P_PLAY, P_EFFECT, P_PALETTE, P_TIMING, P_BEATS, P_REVERSE, P_PULSE, P_AUTO, P_MIRROR, P_FIXED };
-static const char* const PSLOT_NAME[P_FIXED] = {"play", "effect", "palette", "timing", "beats",
-                                                "reverse", "pulse", "auto", "mirror"};
-// After a preset's parameters: its motions' settings
-enum MSlot : uint8_t { M_TARGET, M_SHAPE, M_FROM, M_TO, M_SECONDS, M_BEATS, M_PHASE, MSLOTS };
-static const char* const MSLOT_NAME[MSLOTS] = {"target", "shape", "from", "to", "seconds", "beats", "phase"};
-static const int M_BASE = P_FIXED + MAXP;
-static const int PSLOTS = M_BASE + MOTIONS * MSLOTS;
-static const int CSLOTS = 3 * PAL_MAX;  // the colour count, the colours, their positions, the midpoints between
-
-static const int PRESET_BASE = NUM_GLOBALS;
-static const int PALETTE_BASE = PRESET_BASE + MAX_PRESETS * PSLOTS;
-static const int NUM_NODES = PALETTE_BASE + MAX_PALETTES * CSLOTS;
+static const int SLIDER_BASE = NUM_GLOBALS;          // slider1..slider8: the playing preset's
+static const int NUM_NODES = SLIDER_BASE + MAXP;
 static const int WORDS = (NUM_NODES + 31) / 32;
 
 struct NodeInfo {
@@ -50,36 +39,12 @@ struct NodeInfo {
     const char* help;
 };
 
-static char effectList[400];  // "1 Rolling bars, 2 Searchlights, ..." for the effect's description
-
-// A parameter's address name: its label in lower case up to any "(unit)", spaces as _
-static void slug(const char* name, char* out, size_t len) {
-    size_t n = 0;
-    for (const char* s = name; *s && *s != '(' && n + 1 < len; s++) {
-        const char c = *s;
-        if (isalnum((unsigned char)c)) out[n++] = tolower((unsigned char)c);
-        else if (c == ' ' && n && out[n - 1] != '_') out[n++] = '_';
-    }
-    while (n && out[n - 1] == '_') n--;
-    out[n] = 0;
-}
-
-static bool paramPath(int preset, int effect, int j, char* buf, size_t len) {
-    if (effect >= NUM_EFFECTS || j >= EFFECTS[effect].n) return false;
-    if (!buf) return true;  // only asked whether it exists
-    char s[32];
-    slug(EFFECTS[effect].params[j].name, s, sizeof(s));
-    snprintf(buf, len, "/beamled/presets/%d/%s", preset + 1, s);
-    return true;
-}
-
-// The node's address and description; false when it doesn't exist (now). path may be null:
-// building the address (snprintf) is most of the cost, and the change check needs it only for
-// the few values it sends
+// The node's address and description; false when it doesn't exist. path may be null (the change
+// check builds the address only for the few values it sends)
 static bool nodeInfo(int id, NodeInfo& n, char* path, size_t len) {
     n = {'f', 3, false, 0, 1, ""};
     if (id < 0 || id >= NUM_NODES) return false;
-    if (id < PRESET_BASE) {
+    if (id < SLIDER_BASE) {
         if (path) snprintf(path, len, "/beamled/%s", GLOBAL_NAME[id]);
         switch (id) {
             case G_PRESET:
@@ -105,69 +70,15 @@ static bool nodeInfo(int id, NodeInfo& n, char* path, size_t len) {
         }
         return true;
     }
-    if (id < PALETTE_BASE) {
-        const int i = (id - PRESET_BASE) / PSLOTS, slot = (id - PRESET_BASE) % PSLOTS;
-        if (i >= presetCount) return false;
-        const Preset& p = presets[i];
-        if (slot >= M_BASE) {
-            const int m = (slot - M_BASE) / MSLOTS, k = (slot - M_BASE) % MSLOTS;
-            const Motion& mo = presetMotion[i][m];
-            const EffectDef& ef = EFFECTS[p.effect];
-            if (path) snprintf(path, len, "/beamled/presets/%d/motion%d_%s", i + 1, m + 1, MSLOT_NAME[k]);
-            float lo = 0, hi = 1;
-            if (mo.target && mo.target <= ef.n) lo = ef.params[mo.target - 1].min, hi = ef.params[mo.target - 1].max;
-            switch (k) {
-                case M_TARGET: n = {'i', 3, true, 0, (float)ef.n, "Motion: the slider it moves back and forth, by its place in the list on the web page: 0 = off, 1 = the first slider, 2 = the second, and so on."}; break;
-                case M_SHAPE: n = {'i', 3, true, 0, NUM_SHAPES - 1, "Motion: how it moves between the ends. 0 = sine (smooth, like a pendulum), 1 = linear (steady, turning sharply), 2 = ease in-out (slow at the ends), 3 = hold (rests at each end), 4 = overshoot (a little past each end), 5 = bounce, 6 = random slide (a new random value between the ends each half period, eased), 7 = min max (From for the first half, To for the second, with no transition), 8 = random jump (a new random value between the ends each half period, jumped to at once)."}; break;
-                case M_FROM: n = {'f', 3, true, lo, hi, "Motion: one end, in the slider's own units."}; break;
-                case M_TO: n = {'f', 3, true, lo, hi, "Motion: the other end, in the slider's own units."}; break;
-                case M_SECONDS: n = {'f', 3, true, 0.25f, 120, "Motion: one full there-and-back, in seconds (when beats is 0). Following the tempo when the preset does."}; break;
-                case M_BEATS: n = {'i', 3, true, 0, 64, "Motion: 0 = its period is in seconds; 1, 2, 4 ... 64 = one there-and-back takes that many beats, on the beat grid (at phase 0 it is at From on the bar)."}; break;
-                case M_PHASE: n = {'f', 3, true, 0, 1, "Motion: where in its cycle it is, 0..1: 0 = at From, 0.5 = at To. Motions out of step, say."}; break;
-            }
-            return true;
-        }
-        if (slot >= P_FIXED) {
-            const int j = slot - P_FIXED;
-            if (!paramPath(i, p.effect, j, path, len)) return false;
-            const ParamDef& d = EFFECTS[p.effect].params[j];
-            n = {d.step >= 1 ? 'i' : 'f', 3, true, d.min, d.max, d.help};
-            return true;
-        }
-        if (path) snprintf(path, len, "/beamled/presets/%d/%s", i + 1, PSLOT_NAME[slot]);
-        switch (slot) {
-            case P_PLAY: n = {'T', 3, false, 0, 1, "True while this preset is the one playing (or being faded to). Send true to play it; false is ignored."}; break;
-            case P_EFFECT: n = {'i', 3, true, 1, (float)NUM_EFFECTS, effectList}; break;
-            case P_PALETTE: n = {'i', 3, true, 1, (float)paletteCount, "The palette, by its number in the Palettes list on the web page (1 = the first)."}; break;
-            case P_MIRROR: n = {'T', 3, false, 0, 1, "Mirror: the right half of the ceiling is the mirror image of the left (only the left half is rendered, so it takes about half the time). No argument toggles."}; break;
-            case P_TIMING: n = {'i', 3, true, 0, 2, "0 = time (speeds in their own units), 1 = follow the tempo (the set speed at 120 BPM, scaled with the tempo), 2 = beats (the effect's cycle takes a whole number of beats and lands on the bar; only for effects with a cycle)."}; break;
-            case P_BEATS: n = {'i', 3, true, 1, 64, "With timing 2 (beats): how many beats one cycle takes: 1, 2, 4, 8, 16, 32 or 64 (other numbers go to the nearest of these)."}; break;
-            case P_REVERSE: n = {'T', 3, false, 0, 1, "With timing 2 (beats): run the cycle backwards. No argument toggles."}; break;
-            case P_AUTO: n = {'T', 3, false, 0, 1, "True when this preset is in Auto (the presets Auto changes between). No argument toggles."}; break;
-            case P_PULSE: n = {'f', 3, true, 0, 1, "Beat pulse: brightness dips between beats and is full on each beat, strongest on the bar's first beat. 0 = none."}; break;
-        }
-        return true;
-    }
-    const int k = (id - PALETTE_BASE) / CSLOTS, slot = (id - PALETTE_BASE) % CSLOTS;
-    if (k >= paletteCount) return false;
-    if (slot > 2 * PAL_MAX) {
-        if (path) snprintf(path, len, "/beamled/palettes/%d/midpoint%d", k + 1, slot - 2 * PAL_MAX);
-        n = {'f', 3, true, 0.02f, 0.98f, "Where the blend from this colour to the next is half-way, as a share of the stretch between them: 0.5 = a straight blend; towards 0 the next colour comes early, towards 1 this colour holds and the next comes late (midpoint1 is between colour1 and colour2)."};
-        return true;
-    }
-    if (slot > PAL_MAX) {
-        if (path) snprintf(path, len, "/beamled/palettes/%d/position%d", k + 1, slot - PAL_MAX);
-        n = {'f', 3, true, 0, 1, "Where this colour sits along the palette, 0..1 (0 = the start, 1 = the end). The colours stay in order: a position is kept between its neighbours'."};
-        return true;
-    }
-    if (slot == 0) {
-        if (path) snprintf(path, len, "/beamled/palettes/%d/colours", k + 1);
-        n = {'i', 3, true, 2, PAL_MAX, "How many colours the palette uses, 2..7. Colours beyond the count keep their value for when it grows again."};
-    } else {
-        if (path) snprintf(path, len, "/beamled/palettes/%d/colour%d", k + 1, slot);
-        n = {'r', 3, false, 0, 0, "A colour of the palette (RGBA; alpha is ignored). Also takes \"#RRGGBB\" or three numbers (0..1, or 0..255). Setting a colour beyond the count adds it."};
-    }
+    if (path) snprintf(path, len, "/beamled/slider%d", id - SLIDER_BASE + 1);
+    n = {'f', 3, true, 0, 1, "A slider of the preset playing, by its place in the list on the web page (slider1 = the first), 0..1 over its whole range. Ignored when the effect has fewer sliders. Changes play at once; Save keeps them."};
     return true;
+}
+
+// The playing preset's slider j: its effect's description, or null when it has none there
+static const ParamDef* sliderDef(int j) {
+    const EffectDef& ef = EFFECTS[presets[engineCurrent()].effect];
+    return j >= 0 && j < ef.n ? &ef.params[j] : nullptr;
 }
 
 // The node's current value as 32 bits (float bits, int, 0/1, or 0xRRGGBBAA); false for
@@ -176,7 +87,7 @@ static bool nodeValue(int id, char type, uint32_t& v) {
     auto f = [&](float x) { memcpy(&v, &x, 4); return true; };
     auto i = [&](int x) { v = (uint32_t)x; return true; };
     if (type == 'N') return false;
-    if (id < PRESET_BASE) {
+    if (id < SLIDER_BASE) {
         switch (id) {
             case G_PRESET: return i(engineCurrent() + 1);
             case G_ON: return i(engineOn());
@@ -196,45 +107,10 @@ static bool nodeValue(int id, char type, uint32_t& v) {
         }
         return false;
     }
-    if (id < PALETTE_BASE) {
-        const int k = (id - PRESET_BASE) / PSLOTS, slot = (id - PRESET_BASE) % PSLOTS;
-        const Preset& p = presets[k];
-        const PresetSync& y = presetSync[k];
-        if (slot >= M_BASE) {
-            const Motion& mo = presetMotion[k][(slot - M_BASE) / MSLOTS];
-            switch ((slot - M_BASE) % MSLOTS) {
-                case M_TARGET: return i(mo.target);
-                case M_SHAPE: return i(mo.shape);
-                case M_FROM: return f(mo.from);
-                case M_TO: return f(mo.to);
-                case M_SECONDS: return f(mo.seconds);
-                case M_BEATS: return i(mo.inBeats ? 1 << mo.beatsExp : 0);
-                case M_PHASE: return f(mo.phase);
-            }
-            return false;
-        }
-        if (slot >= P_FIXED) return type == 'i' ? i((int)lroundf(p.p[slot - P_FIXED])) : f(p.p[slot - P_FIXED]);
-        switch (slot) {
-            case P_PLAY: return i(engineCurrent() == k);
-            case P_EFFECT: return i(p.effect + 1);
-            case P_PALETTE: return i(p.palette + 1);
-            case P_TIMING: return i(y.timing);
-            case P_BEATS: return i(1 << y.beatsExp);
-            case P_REVERSE: return i(y.reverse != 0);
-            case P_PULSE: return f(y.pulse);
-            case P_AUTO: return i(presetInAuto(k));
-            case P_MIRROR: return i(p.mirror != 0);
-        }
-        return false;
-    }
-    const int k = (id - PALETTE_BASE) / CSLOTS, slot = (id - PALETTE_BASE) % CSLOTS;
-    const Palette& pal = palettes[k];
-    if (slot == 0) return i(pal.n);
-    if (slot > 2 * PAL_MAX) return f((pal.mid[slot - 2 * PAL_MAX - 1] ? pal.mid[slot - 2 * PAL_MAX - 1] : 128) / 256.f);
-    if (slot > PAL_MAX) return f(pal.pos[slot - PAL_MAX - 1]);
-    const CRGB& c = pal.c[slot - 1];
-    v = (uint32_t)c.r << 24 | (uint32_t)c.g << 16 | (uint32_t)c.b << 8 | 0xff;
-    return true;
+    const int j = id - SLIDER_BASE;
+    const ParamDef* d = sliderDef(j);
+    if (!d) return f(0);
+    return f(constrain((presets[engineCurrent()].p[j] - d->min) / (d->max - d->min), 0.f, 1.f));
 }
 
 // The node at an address, or -1
@@ -243,46 +119,7 @@ static int findNode(const char* path) {
     const char* r = path + 9;
     for (int g = 0; g < NUM_GLOBALS; g++)
         if (!strcmp(r, GLOBAL_NAME[g])) return g;
-    char* e;
-    if (!strncmp(r, "presets/", 8)) {
-        const long i = strtol(r + 8, &e, 10) - 1;
-        if (*e != '/' || i < 0 || i >= presetCount) return -1;
-        const char* name = e + 1;
-        const int base = PRESET_BASE + i * PSLOTS;
-        for (int s = 0; s < P_FIXED; s++)
-            if (!strcmp(name, PSLOT_NAME[s])) return base + s;
-        if (!strncmp(name, "motion", 6) && name[6] >= '1' && name[6] < '1' + MOTIONS && name[7] == '_')
-            for (int k = 0; k < MSLOTS; k++)
-                if (!strcmp(name + 8, MSLOT_NAME[k])) return base + M_BASE + (name[6] - '1') * MSLOTS + k;
-        const EffectDef& ef = EFFECTS[presets[i].effect];
-        for (int j = 0; j < ef.n; j++) {
-            char s[32];
-            slug(ef.params[j].name, s, sizeof(s));
-            if (!strcmp(name, s)) return base + P_FIXED + j;
-        }
-        return -1;
-    }
-    if (!strncmp(r, "palettes/", 9)) {
-        const long k = strtol(r + 9, &e, 10) - 1;
-        if (*e != '/' || k < 0 || k >= paletteCount) return -1;
-        const int base = PALETTE_BASE + k * CSLOTS;
-        if (!strcmp(e + 1, "colours")) return base;
-        if (!strncmp(e + 1, "midpoint", 8)) {
-            char* e2;
-            const long j = strtol(e + 9, &e2, 10);
-            if (*e2 == 0 && j >= 1 && j < PAL_MAX) return base + 2 * PAL_MAX + j;
-        }
-        if (!strncmp(e + 1, "position", 8)) {
-            char* e2;
-            const long j = strtol(e + 9, &e2, 10);
-            if (*e2 == 0 && j >= 1 && j <= PAL_MAX) return base + PAL_MAX + j;
-        }
-        if (!strncmp(e + 1, "colour", 6)) {
-            char* e2;
-            const long j = strtol(e + 7, &e2, 10);
-            if (*e2 == 0 && j >= 1 && j <= PAL_MAX) return base + j;
-        }
-    }
+    if (!strncmp(r, "slider", 6) && r[6] >= '1' && r[6] < '1' + MAXP && r[7] == 0) return SLIDER_BASE + (r[6] - '1');
     return -1;
 }
 
@@ -307,27 +144,6 @@ static bool argNumber(const Arg& a, float& out) {
             out = strtof(a.s, &e);
             return e != a.s && *e == 0;
         }
-    }
-    return false;
-}
-
-static bool argColour(const Arg* a, int n, CRGB& out) {
-    if (n >= 1 && a[0].t == 'r') {
-        out = CRGB(a[0].r >> 24, a[0].r >> 16, a[0].r >> 8);
-        return true;
-    }
-    if (n >= 1 && a[0].t == 's' && a[0].s[0] == '#' && (strlen(a[0].s) == 7 || strlen(a[0].s) == 9)) {
-        const uint32_t v = strtoul(a[0].s + 1, nullptr, 16);
-        out = strlen(a[0].s) == 9 ? CRGB(v >> 24, v >> 16, v >> 8) : CRGB(v);
-        return true;
-    }
-    float c[3];
-    if (n >= 3 && argNumber(a[0], c[0]) && argNumber(a[1], c[1]) && argNumber(a[2], c[2])) {
-        const bool unit = a[0].t == 'f' && c[0] <= 1 && c[1] <= 1 && c[2] <= 1;
-        uint8_t b[3];
-        for (int k = 0; k < 3; k++) b[k] = (uint8_t)constrain(lroundf(unit ? c[k] * 255.f : c[k]), 0L, 255L);
-        out = CRGB(b[0], b[1], b[2]);
-        return true;
     }
     return false;
 }
@@ -359,12 +175,12 @@ static void apply(const char* path, const Arg* a, int n) {
     }
     if (info.type == 'f' || info.type == 'i') {
         if (!isfinite(v)) return;
-        if (info.range && id >= PRESET_BASE) v = constrain(v, info.min, info.max);
+        if (info.range && id >= SLIDER_BASE) v = constrain(v, info.min, info.max);
         if (info.type == 'i') v = roundf(v);
     }
     const bool on = v >= 0.5f;
 
-    if (id < PRESET_BASE) {
+    if (id < SLIDER_BASE) {
         const int cur = engineCurrent();
         switch (id) {
             case G_PRESET: engineSelect((int)v - 1); break;
@@ -394,99 +210,13 @@ static void apply(const char* path, const Arg* a, int n) {
         }
         return;
     }
-    if (id < PALETTE_BASE) {
-        const int i = (id - PRESET_BASE) / PSLOTS, slot = (id - PRESET_BASE) % PSLOTS;
-        Preset& p = presets[i];
-        PresetSync& y = presetSync[i];
-        if (slot >= M_BASE) {
-            Motion& mo = presetMotion[i][(slot - M_BASE) / MSLOTS];
-            const EffectDef& ef = EFFECTS[p.effect];
-            switch ((slot - M_BASE) % MSLOTS) {
-                case M_TARGET:
-                    if ((int)v != mo.target) {
-                        mo.target = (int)v;
-                        if (mo.target) {  // a new slider: its whole range to start with
-                            mo.from = ef.params[mo.target - 1].min;
-                            mo.to = ef.params[mo.target - 1].max;
-                        }
-                        webChanged();  // the page shows the motion's settings
-                    }
-                    break;
-                case M_SHAPE: mo.shape = (int)v; break;
-                case M_FROM: mo.from = v; break;
-                case M_TO: mo.to = v; break;
-                case M_SECONDS: mo.seconds = v; break;
-                case M_BEATS:
-                    mo.inBeats = v >= 0.5f;
-                    if (mo.inBeats) mo.beatsExp = constrain((int)lroundf(log2f(v)), 0, 6);
-                    break;
-                case M_PHASE: mo.phase = v; break;
-            }
-            return;
-        }
-        if (slot >= P_FIXED) {
-            p.p[slot - P_FIXED] = v;
-            return;
-        }
-        switch (slot) {
-            case P_PLAY:
-                if (on) engineSelect(i);
-                break;
-            case P_EFFECT:
-                if ((int)v - 1 != p.effect) {
-                    webChanged();  // the page shows the new effect's sliders
-                    presetChangeEffect(i, (int)v - 1);
-                    if (i == settings.current) engineResetEffect();
-                }
-                break;
-            case P_PALETTE: p.palette = (int)v - 1; break;
-            case P_TIMING: y.timing = (int)v; break;
-            case P_BEATS: y.beatsExp = constrain((int)lroundf(log2f(fmaxf(v, 1.f))), 0, 6); break;
-            case P_REVERSE: y.reverse = on; break;
-            case P_PULSE: y.pulse = v; break;
-            case P_MIRROR: p.mirror = on; break;
-            case P_AUTO:
-                if (on) autoSettings.skip &= ~(1u << i);
-                else autoSettings.skip |= 1u << i;
-                storeMarkDirty();
-                break;
-        }
-        return;
-    }
-    const int k = (id - PALETTE_BASE) / CSLOTS, slot = (id - PALETTE_BASE) % CSLOTS;
-    Palette& pal = palettes[k];
-    if (slot == 0) {
-        if (pal.n != (int)v) {
-            webChanged();  // colours come or go on the page
-            const bool even = paletteHasEvenStops(pal);
-            pal.n = (int)v;
-            if (even) paletteEvenStops(pal);
-            else paletteSanitizeStops(pal);
-        }
-        return;
-    }
-    if (slot > 2 * PAL_MAX) {
-        pal.mid[slot - 2 * PAL_MAX - 1] = (uint8_t)constrain((int)lroundf(v * 256.f), 5, 251);
-        return;
-    }
-    if (slot > PAL_MAX) {
-        const int j = slot - PAL_MAX - 1;
-        const float lo = j > 0 ? pal.pos[j - 1] : 0.f, hi = j < pal.n - 1 ? pal.pos[j + 1] : 1.f;
-        pal.pos[j] = constrain(v, lo, hi);
-        return;
-    }
-    CRGB c;
-    if (!argColour(a, n, c)) {
-        lastMessage += " (not a colour)";
-        return;
-    }
-    pal.c[slot - 1] = c;
-    if (slot > pal.n) {
-        const bool even = paletteHasEvenStops(pal);
-        pal.n = slot;
-        if (even) paletteEvenStops(pal);
-        else paletteSanitizeStops(pal);
-    }
+    // slider1..8: the playing preset's slider, 0..1 over its range (whole numbers stay whole)
+    const int j = id - SLIDER_BASE;
+    const ParamDef* d = sliderDef(j);
+    if (!d) return;
+    float x = d->min + v * (d->max - d->min);
+    if (d->step >= 1) x = roundf(x);
+    presets[engineCurrent()].p[j] = constrain(x, d->min, d->max);
 }
 
 static bool readString(const uint8_t* d, size_t size, size_t& pos, const char*& out) {
@@ -686,52 +416,15 @@ static void writeContainer(Out& o, const char* path, const char* help, int from,
     o.raw("}}");
 }
 
-// Container paths: /, /beamled, /beamled/presets, /beamled/presets/<n>, /beamled/palettes,
-// /beamled/palettes/<k>. False when it isn't one.
-static bool isContainer(const char* path) {
-    if (!strcmp(path, "/") || !strcmp(path, "/beamled") || !strcmp(path, "/beamled/presets") ||
-        !strcmp(path, "/beamled/palettes"))
-        return true;
-    char* e;
-    if (!strncmp(path, "/beamled/presets/", 17)) {
-        const long i = strtol(path + 17, &e, 10);
-        return e != path + 17 && *e == 0 && i >= 1 && i <= presetCount;
-    }
-    if (!strncmp(path, "/beamled/palettes/", 18)) {
-        const long k = strtol(path + 18, &e, 10);
-        return e != path + 18 && *e == 0 && k >= 1 && k <= paletteCount;
-    }
-    return false;
-}
+// Container paths: / and /beamled
+static bool isContainer(const char* path) { return !strcmp(path, "/") || !strcmp(path, "/beamled"); }
 
 static void writeTree(Out& o, const char* path) {
-    static char nums[MAX_PRESETS][4];
-    static const char* numPtrs[MAX_PRESETS];
-    for (int i = 0; i < MAX_PRESETS; i++) {
-        snprintf(nums[i], sizeof(nums[i]), "%d", i + 1);
-        numPtrs[i] = nums[i];
-    }
-    char help[64];
     if (!strcmp(path, "/")) {
         static const char* const top[] = {"beamled"};
         writeContainer(o, "/", "beamLED", 0, 0, top, 1, "/%s");
-    } else if (!strcmp(path, "/beamled")) {
-        static const char* const subs[] = {"presets", "palettes"};
-        writeContainer(o, path, "beamLED: the LED ceiling", 0, NUM_GLOBALS, subs, 2, "/beamled/%s");
-    } else if (!strcmp(path, "/beamled/presets")) {
-        writeContainer(o, path, "The presets, numbered as on the web page", 0, 0, numPtrs, presetCount, "/beamled/presets/%s");
-    } else if (!strcmp(path, "/beamled/palettes")) {
-        writeContainer(o, path, "The palettes, numbered as on the web page", 0, 0, numPtrs, paletteCount, "/beamled/palettes/%s");
-    } else if (!strncmp(path, "/beamled/presets/", 17)) {
-        const int i = atoi(path + 17) - 1;
-        snprintf(help, sizeof(help), "%s: %s", presets[i].name, EFFECTS[presets[i].effect].name);
-        const int base = PRESET_BASE + i * PSLOTS;
-        writeContainer(o, path, help, base, base + PSLOTS);
     } else {
-        const int k = atoi(path + 18) - 1;
-        snprintf(help, sizeof(help), "Palette %s", palettes[k].name);
-        const int base = PALETTE_BASE + k * CSLOTS;
-        writeContainer(o, path, help, base, base + CSLOTS);
+        writeContainer(o, path, "beamLED: the LED ceiling", 0, NUM_NODES);
     }
 }
 
@@ -763,7 +456,7 @@ static esp_err_t serveHttp(httpd_req_t* req) {
                  "{\"NAME\":\"%s\",\"OSC_PORT\":%u,\"OSC_TRANSPORT\":\"UDP\",\"EXTENSIONS\":{\"ACCESS\":true,"
                  "\"VALUE\":true,\"RANGE\":true,\"DESCRIPTION\":true,\"TAGS\":false,\"EXTENDED_TYPE\":false,"
                  "\"UNIT\":false,\"CRITICAL\":false,\"CLIPMODE\":false,\"LISTEN\":true,\"PATH_CHANGED\":false,"
-                 "\"PATH_ADDED\":true,\"PATH_REMOVED\":true}}",
+                 "\"PATH_ADDED\":false,\"PATH_REMOVED\":false}}",
                  name.c_str(), cfg::OSC_PORT);
         httpd_resp_set_type(req, "application/json");
         return httpd_resp_send(req, b, HTTPD_RESP_USE_STRLEN);
@@ -819,9 +512,6 @@ static volatile bool pushQueued = false;
 
 static uint32_t* lastValue = nullptr;  // NUM_NODES, from the heap (static DRAM is full)
 static uint32_t known[WORDS];  // lastValue holds what listeners were last sent
-static uint8_t treeEffect[MAX_PRESETS];
-static int treeCount = -1;     // the presets listeners know about (-1: none yet)
-static int treePalettes = -1;  // and the palettes
 
 static inline bool hasBit(const uint32_t* b, int id) { return b[id >> 5] >> (id & 31) & 1; }
 static inline void setBit(uint32_t* b, int id, bool on) {
@@ -863,65 +553,6 @@ static void markCurrent(int id) {
 static void sendStatus(int fd) {
     const String s = "{\"COMMAND\":\"STATUS\",\"DATA\":" + webStatusJson() + "}";
     sendFrame(fd, HTTPD_WS_TYPE_TEXT, (const uint8_t*)s.c_str(), s.length());
-}
-
-static void notifyPath(const char* command, const char* path) {
-    char b[128];
-    snprintf(b, sizeof(b), "{\"COMMAND\":\"%s\",\"DATA\":\"%s\"}", command, path);
-    for (Listener& l : listeners)
-        if (l.fd >= 0) sendFrame(l.fd, HTTPD_WS_TYPE_TEXT, (const uint8_t*)b, strlen(b));
-}
-
-// Forget values and subscriptions for nodes [from, to): their address now means something else
-static void forget(int from, int to) {
-    for (int id = from; id < to; id++) {
-        setBit(known, id, false);
-        for (Listener& l : listeners) setBit(l.bits, id, false);
-    }
-}
-
-// Tells listeners about presets added, removed, or given another effect (other parameters)
-static void updateTree() {
-    if (treePalettes < 0) treePalettes = paletteCount;
-    if (treePalettes != paletteCount) {
-        char q[48];
-        for (int k = 0; k < max(treePalettes, paletteCount); k++) {
-            const bool was = k < treePalettes, is = k < paletteCount;
-            if (was == is) continue;
-            snprintf(q, sizeof(q), "/beamled/palettes/%d", k + 1);
-            notifyPath(is ? "PATH_ADDED" : "PATH_REMOVED", q);
-            forget(PALETTE_BASE + k * CSLOTS, PALETTE_BASE + (k + 1) * CSLOTS);
-        }
-        treePalettes = paletteCount;
-    }
-    if (treeCount < 0) {
-        treeCount = presetCount;
-        for (int i = 0; i < MAX_PRESETS; i++) treeEffect[i] = presets[i].effect;
-        return;
-    }
-    char p[64];
-    const int n = max(treeCount, presetCount);
-    for (int i = 0; i < n; i++) {
-        const bool was = i < treeCount, is = i < presetCount;
-        const int base = PRESET_BASE + i * PSLOTS;
-        if (was && !is) {
-            snprintf(p, sizeof(p), "/beamled/presets/%d", i + 1);
-            notifyPath("PATH_REMOVED", p);
-            forget(base, base + PSLOTS);
-        } else if (!was && is) {
-            snprintf(p, sizeof(p), "/beamled/presets/%d", i + 1);
-            notifyPath("PATH_ADDED", p);
-            forget(base, base + PSLOTS);
-        } else if (is && presets[i].effect != treeEffect[i]) {
-            for (int j = 0; j < MAXP; j++)
-                if (paramPath(i, treeEffect[i], j, p, sizeof(p))) notifyPath("PATH_REMOVED", p);
-            for (int j = 0; j < MAXP; j++)
-                if (paramPath(i, presets[i].effect, j, p, sizeof(p))) notifyPath("PATH_ADDED", p);
-            forget(base + P_FIXED, base + M_BASE);
-        }
-        if (is) treeEffect[i] = presets[i].effect;
-    }
-    treeCount = presetCount;
 }
 
 // Sends every change since last time to the listeners that follow it
@@ -1039,7 +670,6 @@ static void push(void*) {
 }
 
 static void pushChanges() {
-    updateTree();
     for (int k = 0; k < MAX_LISTENERS; k++) bundleLen[k] = 16, bundleFlush(k);  // fresh, empty
     NodeInfo n;
     char p[64];
@@ -1113,7 +743,6 @@ static void command(int fd, const char* text) {
     }
     const bool listen = !strcmp(cmd, "LISTEN");
     if (!listen && strcmp(cmd, "IGNORE")) return;
-    updateTree();  // the subscription is to the addresses as they are now
     const int id = findNode(path);
     if (id >= 0) {
         setBit(l->bits, id, listen);
@@ -1214,9 +843,6 @@ static String startProblem;
 static void start() {
     started = true;
     wsIn = xQueueCreate(16, sizeof(WsPacket));
-    size_t n = 0;
-    for (int e = 0; e < NUM_EFFECTS && n + 40 < sizeof(effectList); e++)
-        n += snprintf(effectList + n, sizeof(effectList) - n, "%s%d %s", e ? ", " : "The effect: ", e + 1, EFFECTS[e].name);
 
     udpSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     sockaddr_in a = {};

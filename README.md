@@ -51,8 +51,9 @@ for this kind of installation (see [docs/background.md](docs/background.md)):
 - **Ableton Link**: tempo and beat shared with Ableton Live and other Link apps. Per preset, an
   effect can run in time, follow the tempo, or run in beats (one band, revolution or ring per 1 to
   64 beats, landing on the bar), with an optional brightness pulse on the beat.
-- **OSC and OSCQuery**: every preset, slider, motion and palette colour has an OSC address, with its
-  type, range and help, and changes are pushed back as feedback. Made for MIMa.
+- **OSC and OSCQuery**: the live controls (preset, on/off, the brightness levels, Auto, Link, the
+  sparkle overlay, palette lock) and the playing preset's eight sliders have OSC addresses, with
+  their type, range and help, and changes are pushed back as feedback. Made for MIMa.
 - **A web page** on the board: presets, sliders, motions, palettes, layout and network settings,
   with help on every control. It follows changes made anywhere (the button, OSC, another device)
   as they happen, without polling.
@@ -165,20 +166,11 @@ browsed, sent to (a group's *Sends to* can name the OSCQuery application) and fo
 | `/beamled/sparkle_time` | f 0.2..5 | sparkle overlay: how long a twinkle lasts, in seconds (not with bursts) |
 | `/beamled/sparkle_through` | T/F | sparkle overlay: each twinkle runs through its palette, first colour to last |
 | `/beamled/sparkle_colour_step` | f 0..1 | sparkle overlay: 0 random colours, else each new twinkle this far along the palette from the one before |
-| `/beamled/presets/<n>/play` | T/F | true while preset n plays; true plays it |
-| `/beamled/presets/<n>/effect`, `palette` | i | by number, as on the page |
-| `/beamled/presets/<n>/pulse` | f 0..1 | beat pulse |
-| `/beamled/presets/<n>/mirror` | T/F | the right half mirrors the left |
-| `/beamled/presets/<n>/timing`, `beats`, `reverse` | i, i, T/F | 0 time, 1 follow tempo, 2 beats; beats per cycle |
-| `/beamled/presets/<n>/<slider>` | f or i | each slider of the preset's effect, named after it (`speed`, `band_width`, `angle`, `offset`, ...), in its own units |
-| `/beamled/presets/<n>/motion1_target` ... `motion3_phase` | | each motion's `target`, `shape`, `from`, `to`, `seconds`, `beats` and `phase` |
-| `/beamled/palettes/<k>/colours` | i 2..5 | how many colours |
-| `/beamled/palettes/<k>/colour1` ... `colour5` | r | a colour (also `"#RRGGBB"` or three numbers) |
-| `/beamled/palettes/<k>/midpoint1` ... | f | where the blend between two neighbouring colours is half-way, 0.5 = straight |
-| `/beamled/palettes/<k>/position1` ... `position5` | f 0..1 | where that colour sits along the palette |
+| `/beamled/slider1` ... `slider8` | f 0..1 | the playing preset's sliders, by their place on the page, each 0..1 over its whole range (ignored past the effect's last slider); they follow when the preset changes |
 
-Preset changes over OSC play at once and, like changes on the page, are kept with Save
-(`/beamled/save`). The tempo isn't on OSC: Ableton Link moves it by fractions of a BPM all the time.
+Slider changes over OSC play at once and, like changes on the page, are kept with Save
+(`/beamled/save`). Everything else about a preset (effect, palette, timing, motions) and the
+palettes is set on the web page. The tempo isn't on OSC: Ableton Link moves it by fractions of a BPM all the time.
 
 ## Hardware
 

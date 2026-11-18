@@ -146,7 +146,6 @@ function liveSend(addr, v, fallback, persist) {
   if (!oscQueued) { oscQueued = true; requestAnimationFrame(flushOsc); }
   if (persist) { clearTimeout(persistTimer[addr]); persistTimer[addr] = setTimeout(fallback, 500); }
 }
-const presetAddr = key => '/beamled/presets/' + (S.current + 1) + '/' + key;
 // At most one request per key every 120 ms while a slider moves; the last value always goes out
 const pend = {};
 function throttle(k, fn) {
@@ -580,7 +579,7 @@ function draw() {
     const by = motions.findIndex(mo => mo.target == j + 1);
     const row = slider(d.name, d.min, d.max, d.step, p.params[j],
       v => v.toFixed(decimals(d.step)),
-      v => { p.params[j] = v; paramDeps(); markChanged(S.current); liveSend(presetAddr(slug(d.name)), v, () => post('/api/preset', {index: S.current, params: p.params})); },
+      v => { p.params[j] = v; paramDeps(); markChanged(S.current); liveSend('/beamled/slider' + (j + 1), (v - d.min) / (d.max - d.min), () => post('/api/preset', {index: S.current, params: p.params})); },
       d.help + ' (' + d.min + ' to ' + d.max + ', default ' + d.def + ')' +
         (by >= 0 ? ' Now moved by Motion ' + (by + 1) + ' (below): set its From and To there.' : ''), 'p' + j);
     if (by >= 0) { row.classList.add('moving'); off(row, 'Motion ' + (by + 1) + ' moves it: set its From and To there.'); }
@@ -613,7 +612,7 @@ function draw() {
   };
   paramDeps();
   card.append(slider('Beat pulse', 0, 1, 0.01, p.pulse, v => v.toFixed(2),
-    v => { p.pulse = v; markChanged(S.current); liveSend(presetAddr('pulse'), v, () => post('/api/preset', {index: S.current, pulse: v})); }, H.pulse, 'pulse'));
+    v => { p.pulse = v; markChanged(S.current); throttle('pulse', () => post('/api/preset', {index: S.current, pulse: v})); }, H.pulse, 'pulse'));
   motions.forEach((mo, m) => card.append(motionEditor(p, ef, mo, m)));
   const reset = button('Reset parameters', H.reset);
   reset.onclick = () => { p.params = ef.params.map(d => d.def); p.changed = true; post('/api/preset', {index: S.current, params: p.params}); draw(); };
@@ -1268,53 +1267,18 @@ function oscValue(addr, v) {
     else if (S.sparkle && a[2] == 'sparkle_time') { S.sparkle.time = v; moveSlider('sparkleTime', v); }
     else if (S.sparkle && a[2] == 'sparkle_through') { if (S.sparkle.through != !!v) { S.sparkle.through = !!v; redraw(); } }
     else if (S.sparkle && a[2] == 'sparkle_colour_step') { S.sparkle.step = v; moveSlider('sparkleStep', Math.cbrt(v)); }
+    else if (/^slider\d$/.test(a[2])) {  // the playing preset's slider, 0..1 over its range
+      const p = S.presets[S.current], j = +a[2].slice(6) - 1, d = p && S.effects[p.effect].params[j];
+      if (!d) return;
+      let x = d.min + v * (d.max - d.min);
+      if (d.step >= 1) x = Math.round(x);
+      if (Math.abs(x - p.params[j]) < Math.max(d.step, 1e-6) * 0.5) return;  // our own echo
+      p.params[j] = x;
+      moveSlider('p' + j, x);
+      paramDeps();
+      markChanged(S.current);
+    }
     return;
-  }
-  const n = +a[3] - 1, key = a[4];
-  if (a[2] == 'presets') {
-    const p = S.presets[n];
-    if (!p || key == 'play') return;
-    const mine = n == S.current;
-    const mm = /^motion(\d)_(\w+)$/.exec(key);
-    if (mm) {  // a motion's setting
-      const mo = p.motions && p.motions[+mm[1] - 1];
-      if (!mo) return;
-      if (mm[2] == 'beats') { mo.inBeats = v > 0; if (v > 0) mo.beatsExp = Math.round(Math.log2(v)); }
-      else mo[mm[2]] = v;
-      if (mine) redraw();
-      return;
-    }
-    if (key == 'effect') { if (p.effect != v - 1) reload(); return; }
-    if (key == 'auto') { if (p.auto !== v) { p.auto = v; redraw(); } return; }
-    if (key == 'palette') p.palette = v - 1;
-    else if (key == 'pulse') { p.pulse = v; if (mine) return moveSlider('pulse', v); }
-    else if (key == 'mirror') { p.mirror = !!v; draw(); }
-    else if (key == 'timing') p.timing = v;
-    else if (key == 'beats') p.beatsExp = Math.round(Math.log2(v));
-    else if (key == 'reverse') p.reverse = v;
-    else {
-      const j = S.effects[p.effect].params.findIndex(d => slug(d.name) == key);
-      if (j < 0) return;
-      p.params[j] = v;
-      if (mine) { moveSlider('p' + j, v); paramDeps(); }
-    }
-    if (mine) redraw();
-  } else if (a[2] == 'palettes') {
-    const q = S.palettes[n];
-    if (!q) return;
-    if (key == 'colours') { if (q.colors.length != v) reload(); return; }
-    if (key.startsWith('midpoint')) {
-      const j = +key.slice(8) - 1;
-      if (q.mids && j < q.mids.length && Math.abs(q.mids[j] - v) > 1e-3) { q.mids[j] = v; redraw(); }
-      return;
-    }
-    if (key.startsWith('position')) {
-      const j = +key.slice(8) - 1;
-      if (q.stops && j < q.stops.length && Math.abs(q.stops[j] - v) > 1e-4) { q.stops[j] = v; redraw(); }
-      return;
-    }
-    const j = +key.slice(6) - 1;
-    if (j < q.colors.length && q.colors[j].toLowerCase() != String(v).toLowerCase()) { q.colors[j] = v; redraw(); }  // not our own echo
   }
 }
 const reload = () => { reloadDue = true; settle(); };
