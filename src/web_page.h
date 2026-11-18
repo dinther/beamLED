@@ -238,7 +238,8 @@ const H = {
   reverse: 'Runs the cycle backwards: the lighthouse turns the other way, bands roll back, rings flow in.',
   sparkle: 'Twinkles on top of whatever preset plays: one setting for all presets, kept when the preset changes (not drawn over the Sparkle effect, which is twinkles itself). 0 = none, 1 = about 8% of the LEDs lit at any moment. Their colours: Sparkle colour.',
   sparkleBeat: 'When twinkles start. Free: at any moment. Otherwise only on the beat grid of Ableton Link or the board’s own tempo: every 4 beats (once a bar), 2 beats, 1 beat, 1/2, 1/4 or 1/8 beat. The same amount of sparkle as Free, in time with the music.',
-  mirror: 'The right half of the ceiling becomes the mirror image of the left, along the rows: anything moving right on the left half moves left on the right half. Only the left half is rendered, so the effect takes about half the time. The Sparkle overlay is not mirrored.',
+  mirror: 'Mirror Y: the second half of every bar becomes the mirror image of the first half (top and bottom in the preview mirror each other): anything moving along the bars on one half moves the other way on the other. Only the first half is rendered, so the effect takes about half the time. The Sparkle overlay is not mirrored.',
+  mirrorX: 'Mirror X: the last rows become the mirror image of the first rows (left and right in the preview mirror each other): anything moving across the bars on one side moves the other way on the other. With Mirror Y as well: four-way symmetry. The Sparkle overlay is not mirrored.',
   sparkleBurst: 'Off: single twinkles, each with the same soft rise and fade as in Free. On: a batch flashes at once on each tick and fades out before the next; Sparkle overlay sets how many (1 = 6% of the LEDs).',
   paletteLock: 'Lock every preset to one palette, for a show in one set of colours: whichever preset plays (picked here, by the button, by Auto or OSC) uses this palette instead of its own. The presets’ own palettes are kept, so Each preset’s own brings them back. Not saved: after a restart each preset has its own palette again.',
   preview: 'What the ceiling shows now, live from the board, up to 15 frames a second: seen from below, the first row on the left, the bars at their real places and spacing (drawn thicker than they are, so they show). The colours as the effects make them, without the LEDs’ gamma. The board sends frames only while this section is open, on screen and the tab is in view.',
@@ -557,9 +558,12 @@ function draw() {
   card.append(paletteSelect('Palette', p.palette, v => {
     p.palette = v; post('/api/preset', {index: S.current, palette: v}); }, H.palette +
     (locked ? ' Now the Palette lock (top) plays ' + locked.name + ' instead; this choice is kept and plays again when the lock is off.' : '')));
+  const mirX = h('input', {type: 'checkbox', checked: !!p.mirrorX});
+  mirX.onchange = () => { p.mirrorX = mirX.checked; markChanged(S.current); post('/api/preset', {index: S.current, mirrorX: mirX.checked}); };
+  card.append(field('Mirror X', mirX, H.mirrorX));
   const mir = h('input', {type: 'checkbox', checked: !!p.mirror});
   mir.onchange = () => { p.mirror = mir.checked; markChanged(S.current); post('/api/preset', {index: S.current, mirror: mir.checked}); };
-  card.append(field('Mirror', mir, H.mirror));
+  card.append(field('Mirror Y', mir, H.mirror));
   // Timing: tempo and beat come from Ableton Link (or the board's own clock when it is disabled).
   // In beats, the effect's cycle (a band, a revolution, ...) takes 1, 2, 4 ... 64 beats and the
   // speed slider is replaced by that choice.

@@ -329,7 +329,11 @@ static void renderFrame(float dt) {
     effectsToUnits(e, pp);  // lengths and speeds from % of the ceiling's shorter side to its units
     Ctx c{pp, edt, effState, lutWrap, lutLin, leds, beat.beat, (float)beat.bpm, cycleBeats, y.reverse != 0,
           presetSteps[settings.current].lane, levels.effect / 255.f};
-    effectsRender(e, c, p.mirror != 0);
+    effectsRender(e, c, (p.mirror & 1) != 0);  // Mirror Y: only the first half of each row rendered
+    if (p.mirror & 2) {  // Mirror X: the last rows the mirror image of the first
+        const int nx = layout.nx, ny = layout.ny;
+        for (int b = 0; b < ny / 2; b++) memcpy(leds + (ny - 1 - b) * nx, leds + b * nx, nx * sizeof(CRGB));
+    }
     // Effect brightness: the effect alone, before the overlay's twinkles go on top (an effect that
     // applies it itself, Strobe, has done so)
     if (levels.effect < 255 && !e.ownLevel) {

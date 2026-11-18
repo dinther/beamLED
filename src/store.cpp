@@ -320,7 +320,7 @@ void storeLoad() {
         p.name[sizeof(p.name) - 1] = 0;
         if (p.effect >= NUM_EFFECTS) presetSetEffect(p, 0);
         if (p.palette >= paletteCount) p.palette = 0;
-        p.mirror = p.mirror ? 1 : 0;
+        p.mirror &= 3;  // Mirror Y, Mirror X
     }
     for (PresetSync& y : presetSync) {
         if (y.timing > TIMING_BEATS) y.timing = TIMING_TIME;

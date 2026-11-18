@@ -167,7 +167,8 @@ static void presetJson(JsonObject o, int i) {
     o["pulse"] = presetSync[i].pulse;
     o["effect"] = p.effect;
     o["palette"] = p.palette;
-    o["mirror"] = p.mirror != 0;
+    o["mirror"] = (p.mirror & 1) != 0;   // Mirror Y
+    o["mirrorX"] = (p.mirror & 2) != 0;
     JsonArray a = o["params"].to<JsonArray>();
     for (int j = 0; j < EFFECTS[p.effect].n; j++) a.add(p.p[j]);
     JsonArray st = o["steps"].to<JsonArray>();  // the step pattern: per lane, bit s = step s
@@ -502,7 +503,8 @@ static void handlePreset() {
         }
     }
     if (d["palette"].is<int>()) p.palette = constrain(d["palette"].as<int>(), 0, paletteCount - 1);
-    if (d["mirror"].is<bool>()) p.mirror = d["mirror"].as<bool>() ? 1 : 0;
+    if (d["mirror"].is<bool>()) p.mirror = (p.mirror & ~1) | (d["mirror"].as<bool>() ? 1 : 0);
+    if (d["mirrorX"].is<bool>()) p.mirror = (p.mirror & ~2) | (d["mirrorX"].as<bool>() ? 2 : 0);
     if (d["params"].is<JsonArray>()) {
         JsonArray a = d["params"].as<JsonArray>();
         const EffectDef& e = EFFECTS[p.effect];
@@ -818,7 +820,7 @@ static void handleRestore() {
         const EffectDef& e = EFFECTS[p.effect];
         p.palette = constrain(q["palette"] | 0, 0, paletteCount - 1);
         // (a backup from before the overlay was global has sparkle settings per preset: ignored)
-        p.mirror = (q["mirror"] | false) ? 1 : 0;
+        p.mirror = ((q["mirror"] | false) ? 1 : 0) | ((q["mirrorX"] | false) ? 2 : 0);
         JsonArray ps = q["params"].as<JsonArray>();
         if (oldOrder || metres) {  // a backup from before 2026-11-19: old order and/or metres
             for (int j = 0; j < e.n; j++)

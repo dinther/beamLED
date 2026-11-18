@@ -15,7 +15,8 @@ struct Preset {
     uint8_t palette;
     uint8_t unusedSparkleBeat;  // was the preset's own Sparkle overlay timing; the overlay is
                                 // global now (SparkleSettings). Kept so saved presets still load.
-    uint8_t mirror;       // the right half mirrors the left (only the left is rendered; in what was
+    uint8_t mirror;       // bit 0 Mirror Y: the second half of each row mirrors the first (only the
+                          // first is rendered); bit 1 Mirror X: the last rows mirror the first. (In what was
                           // padding: older saves read as 0)
     float p[MAXP];
     float unusedSparkle;  // was the preset's own Sparkle overlay amount (see unusedSparkleBeat)

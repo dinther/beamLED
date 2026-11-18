@@ -44,8 +44,9 @@ for this kind of installation (see [docs/background.md](docs/background.md)):
   steps through them (short press: next and Auto off, double press: Auto on, long press:
   on/off); the one playing survives a power cut.
   Edits play at once and are kept with **Save**, or dropped with **Revert**. Rename a saved preset\n  and Save, and it becomes a new preset.
-- **Mirror** per preset: the right half of the ceiling mirrors the left, along the rows; only the
-  left half is rendered, so it takes about half the time.
+- **Mirror X and Mirror Y** per preset: the last rows mirror the first (X), and the second half of
+  every bar mirrors the first (Y; only that half is rendered, so it takes about half the time); both
+  together give four-way symmetry.
 - **Motions**: up to three per preset, each moving one slider back and forth by itself (a beam
   swinging, bands scrolling to and fro, a width breathing) along a shape, in seconds or in beats.
 - **Palettes**: up to 16, of 2 to 5 colours, shared by the presets. Each colour has a position\n  along the palette: drag its marker to bunch colours together or give one a long blend.
