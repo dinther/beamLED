@@ -321,14 +321,15 @@ static void rolling(Ctx& c) {
 }
 
 // ---------------------------------------------------------------- Sweeps
-// Bars sweeping across the grid one after another, each pass at a new angle, with a trail.
+// Bars sweeping across the grid one after another, each pass turned on by Angle change from the
+// last, with a trail. Angle turns them all.
 
-static float sweepAng[4], sweepPrev[4];
+static float sweepAng[4], sweepPrev[4];  // each bar's direction before Angle; where it is
 static uint8_t sweepCol[4];
 
 static void sweeps(Ctx& c) {
     const int n = clampi((int)(c.p[0] + 0.5f), 1, 4);
-    const float speed = c.p[1], width = c.p[2], trail = c.p[3], change = c.p[4], rnd = c.p[5],
+    const float speed = c.p[1], width = c.p[2], trail = c.p[3], change = c.p[4], angle = c.p[5] * DEG,
                 bg = c.p[6], soft = c.p[7];
     if (c.s[7] == 0) {
         c.s[7] = 1;
@@ -347,13 +348,13 @@ static void sweeps(Ctx& c) {
         if (p < 0) p += L;
         // wrapped (not just eased back a little by the beat lock): next pass, new angle
         if (p < sweepPrev[k] - L * 0.5f && sweepPrev[k] < 1e8f) {
-            sweepAng[k] = rnd >= 0.5f ? frand() * TAU : sweepAng[k] + change * DEG;
+            sweepAng[k] += change * DEG;
             sweepCol[k] += 51;
         }
         sweepPrev[k] = p;
         pos[k] = p - L * 0.5f;
-        ca[k] = cosf(sweepAng[k]);
-        sa[k] = sinf(sweepAng[k]);
+        ca[k] = cosf(sweepAng[k] + angle);
+        sa[k] = sinf(sweepAng[k] + angle);
         col[k] = c.lutWrap[sweepCol[k]];
     }
     const CRGB back = c.lutLin[0];
@@ -963,7 +964,7 @@ const EffectDef EFFECTS[] = {
       {"Bar width (m)", 0.3f, 4, 1, 0.1f, "The width of the solid part of each bar, in metres."},
       {"Trail (m)", 0, 6, 1.5f, 0.1f, "How far behind the bar its glow fades out, in metres. 0 = no trail."},
       {"Angle change (deg)", 0, 180, 37, 1, "How much the direction turns after each pass. 180 = back and forth, 90 = crosswise in turn, 0 = always the same way. Odd angles such as 37 rarely repeat."},
-      {"Random angle", 0, 1, 0, 1, "1 = each pass goes in a random direction, ignoring Angle change."},
+      {"Angle (deg)", -180, 180, 0, 1, "Turns the direction of every bar by this many degrees: with Angle change at 0 and one bar, the direction it sweeps (0 = along the rows, 90 = across them). Takes effect at once, even mid-pass, so a controller or Motion on it steers the sweeps."},
       {"Background", 0, 0.3f, 0.02f, 0.01f, H_BG},
       {"Softness", 0, 1, 0.2f, 0.01f, "How soft the bar's edges are, as a part of its width. 0 = crisp (still softened where they cross the bars)."}},
      sweeps, false, "sweep", 1,
