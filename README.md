@@ -161,6 +161,7 @@ browsed, sent to (a group's *Sends to* can name the OSCQuery application) and fo
 | `/beamled/presets/<n>/motion1_target` ... `motion3_phase` | | each motion's `target`, `shape`, `from`, `to`, `seconds`, `beats` and `phase` |
 | `/beamled/palettes/<k>/colours` | i 2..5 | how many colours |
 | `/beamled/palettes/<k>/colour1` ... `colour5` | r | a colour (also `"#RRGGBB"` or three numbers) |
+| `/beamled/palettes/<k>/midpoint1` ... | f | where the blend between two neighbouring colours is half-way, 0.5 = straight |
 | `/beamled/palettes/<k>/position1` ... `position5` | f 0..1 | where that colour sits along the palette |
 
 Preset changes over OSC play at once and, like changes on the page, are kept with Save

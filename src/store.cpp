@@ -40,6 +40,7 @@ static void setPalette(int i, const char* name, std::initializer_list<uint32_t> 
     for (uint32_t c : cols)
         if (p.n < PAL_MAX) p.c[p.n++] = CRGB(c);
     paletteEvenStops(p);
+    for (uint8_t& m : p.mid) m = 128;
 }
 
 void presetSetEffect(Preset& p, uint8_t effect) {
@@ -191,7 +192,7 @@ static void save() {
         prefs.putUInt("ver", SCHEMA);
         verWritten = true;
     }
-    putPart(PART_PALS, "pals7", palettes, paletteCount * sizeof(Palette));  // a list, as the presets
+    putPart(PART_PALS, "palsm", palettes, paletteCount * sizeof(Palette));  // a list, as the presets
     putPart(PART_PRES, "pres", savedPresets, presetCount * sizeof(Preset));
     putPart(PART_SET, "set", &settings, sizeof(settings));
     putPart(PART_SYNCS, "syncs", savedSync, presetCount * sizeof(PresetSync));
@@ -205,6 +206,7 @@ static void save() {
     }
     if (prefs.isKey("pal")) prefs.remove("pal");
     if (prefs.isKey("pals7") && prefs.isKey("pals")) prefs.remove("pals");  // up to 5 colours, moved to pals7
+    if (prefs.isKey("palsm") && prefs.isKey("pals7")) prefs.remove("pals7");  // before midpoints, moved to palsm
     if (prefs.isKey("pre")) prefs.remove("pre");
     if (prefs.isKey("sync")) prefs.remove("sync");
     prefs.end();
@@ -222,21 +224,39 @@ void storeLoad() {
                       listLen / sizeof(Preset) <= MAX_PRESETS;
     const bool old = !list && prefs.isKey("pre") &&
                      prefs.getBytesLength("pre") == OLD_PRESETS * sizeof(Preset);
-    // Palettes: a list of up to 7 colours under "pals7"; before, up to 5 under "pals", or the fixed
-    // 8 under "pal" from before they could be added
-    const size_t palLen = prefs.isKey("pals7") ? prefs.getBytesLength("pals7") : 0;
-    const bool palList = palLen >= sizeof(Palette) && palLen % sizeof(Palette) == 0 && palLen / sizeof(Palette) <= MAX_PALETTES;
-    const size_t pal5Len = !palList && prefs.isKey("pals") ? prefs.getBytesLength("pals") : 0;
+    // Palettes: a list of up to 7 colours with midpoints under "palsm"; before, without midpoints
+    // under "pals7", up to 5 colours under "pals", or the fixed 8 under "pal" from before they
+    // could be added. Converted ones get their midpoints at 0 (taken as the middle, 128).
+    const size_t palMLen = prefs.isKey("palsm") ? prefs.getBytesLength("palsm") : 0;
+    const bool palM = palMLen >= sizeof(Palette) && palMLen % sizeof(Palette) == 0 && palMLen / sizeof(Palette) <= MAX_PALETTES;
+    const size_t palLen = !palM && prefs.isKey("pals7") ? prefs.getBytesLength("pals7") : 0;
+    const bool palList = palLen >= sizeof(PaletteV3) && palLen % sizeof(PaletteV3) == 0 && palLen / sizeof(PaletteV3) <= MAX_PALETTES;
+    const size_t pal5Len = !palM && !palList && prefs.isKey("pals") ? prefs.getBytesLength("pals") : 0;
     const bool pal5 = pal5Len >= sizeof(PaletteV2) && pal5Len % sizeof(PaletteV2) == 0 &&
                       pal5Len / sizeof(PaletteV2) <= MAX_PALETTES;
-    const bool palOld = !palList && !pal5 && prefs.isKey("pal") && prefs.getBytesLength("pal") == 8 * sizeof(PaletteV1);
+    const bool palOld = !palM && !palList && !pal5 && prefs.isKey("pal") && prefs.getBytesLength("pal") == 8 * sizeof(PaletteV1);
     const bool ok = prefs.getUInt("ver", 0) == SCHEMA &&
-                    (palList || pal5 || palOld) &&
+                    (palM || palList || pal5 || palOld) &&
                     prefs.getBytesLength("set") == sizeof(settings) && (list || old);
     if (ok) {
-        if (palList) {
-            paletteCount = palLen / sizeof(Palette);
-            prefs.getBytes("pals7", palettes, palLen);
+        if (palM) {
+            paletteCount = palMLen / sizeof(Palette);
+            prefs.getBytes("palsm", palettes, palMLen);
+        } else if (palList) {  // saved before midpoints: the same colours and stops, straight blends
+            PaletteV3* v3 = (PaletteV3*)malloc(palLen);  // heap, only while converting (static DRAM is full)
+            if (v3) {  // (without it the default palettes stay)
+                paletteCount = palLen / sizeof(PaletteV3);
+                prefs.getBytes("pals7", v3, palLen);
+                for (int k = 0; k < paletteCount; k++) {
+                    Palette& p = palettes[k];
+                    p = {};
+                    memcpy(p.name, v3[k].name, sizeof(p.name));
+                    p.n = v3[k].n;
+                    memcpy(p.c, v3[k].c, sizeof(p.c));
+                    memcpy(p.pos, v3[k].pos, sizeof(p.pos));
+                }
+                free(v3);
+            }
         } else if (pal5) {  // saved with up to 5 colours: the same colours and stops
             PaletteV2 v2[MAX_PALETTES];
             paletteCount = pal5Len / sizeof(PaletteV2);
@@ -278,6 +298,7 @@ void storeLoad() {
         p.name[sizeof(p.name) - 1] = 0;
         p.n = constrain(p.n, 2, PAL_MAX);
         paletteSanitizeStops(p);
+        paletteSanitizeMids(p);
     }
     for (int i = 0; i < presetCount; i++) {
         Preset& p = presets[i];
@@ -391,7 +412,7 @@ void storeLoad() {
         partKnown[PART_MOTS] = false;
         storeMarkDirty();
     }
-    if (ok && pal5) {  // moved from up to 5 colours: write them under pals7 once
+    if (ok && (pal5 || palList)) {  // moved from an older palette format: write them under palsm once
         partKnown[PART_PALS] = false;
         storeMarkDirty();
     }

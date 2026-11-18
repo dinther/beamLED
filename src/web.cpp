@@ -176,6 +176,13 @@ static void paletteJson(JsonObject o, const Palette& p) {
     for (int j = 0; j < p.n; j++) a.add(hexColour(p.c[j]));
     JsonArray s = o["stops"].to<JsonArray>();  // where each colour sits, 0..1
     for (int j = 0; j < p.n; j++) s.add(roundf(p.pos[j] * 1000) / 1000);
+    JsonArray m = o["mids"].to<JsonArray>();  // where each blend is half-way, 0..1 of its stretch
+    for (int j = 0; j < p.n - 1; j++) m.add(roundf((p.mid[j] ? p.mid[j] : 128) / 256.f * 1000) / 1000);
+}
+
+// A midpoint from 0..1 (of its stretch) to 256ths, kept within 5..251
+static uint8_t midFrom(float v) {
+    return (uint8_t)constrain((int)lroundf((isfinite(v) ? v : 0.5f) * 256.f), 5, 251);
 }
 
 static void statusJson(JsonObject o) {
@@ -511,6 +518,13 @@ static void handlePalette() {
         for (int j = 0; j < p.n && j < (int)s.size(); j++) p.pos[j] = s[j].as<float>();
         paletteSanitizeStops(p);
     }
+    // mids: where each blend is half-way, 0..1 of its stretch (0.5 = straight)
+    if (d["mids"].is<JsonArray>()) {
+        JsonArray m = d["mids"].as<JsonArray>();
+        for (int j = 0; j < PAL_MAX; j++) p.mid[j] = j < p.n - 1 && j < (int)m.size() ? midFrom(m[j].as<float>()) : 128;
+    } else if (d["colors"].is<JsonArray>()) {
+        for (uint8_t& v : p.mid) v = 128;  // colours without midpoints: straight blends
+    }
     storeMarkDirty();
     JsonDocument r;
     paletteJson(r.to<JsonObject>(), p);
@@ -709,6 +723,8 @@ static void handleRestore() {
             for (int j = 0; j < p.n; j++) p.pos[j] = st[j].as<float>();
             paletteSanitizeStops(p);
         }
+        JsonArray mi = q["mids"].as<JsonArray>();  // missing in backups from before midpoints
+        for (int j = 0; j < PAL_MAX; j++) p.mid[j] = j < (int)mi.size() ? midFrom(mi[j].as<float>()) : 128;
     }
     // Presets, then each one saved as it is
     presetCount = pr.size();

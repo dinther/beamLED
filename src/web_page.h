@@ -51,6 +51,10 @@ select,input[type=text],input[type=password],input[type=number]{flex:1;min-width
 .pal .sw{cursor:copy}
 .pal .stop input{position:absolute;left:0;top:100%;width:1px;height:1px;opacity:0;pointer-events:none;border:0;padding:0}
 .pal .stop:hover,.pal .stop.drag{border-color:var(--acc)}
+.pal .mid{position:absolute;top:19px;width:10px;height:10px;margin-left:-5px;background:#bbb;border:1px solid #000;transform:rotate(45deg);cursor:ew-resize;touch-action:none}
+.pal .mid.set{background:var(--acc)}
+.pal .mid:hover,.pal .mid.drag{background:#fff}
+.pal .mid:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 .pal .del{flex:0 0 auto;order:2}
 .pal-add{margin-top:8px}
 .pal button{padding:4px 10px}
@@ -239,6 +243,7 @@ const H = {
   palettes: 'Palettes are shared: each preset picks one. Effects blend smoothly between the colours in order; looping effects wrap from the last colour back to the first.',
   palName: 'The palette’s name, as listed in each preset’s Palette choice. Up to 15 characters.',
   palColour: 'A colour of this palette: tap it to change it (the ceiling follows as you pick), drag it along the bar to move it, drag it off the bar (or press Delete) to remove it.',
+  palMid: 'Where the blend between these two colours is half-way. Drag along the bar: towards the left the next colour comes early, towards the right this colour holds longer and the next comes late. Double-click (or Home) for a straight blend again; arrow keys nudge it.',
   palStops: 'The palette as effects use it, first colour on the left. Click the bar to add a colour there (up to 7). Each marker is one colour: tap it to change the colour, drag it along the bar to move it (bunch colours together for a quick change, spread them for a long blend), drag it off the bar to remove it (at least 2 stay).',
   palAddPalette: 'Adds a new palette at the end, a copy of the last one, to change as you like. Up to 16 palettes.',
   palDelete: 'Deletes this palette: click once, then again within 3 seconds to confirm. Presets that use it switch to the first palette. The last palette can\u2019t be deleted.',
@@ -282,7 +287,16 @@ function select(label, items, val, onch, help) {
 // The palette picker: each palette drawn as its gradient with its name on top
 const palGrad = q => {
   const st = q.stops && q.stops.length == q.colors.length ? q.stops : evenStops(q.colors.length);
-  return 'linear-gradient(90deg,' + q.colors.map((c, j) => c + ' ' + (st[j] * 100).toFixed(1) + '%').join(',') + ')';
+  const mids = q.mids && q.mids.length == q.colors.length - 1 ? q.mids : [];
+  const parts = [];
+  q.colors.forEach((c, j) => {
+    parts.push(c + ' ' + (st[j] * 100).toFixed(1) + '%');
+    // A midpoint is a CSS colour hint: the same curve the board uses
+    const m = mids[j];
+    if (m != null && Math.abs(m - 0.5) > 1e-3 && j < q.colors.length - 1)
+      parts.push(((st[j] + m * (st[j + 1] - st[j])) * 100).toFixed(1) + '%');
+  });
+  return 'linear-gradient(90deg,' + parts.join(',') + ')';
 };
 function paletteSelect(label, val, onch, help) {
   return gradSelect(label, S.palettes.map(q => ({name: q.name, bg: palGrad(q)})), val, onch, help);
@@ -740,10 +754,11 @@ function autoRow() {
 
 function paletteEditor(q, i) {
   if (!q.stops || q.stops.length != q.colors.length) q.stops = evenStops(q.colors.length);
+  if (!q.mids || q.mids.length != q.colors.length - 1) q.mids = Array(q.colors.length - 1).fill(0.5);
   const box = h('div', {className: 'pal'});
   const sw = tip(h('div', {className: 'sw'}), H.palStops);
   const paint = () => sw.style.background = palGrad(q);
-  const send = () => throttle('pal' + i, () => post('/api/palette', {index: i, name: q.name, colors: q.colors, stops: q.stops}));
+  const send = () => throttle('pal' + i, () => post('/api/palette', {index: i, name: q.name, colors: q.colors, stops: q.stops, mids: q.mids}));
   const nm = tip(h('input', {type: 'text', value: q.name, maxLength: 15}), H.palName);
   nm.onchange = () => { q.name = nm.value; send(); draw(); };
   box.append(nm);
@@ -768,7 +783,9 @@ function paletteEditor(q, i) {
     if (t <= q.stops[0]) return q.colors[0];
     if (k >= q.stops.length - 1) return q.colors[q.colors.length - 1];
     const a = hex(q.colors[k]), b = hex(q.colors[k + 1]), span = q.stops[k + 1] - q.stops[k];
-    const f = span > 0 ? (t - q.stops[k]) / span : 0;
+    let f = span > 0 ? (t - q.stops[k]) / span : 0;
+    const m = q.mids[k];
+    if (m != null && Math.abs(m - 0.5) > 1e-3 && f > 0 && f < 1) f = Math.pow(f, Math.log(0.5) / Math.log(m));
     return '#' + a.map((v, n) => Math.round(v + (b[n] - v) * f).toString(16).padStart(2, '0')).join('');
   };
   sw.onpointerdown = e => {
@@ -777,20 +794,53 @@ function paletteEditor(q, i) {
     const t = Math.round(Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * 1000) / 1000;
     let j = 0;
     while (j < q.stops.length && q.stops[j] <= t) j++;
+    const n0 = q.colors.length;
     q.colors.splice(j, 0, colourAt(t));
     q.stops.splice(j, 0, t);
+    // the stretch it lands in splits in two, each blended straight
+    if (j == 0) q.mids.unshift(0.5); else if (j >= n0) q.mids.push(0.5); else q.mids.splice(j - 1, 1, 0.5, 0.5);
     send(); markers();
   };
   // A colour goes when its marker is dragged off the bar (or with Delete); at least 2 stay
   const remove = j => {
     if (q.colors.length <= 2) return;
+    const n0 = q.colors.length;
     q.colors.splice(j, 1); q.stops.splice(j, 1);
+    // its two stretches become one, blended straight
+    if (j == 0) q.mids.shift(); else if (j == n0 - 1) q.mids.pop(); else q.mids.splice(j - 1, 2, 0.5);
     send(); paint(); markers();
   };
   // The colour markers on the bar: tap one for its colour picker, drag it to move its colour
   // along the palette (kept between its neighbours)
+  // The midpoint diamonds under the bar, one per stretch between two colours
+  const midHandle = j => {
+    const at = () => (q.stops[j] + q.mids[j] * (q.stops[j + 1] - q.stops[j])) * 100 + '%';
+    const d = tip(h('div', {className: 'mid' + (Math.abs(q.mids[j] - 0.5) > 1e-3 ? ' set' : ''), tabIndex: 0, role: 'slider'}),
+      H.palMid + ' (between colours ' + (j + 1) + ' and ' + (j + 2) + ': ' + q.mids[j].toFixed(2) + ')');
+    d.setAttribute('aria-label', 'Midpoint between colours ' + (j + 1) + ' and ' + (j + 2));
+    d.style.left = at();
+    const set = m => {
+      q.mids[j] = Math.round(Math.min(0.98, Math.max(0.02, m)) * 100) / 100;
+      d.style.left = at(); d.classList.toggle('set', Math.abs(q.mids[j] - 0.5) > 1e-3); paint(); send();
+    };
+    d.ondblclick = () => set(0.5);
+    d.onkeydown = e => {
+      if (e.key == 'ArrowLeft' || e.key == 'ArrowRight') { e.preventDefault(); set(q.mids[j] + (e.key == 'ArrowRight' ? 0.02 : -0.02)); }
+      else if (e.key == 'Home') { e.preventDefault(); set(0.5); }
+    };
+    d.onpointerdown = e => {
+      e.preventDefault(); e.stopPropagation(); d.setPointerCapture(e.pointerId); d.classList.add('drag');
+      d.onpointermove = ev => {
+        const r = sw.getBoundingClientRect(), span = q.stops[j + 1] - q.stops[j];
+        if (span <= 0) return;
+        set(((ev.clientX - r.left) / r.width - q.stops[j]) / span);
+      };
+      d.onpointerup = () => { d.onpointermove = null; d.classList.remove('drag'); };
+    };
+    return d;
+  };
   const markers = () => {
-    sw.replaceChildren(...q.colors.map((c, j) => {
+    sw.replaceChildren(...q.colors.slice(0, -1).map((c, j) => midHandle(j)), ...q.colors.map((c, j) => {
       const mk = tip(h('div', {className: 'stop', tabIndex: 0, role: 'button'}), H.palColour + ' (colour ' + (j + 1) + ' of ' + q.colors.length + ')');
       mk.setAttribute('aria-label', 'Colour ' + (j + 1) + ' of ' + q.colors.length);
       mk.style.left = (q.stops[j] * 100) + '%';
@@ -1113,6 +1163,11 @@ function oscValue(addr, v) {
     const q = S.palettes[n];
     if (!q) return;
     if (key == 'colours') { if (q.colors.length != v) reload(); return; }
+    if (key.startsWith('midpoint')) {
+      const j = +key.slice(8) - 1;
+      if (q.mids && j < q.mids.length && Math.abs(q.mids[j] - v) > 1e-3) { q.mids[j] = v; redraw(); }
+      return;
+    }
     if (key.startsWith('position')) {
       const j = +key.slice(8) - 1;
       if (q.stops && j < q.stops.length && Math.abs(q.stops[j] - v) > 1e-4) { q.stops[j] = v; redraw(); }

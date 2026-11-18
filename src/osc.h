@@ -23,7 +23,8 @@
 //                        <parameter> (named after it: speed, bars, ...)
 //                        motion1_target i | motion1_shape i | motion1_from f | motion1_to f |
 //                        motion1_seconds f | motion1_beats i | motion1_phase f (and motion2_, motion3_)
-//   /beamled/palettes/<k>/colours i 2..7 | colour1 .. colour7 r
+//   /beamled/palettes/<k>/colours i 2..7 | colour1 .. colour7 r | position1 .. 7 f |
+//                         midpoint1 .. 6 f (where each blend is half-way, 0.5 = straight)
 // Values are in real units, as the web page shows them. Preset changes from OSC play at once but,
 // as edits on the web page, aren't saved until Save on the page or /beamled/save (all presets).
 #pragma once

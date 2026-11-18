@@ -34,7 +34,7 @@ enum MSlot : uint8_t { M_TARGET, M_SHAPE, M_FROM, M_TO, M_SECONDS, M_BEATS, M_PH
 static const char* const MSLOT_NAME[MSLOTS] = {"target", "shape", "from", "to", "seconds", "beats", "phase"};
 static const int M_BASE = P_FIXED + MAXP;
 static const int PSLOTS = M_BASE + MOTIONS * MSLOTS;
-static const int CSLOTS = 1 + 2 * PAL_MAX;  // the colour count, the colours, their positions
+static const int CSLOTS = 3 * PAL_MAX;  // the colour count, the colours, their positions, the midpoints between
 
 static const int PRESET_BASE = NUM_GLOBALS;
 static const int PALETTE_BASE = PRESET_BASE + MAX_PRESETS * PSLOTS;
@@ -146,6 +146,11 @@ static bool nodeInfo(int id, NodeInfo& n, char* path, size_t len) {
     }
     const int k = (id - PALETTE_BASE) / CSLOTS, slot = (id - PALETTE_BASE) % CSLOTS;
     if (k >= paletteCount) return false;
+    if (slot > 2 * PAL_MAX) {
+        if (path) snprintf(path, len, "/beamled/palettes/%d/midpoint%d", k + 1, slot - 2 * PAL_MAX);
+        n = {'f', 3, true, 0.02f, 0.98f, "Where the blend from this colour to the next is half-way, as a share of the stretch between them: 0.5 = a straight blend; towards 0 the next colour comes early, towards 1 this colour holds and the next comes late (midpoint1 is between colour1 and colour2)."};
+        return true;
+    }
     if (slot > PAL_MAX) {
         if (path) snprintf(path, len, "/beamled/palettes/%d/position%d", k + 1, slot - PAL_MAX);
         n = {'f', 3, true, 0, 1, "Where this colour sits along the palette, 0..1 (0 = the start, 1 = the end). The colours stay in order: a position is kept between its neighbours'."};
@@ -218,6 +223,7 @@ static bool nodeValue(int id, char type, uint32_t& v) {
     const int k = (id - PALETTE_BASE) / CSLOTS, slot = (id - PALETTE_BASE) % CSLOTS;
     const Palette& pal = palettes[k];
     if (slot == 0) return i(pal.n);
+    if (slot > 2 * PAL_MAX) return f((pal.mid[slot - 2 * PAL_MAX - 1] ? pal.mid[slot - 2 * PAL_MAX - 1] : 128) / 256.f);
     if (slot > PAL_MAX) return f(pal.pos[slot - PAL_MAX - 1]);
     const CRGB& c = pal.c[slot - 1];
     v = (uint32_t)c.r << 24 | (uint32_t)c.g << 16 | (uint32_t)c.b << 8 | 0xff;
@@ -254,6 +260,11 @@ static int findNode(const char* path) {
         if (*e != '/' || k < 0 || k >= paletteCount) return -1;
         const int base = PALETTE_BASE + k * CSLOTS;
         if (!strcmp(e + 1, "colours")) return base;
+        if (!strncmp(e + 1, "midpoint", 8)) {
+            char* e2;
+            const long j = strtol(e + 9, &e2, 10);
+            if (*e2 == 0 && j >= 1 && j < PAL_MAX) return base + 2 * PAL_MAX + j;
+        }
         if (!strncmp(e + 1, "position", 8)) {
             char* e2;
             const long j = strtol(e + 9, &e2, 10);
@@ -442,6 +453,10 @@ static void apply(const char* path, const Arg* a, int n) {
             if (even) paletteEvenStops(pal);
             else paletteSanitizeStops(pal);
         }
+        return;
+    }
+    if (slot > 2 * PAL_MAX) {
+        pal.mid[slot - 2 * PAL_MAX - 1] = (uint8_t)constrain((int)lroundf(v * 256.f), 5, 251);
         return;
     }
     if (slot > PAL_MAX) {

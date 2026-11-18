@@ -25,6 +25,17 @@ void paletteSanitizeStops(Palette& p) {
     }
 }
 
+void paletteSanitizeMids(Palette& p) {
+    for (uint8_t& m : p.mid) m = m == 0 ? 128 : (m < 5 ? 5 : (m > 251 ? 251 : m));
+}
+
+// How far the blend has gone at f (0..1 of the stretch) with its midpoint at m/256: f itself at
+// the middle, else bent so that it is half-way at m (the curve of a CSS colour hint)
+static inline float bias(float f, uint8_t m) {
+    if (m == 128 || m == 0 || f <= 0.f || f >= 1.f) return f;
+    return powf(f, -0.6931472f / logf(m / 256.f));
+}
+
 static inline CRGB mix(const CRGB& A, const CRGB& B, float f) {
     return CRGB((uint8_t)(A.r + (B.r - A.r) * f + 0.5f), (uint8_t)(A.g + (B.g - A.g) * f + 0.5f),
                 (uint8_t)(A.b + (B.b - A.b) * f + 0.5f));
@@ -41,7 +52,8 @@ void buildLut(const Palette& p, CRGB* lut, bool wrap) {
             int b;
             if (wrap) { a %= n; b = (a + 1) % n; }
             else { if (a >= n - 1) { a = n - 1; f = 0; } b = a + 1 < n ? a + 1 : a; }
-            lut[i] = mix(p.c[a], p.c[b], f);
+            // the loop's way back from the last colour to the first has no midpoint of its own
+            lut[i] = mix(p.c[a], p.c[b], a < n - 1 ? bias(f, p.mid[a]) : f);
         }
         return;
     }
@@ -68,6 +80,6 @@ void buildLut(const Palette& p, CRGB* lut, bool wrap) {
         int j = 0;
         while (j < n - 2 && x >= t[j + 1]) j++;
         const float span = t[j + 1] - t[j];
-        lut[i] = mix(p.c[j], p.c[j + 1], span > 1e-6f ? (x - t[j]) / span : 1.f);
+        lut[i] = mix(p.c[j], p.c[j + 1], span > 1e-6f ? bias((x - t[j]) / span, p.mid[j]) : 1.f);
     }
 }
