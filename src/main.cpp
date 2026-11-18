@@ -156,6 +156,10 @@ void engineArtNetStats(uint32_t& sent, uint32_t& failed, int& err, uint32_t& ski
     err = artnet.lastErrno;
     skipped = artnet.skipped;
 }
+void engineArtNetTiming(uint32_t& dropped, uint32_t& waitMaxUs, uint32_t& sendMaxUs) {
+    dropped = artnet.dropped;
+    artnet.takeTiming(waitMaxUs, sendMaxUs);
+}
 int engineCurrent() { return pending >= 0 ? pending : settings.current; }
 const BeatTime& engineBeat() { return beat; }
 void engineMotion(int m, float& phase, float& rate, uint32_t& cycle) {

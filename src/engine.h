@@ -23,6 +23,9 @@ float engineFps();
 float engineRenderMs();
 float engineSendMs();      // Art-Net out, per frame
 void engineArtNetStats(uint32_t& sent, uint32_t& failed, int& err, uint32_t& skipped);
+// Frames dropped because the last was still going out; longest hand-over wait and send (us)
+// since the last call
+void engineArtNetTiming(uint32_t& dropped, uint32_t& waitMaxUs, uint32_t& sendMaxUs);
 int engineCurrent();              // preset playing, or being faded to
 void engineLayoutChanged();      // after editing `layout`: re-init positions, save
 

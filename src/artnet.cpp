@@ -6,11 +6,18 @@
 
 void ArtNetOut::begin() {
     if (!frame) frame = (uint8_t*)malloc(MAX_LEDS * 3);
-    if (frame && !handle) xTaskCreatePinnedToCore(task, "artnet", 4096, this, 3, &handle, 0);
+    // Priority 6: above the HTTP/OSCQuery server (5), which otherwise kept it waiting past the
+    // next frame (half the frames dropped); below lwIP and the Ethernet driver. It takes ~6 ms
+    // of each 25 ms frame.
+    if (frame && !handle) xTaskCreatePinnedToCore(task, "artnet", 4096, this, 6, &handle, 0);
 }
 
 bool ArtNetOut::send(IPAddress to, const CRGB* leds, const uint8_t* lut) {
-    if (busy || !handle) return false;
+    if (!handle) return false;
+    if (busy) {
+        dropped++;
+        return false;
+    }
     target = to;
     nx = layout.nx;
     ny = layout.ny;
@@ -30,6 +37,7 @@ bool ArtNetOut::send(IPAddress to, const CRGB* leds, const uint8_t* lut) {
         }
     }
     busy = true;
+    handedAt = micros();
     xTaskNotifyGive(handle);
     return true;
 }
@@ -39,8 +47,11 @@ void ArtNetOut::task(void* self) {
     for (;;) {
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
         const uint32_t t0 = micros();
+        if (t0 - a.handedAt > a.waitMax) a.waitMax = t0 - a.handedAt;
         a.sendAll();
-        a.ms = a.ms + ((micros() - t0) / 1000.f - a.ms) * 0.05f;
+        const uint32_t took = micros() - t0;
+        if (took > a.sendMax) a.sendMax = took;
+        a.ms = a.ms + (took / 1000.f - a.ms) * 0.05f;
         a.busy = false;
     }
 }

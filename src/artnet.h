@@ -18,6 +18,12 @@ public:
     uint32_t sent = 0, failed = 0;  // packets; failed: sendto refused them
     int lastErrno = 0;               // why the last one failed
     uint32_t skipped = 0;            // frames not sent: target out of reach (see netCanSendTo)
+    uint32_t dropped = 0;            // frames not sent: the last one was still going out
+    // Longest wait from hand-over to the task starting, and longest send, in microseconds
+    // since the last takeTiming()
+    void takeTiming(uint32_t& waitMaxUs, uint32_t& sendMaxUs) {
+        waitMaxUs = waitMax; sendMaxUs = sendMax; waitMax = sendMax = 0;
+    }
 
 private:
     static void task(void* self);
@@ -27,6 +33,7 @@ private:
     TaskHandle_t handle = nullptr;
     volatile bool busy = false;
     volatile float ms = 0;
+    volatile uint32_t handedAt = 0, waitMax = 0, sendMax = 0;
     IPAddress target;
     uint16_t nx = 0, ny = 0, rowUni[MAX_Y];  // the layout of the frame being sent
     uint8_t order[MAX_Y];                   // and its colour order per row

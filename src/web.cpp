@@ -200,6 +200,11 @@ static void statusJson(JsonObject o) {
         a["failed"] = failed;  // packets sendto refused
         a["errno"] = err;      // why the last one failed
         a["skipped"] = skipped;  // frames: target out of reach
+        uint32_t dropped, waitMax, sendMax;
+        engineArtNetTiming(dropped, waitMax, sendMax);
+        a["dropped"] = dropped;  // frames: the last one was still going out
+        a["waitMaxMs"] = roundf(waitMax / 100.f) / 10;  // since the last /api/state
+        a["sendMaxMs"] = roundf(sendMax / 100.f) / 10;
     }
     o["net"] = netModeText();
     o["wifi"] = netWifiText();
