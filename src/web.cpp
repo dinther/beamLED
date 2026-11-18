@@ -726,7 +726,7 @@ static void handleNetSet() {
 static void handleBackup() {
     JsonDocument d;
     d["beamled"] = 1;  // file format
-    d["paramOrder"] = 3;  // 3: one slider order, lengths and speeds in %; 2: in metres; missing: old order
+    d["paramOrder"] = 4;  // 4: Centre X across; 3: X along; 2: lengths in metres; missing: the old order
     d["build"] = BUILD;
     d["current"] = settings.current;
     JsonObject o = d["output"].to<JsonObject>();
@@ -808,6 +808,7 @@ static void handleRestore() {
     presetCount = pr.size();
     const bool oldOrder = (d["paramOrder"] | 1) < 2;  // saved before the sliders' one order
     const bool metres = (d["paramOrder"] | 1) < 3;    // lengths and speeds in metres
+    const bool centres = (d["paramOrder"] | 1) < 4;   // Centre X along the bars, Y across
     autoSettings.skip = 0;
     for (int i = 0; i < presetCount; i++) {
         JsonObject q = pr[i];
@@ -822,14 +823,18 @@ static void handleRestore() {
         if (oldOrder || metres) {  // a backup from before 2026-11-19: old order and/or metres
             for (int j = 0; j < e.n; j++)
                 if (e.params[j].rel) p.p[j] /= 20.f;  // the defaults for anything missing, in metres too
+            effectsSwapCentres(p.effect, p.p);         // and with the old centres
             if (oldOrder) effectsParamsToOldOrder(p.effect, p.p);
             for (int j = 0; j < e.n && j < (int)ps.size(); j++) p.p[j] = ps[j].as<float>();
             if (oldOrder) effectsParamsFromOldOrder(p.effect, p.p);
             effectsMetresToPercent(p.effect, p.p);
+            effectsSwapCentres(p.effect, p.p);
             for (int j = 0; j < e.n; j++) p.p[j] = constrain(p.p[j], e.params[j].min, e.params[j].max);
         } else {
-            for (int j = 0; j < e.n && j < (int)ps.size(); j++)
-                p.p[j] = constrain(ps[j].as<float>(), e.params[j].min, e.params[j].max);
+            if (centres) effectsSwapCentres(p.effect, p.p);  // the defaults, so they swap back below
+            for (int j = 0; j < e.n && j < (int)ps.size(); j++) p.p[j] = ps[j].as<float>();
+            if (centres) effectsSwapCentres(p.effect, p.p);
+            for (int j = 0; j < e.n; j++) p.p[j] = constrain(p.p[j], e.params[j].min, e.params[j].max);
         }
         PresetSync& sy = presetSync[i];
         sy.timing = constrain(q["timing"] | 0, 0, (int)TIMING_BEATS);
@@ -847,6 +852,7 @@ static void handleRestore() {
             JsonObject j = ms[m];
             mo.target = constrain(j["target"] | 0, 0, (int)e.n);
             if (oldOrder && mo.target) mo.target = effectsParamFromOldOrder(p.effect, mo.target - 1) + 1;
+            if ((centres || metres) && mo.target) mo.target = effectsSwapCentreParam(p.effect, mo.target - 1) + 1;
             mo.shape = constrain(j["shape"] | 0, 0, NUM_SHAPES - 1);
             mo.inBeats = (j["inBeats"] | false) ? 1 : 0;
             mo.beatsExp = constrain(j["beatsExp"] | 3, 0, 6);

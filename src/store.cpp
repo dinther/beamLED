@@ -65,12 +65,14 @@ static void setPreset(int i, const char* name, uint8_t effect, uint8_t palette, 
     // speeds in metres. The defaults (now in %) go back to metres first, so all convert alike.
     for (int k = 0; k < EFFECTS[effect].n; k++)
         if (EFFECTS[effect].params[k].rel) p.p[k] /= 20.f;
+    effectsSwapCentres(effect, p.p);  // the defaults to the old meaning first, so all convert alike
     effectsParamsToOldOrder(effect, p.p);
     int j = 0;
     for (float v : params)
         if (j < MAXP) p.p[j++] = v;
     effectsParamsFromOldOrder(effect, p.p);
     effectsMetresToPercent(effect, p.p);
+    effectsSwapCentres(effect, p.p);  // and Centre X / Y as since version 4
 }
 
 static void defaults() {
@@ -191,8 +193,9 @@ static void rememberSaved() {
 }
 
 // The sliders' version: 2 = one order for every effect (2026-11-19), 3 = lengths and speeds in %
-// of the ceiling's shorter side (2026-11-19). Missing: the order before, in metres.
-static const uint8_t PARAM_ORDER = 3;
+// of the ceiling's shorter side, 4 = Centre X across the bars, Y along them (both 2026-11-19).
+// Missing: the order before, in metres.
+static const uint8_t PARAM_ORDER = 4;
 static bool orderWritten = false;
 
 static void save() {
@@ -405,7 +408,7 @@ void storeLoad() {
     // Presets saved in the sliders' old order and in metres: moved to the order now, then to %,
     // once (and saved so)
     const uint8_t pord = ok ? prefs.getUChar("pord", 1) : PARAM_ORDER;
-    const bool reorder = ok && pord < 2, percent = ok && pord < 3;
+    const bool reorder = ok && pord < 2, percent = ok && pord < 3, centres = ok && pord < 4;
     prefs.end();
     if (reorder) {
         for (int i = 0; i < presetCount; i++) {
@@ -427,7 +430,16 @@ void storeLoad() {
         }
         Serial.println("Presets' lengths and speeds moved to %");
     }
-    orderWritten = ok && !reorder && !percent;
+    if (centres) {
+        for (int i = 0; i < presetCount; i++) {
+            const int e = presets[i].effect;
+            effectsSwapCentres(e, presets[i].p);
+            for (Motion& mo : presetMotion[i])
+                if (mo.target) mo.target = effectsSwapCentreParam(e, mo.target - 1) + 1;
+        }
+        Serial.println("Presets' Centre X and Y swapped (X across the bars now)");
+    }
+    orderWritten = ok && !reorder && !percent && !centres;
     for (int i = 0; i < presetCount; i++)
         for (Motion& mo : presetMotion[i]) {
             if (mo.target > EFFECTS[presets[i].effect].n || mo.shape >= NUM_SHAPES) mo = MOTION_OFF;
@@ -453,7 +465,7 @@ void storeLoad() {
         partKnown[PART_MOTS] = false;
         storeMarkDirty();
     }
-    if ((reorder || percent) && !old && !palOld) {  // presets and motions converted: write them once
+    if ((reorder || percent || centres) && !old && !palOld) {  // presets and motions converted: write them once
         partKnown[PART_PRES] = false;
         partKnown[PART_MOTS] = false;
         storeMarkDirty();

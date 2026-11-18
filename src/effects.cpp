@@ -488,7 +488,7 @@ static void lighthouse(Ctx& c) {
     enum { kSpeed, kWidth, kBeams, kAngle, kCentreX, kCentreY, kSpread, kBg };
     const float rpm = c.p[kSpeed], wdeg = c.p[kWidth];
     const int arms = clampi((int)(c.p[kBeams] + 0.5f), 1, 4);
-    const float ox = c.p[kCentreX] * W, oy = Y[0] + c.p[kCentreY] * H, bg = c.p[kBg], spread = c.p[kSpread];
+    const float ox = c.p[kCentreY] * W, oy = Y[0] + c.p[kCentreX] * H, bg = c.p[kBg], spread = c.p[kSpread];
     const float P = TAU / arms, iP = arms / TAU, half = wdeg * DEG * 0.5f, angle = c.p[kAngle] * DEG;
     advance(c, c.s[0], rpm * (TAU / 60.f), TAU);  // in beats: one revolution per cycle
     float maxR = 0;
@@ -561,7 +561,7 @@ static void dropsFx(Ctx& c) {
     const float rate = c.p[kRate], speed = c.p[kSpeed], width = c.p[kWidth], maxR = c.p[kMaxRadius],
                 bg = c.p[kBg];
     // Where drops land: aim 0 = anywhere, 1 = at Centre X, Y
-    const float aimX = c.p[kCentreX] * W, aimY = Y[0] + c.p[kCentreY] * H, aim = c.p[kAim];
+    const float aimX = c.p[kCentreY] * W, aimY = Y[0] + c.p[kCentreX] * H, aim = c.p[kAim];
     if (c.s[7] == 0) {
         c.s[7] = 1;
         for (Drop& d : drops) d.live = false;
@@ -803,7 +803,7 @@ static void gradient(Ctx& c) {
     enum { kSpread, kRadial, kAngle, kCentreX, kCentreY, kDrift, kOffset };
     const float ang = c.p[kAngle] * DEG, spread = c.p[kSpread], offset = c.p[kOffset], drift = c.p[kDrift];
     const bool radial = c.p[kRadial] >= 0.5f;
-    const float cx = c.p[kCentreX] * W, cy = Y[0] + c.p[kCentreY] * H;
+    const float cx = c.p[kCentreY] * W, cy = Y[0] + c.p[kCentreX] * H;
     c.s[0] += c.dt * drift * 0.02f;
     c.s[0] -= floorf(c.s[0] * 0.5f) * 2.f;  // bounded: the ramp repeats every 2
     const float base = offset + c.s[0];
@@ -958,7 +958,7 @@ static void fibres(Ctx& c) {
     c.s[1] = fmodf(c.s[1] + c.p[kTurn] * DEG * c.dt, TAU);
     const float shift = c.s[0] / size;           // cycles the lines have moved out
     const float spin = arms * c.s[1] / TAU;       // cycles the arms have turned
-    const float cx = c.p[kCentreX] * W, cy = Y[0] + c.p[kCentreY] * H;
+    const float cx = c.p[kCentreY] * W, cy = Y[0] + c.p[kCentreX] * H;
     const float isize = 1.f / size, k = 2.8f / (c.p[kWidth] * c.p[kWidth] + 1e-9f);
     const float aT = arms / TAU, core = 1.f / (size * 0.6f);  // dark centre, where the arms crowd
     const bool two = weave > 0.004f && arms > 0;
@@ -989,10 +989,10 @@ static void fibres(Ctx& c) {
 // ---------------------------------------------------------------- Tunnel
 // Looking down a tube from inside it, its wall lined with helical fibres, flying along it. Each LED
 // is a ray from the eye through its place on the ceiling, the tunnel's far end straight ahead at
-// Centre X, Centre Y (also off the ceiling: then one side of the tube shows, as long arcs fanning
+// Centre X (across the bars), Centre Y (along them) (also off the ceiling: then one side of the tube shows, as long arcs fanning
 // out from that point). The ray meets the wall (radius 1) at depth t = 1 / its distance from the
 // centre; the depth and the angle around the wall give the fibres' phase. Each fibre keeps one
-// palette colour. With the preset's Mirror and a slow Motion on Centre Y: twin arcs, a drifting centre.
+// palette colour. With the preset's Mirror and a slow Motion on Centre X: twin arcs, a drifting centre.
 // On the bars the fibres come out of the centre slowly and race outwards ever faster.
 
 static void tunnel(Ctx& c) {
@@ -1002,7 +1002,7 @@ static void tunnel(Ctx& c) {
     const float period = twist > 0.01f ? 1.f / twist : 100.f;
     advance(c, c.s[0], c.p[kSpeed], period);
     c.s[0] = fmodf(c.s[0], period * 4096.f);
-    const float cx = c.p[kCentreX] * W, cy = Y[0] + c.p[kCentreY] * H;
+    const float cx = c.p[kCentreY] * W, cy = Y[0] + c.p[kCentreX] * H;
     // The ceiling's shorter side spans +-1 of the view at Size 100%
     const float fov = 2.f / fmaxf(c.p[kSize] * 0.01f, 0.05f);  // Size in % (not a ceiling length)
     const float w = fmaxf(c.p[kWidth], 0.01f), k = 2.8f / (w * w);
@@ -1194,8 +1194,8 @@ const EffectDef EFFECTS[] = {
       {"Beam width (deg)", 5, 120, 30, 1, "How wide the beam is, as an angle. The beam gets wider in metres the further it is from the centre."},
       {"Beams", 1, 4, 1, 1, "How many beams, evenly spaced around the centre like a lighthouse with several lamps. Each spot is passed this many times per turn."},
       {"Angle (deg)", -180, 180, 0, 1, "Which way the beam points, in degrees: 0 = along the bars (towards their far end), 90 = across them (towards the last bar), -90 = towards the first bar, 180 = back along the bars. With Speed at 0 the beam stays there; while it turns, this sets where the turn starts, so it can also line a turn up with the beat. With several beams it is the first one's direction."},
-      {"Centre X", -0.2f, 1.2f, 0.5f, 0.01f, "Where the centre the beam turns around sits along the bars: 0 = one end, 0.5 = the middle, 1 = the other end. Below 0 or above 1 puts it outside the ceiling."},
-      {"Centre Y", -0.2f, 1.2f, -0.05f, 0.01f, "Where the centre the beam turns around sits across the bars: 0 = the first bar, 1 = the last bar. The default, -0.05, is just outside the first bar, so the beam sweeps in from the edge."},
+      {"Centre X", -0.2f, 1.2f, -0.05f, 0.01f, "Where the centre the beam turns around sits across the bars: 0 = the first bar, 1 = the last bar. The default, -0.05, is just outside the first bar, so the beam sweeps in from the edge."},
+      {"Centre Y", -0.2f, 1.2f, 0.5f, 0.01f, "Where the centre the beam turns around sits along the bars: 0 = one end, 0.5 = the middle, 1 = the other end. Below 0 or above 1 puts it outside the ceiling."},
       {"Colour spread", 0, 1, 0.6f, 0.01f, "How the beam's colour changes with distance from the centre. 0 = all in the palette's first colour, 1 = through the whole palette out to the farthest corner."},
       {"Background", 0, 0.5f, 0.02f, 0.01f, H_BG}},
      lighthouse, false, "revolution", 0,
@@ -1255,8 +1255,8 @@ const EffectDef EFFECTS[] = {
       {"Ring width (%)", 8, 50, 20, 1, "The width of a ring's bright band, as a share of the ceiling's shorter side.", 1},
       {"Drops per minute", 1, 60, 10, 1, "How many new drops fall per minute. At most 10 rings show at once. In Beats timing this slider is replaced by beats per drop, and each drop lands on the beat."},
       {"Max radius (%)", 20, 240, 120, 1, "How far a ring spreads before it has faded out completely, as a share of the ceiling's shorter side.", 1},
-      {"Centre X", -0.2f, 1.2f, 0.5f, 0.01f, "Where along the rows the drops land: 0 = the start of the rows, 1 = their end. Only used when Aim is above 0: at Aim 0 drops fall at random places and Centre X, Y do nothing. A Motion on it moves the landing point; each ring stays where its drop fell."},
-      {"Centre Y", -0.2f, 1.2f, 0.5f, 0.01f, "Where across the rows the drops land: 0 = the first row, 1 = the last. Only used when Aim is above 0: at Aim 0 drops fall at random places and Centre X, Y do nothing. A Motion on it moves the landing point; each ring stays where its drop fell."},
+      {"Centre X", -0.2f, 1.2f, 0.5f, 0.01f, "Where across the rows the drops land: 0 = the first row, 1 = the last. Only used when Aim is above 0: at Aim 0 drops fall at random places and Centre X, Y do nothing. A Motion on it moves the landing point; each ring stays where its drop fell."},
+      {"Centre Y", -0.2f, 1.2f, 0.5f, 0.01f, "Where along the rows the drops land: 0 = the start of the rows, 1 = their end. Only used when Aim is above 0: at Aim 0 drops fall at random places and Centre X, Y do nothing. A Motion on it moves the landing point; each ring stays where its drop fell."},
       {"Aim (0 = random)", 0, 1, 1, 0.01f, "Where drops land. 0 = at random places anywhere on the ceiling (Centre X, Y do nothing). 1 = exactly at Centre X, Y. In between: scattered around Centre X, Y, the closer to 1 the tighter."},
       {"Background", 0, 0.5f, 0.03f, 0.01f, H_BG}},
      dropsFx, false, "drop", 2,
@@ -1275,8 +1275,8 @@ const EffectDef EFFECTS[] = {
      {{"Spread", 0.1f, 4, 1, 0.01f, "How much of the palette spans the ceiling. 1 = from the palette's first colour at one side to its last colour at the other; 2 = there and back; 0.5 = only the first half of the palette. Bigger means more colour changes across the ceiling."},
       {"Radial", 0, 1, 0, 1, "0 = a straight gradient in the direction of Angle; 1 = a round gradient, from the centre (Centre X, Centre Y) outwards."},
       {"Angle (deg)", -180, 180, 0, 1, "The direction of a straight gradient, in degrees: 0 = along the bars, 90 = across them (from the first bar to the last), 45 = diagonally. Not used when Radial is 1."},
-      {"Centre X", -0.2f, 1.2f, 0.5f, 0.01f, "Radial: where the centre sits along the bars: 0 = one end, 0.5 = the middle, 1 = the other end. Beyond 0 or 1 puts it outside the ceiling."},
-      {"Centre Y", -0.2f, 1.2f, 0.5f, 0.01f, "Radial: where the centre sits across the bars: 0 = the first bar, 0.5 = the middle, 1 = the last bar."},
+      {"Centre X", -0.2f, 1.2f, 0.5f, 0.01f, "Radial: where the centre sits across the bars: 0 = the first bar, 0.5 = the middle, 1 = the last bar."},
+      {"Centre Y", -0.2f, 1.2f, 0.5f, 0.01f, "Radial: where the centre sits along the bars: 0 = one end, 0.5 = the middle, 1 = the other end. Beyond 0 or 1 puts it outside the ceiling."},
       {"Colour drift", 0, 1, 0, 0.01f, "Lets the colours flow slowly along the gradient by themselves. 0 = a steady gradient that never changes."},
       {"Colour offset", -2, 2, 0, 0.01f, "Shifts the colours along the gradient: 1 moves them by a whole palette (first colour to last). A Motion on Colour offset makes the colours flow back and forth."}},
      gradient, false, nullptr, -1,
@@ -1309,8 +1309,8 @@ const EffectDef EFFECTS[] = {
       {"Arms", 0, 8, 4, 1, "0 = rings around the centre; 1 to 8 = that many spiral arms. Lines that run nearly along the bars make the fastest streaks."},
       {"Weave", 0, 1, 1, 0.01f, "A second set of arms twisted the other way, crossing the first: 0 = none, 1 = as bright as the first. Not with rings (Arms 0)."},
       {"Turn (deg/s)", -90, 90, 30, 1, "How fast the arms turn around the centre. Not with rings (Arms 0)."},
-      {"Centre X", -0.2f, 1.2f, 0.5f, 0.01f, "Where along the bars the centre is: 0 = the first LED, 1 = the last."},
-      {"Centre Y", -0.2f, 1.2f, 0.5f, 0.01f, "Where across the bars the centre is: 0 = the first bar, 1 = the last bar."},
+      {"Centre X", -0.2f, 1.2f, 0.5f, 0.01f, "Where across the bars the centre is: 0 = the first bar, 1 = the last bar."},
+      {"Centre Y", -0.2f, 1.2f, 0.5f, 0.01f, "Where along the bars the centre is: 0 = the first LED, 1 = the last."},
       {"Line width (%)", 1, 12, 2.5f, 0.1f, "How thick the lines are, as a share of the ceiling's shorter side. Thin lines make crisp points racing along the bars; too thin and a point jumps from LED to LED instead of sliding.", 1}},
      fibres, false, "line", 0,
      "Thin rings or spiral arms moving behind the bars. A line shows only where it crosses a bar, as a point of light, so the points race along the bars, speeding up as a line turns towards the bar's direction and overtaking each other along the curves. Weave crosses a second set of arms over the first."},
@@ -1320,11 +1320,11 @@ const EffectDef EFFECTS[] = {
       {"Fibres", 1, 12, 6, 1, "How many fibres wind along the tunnel wall."},
       {"Twist", 0.1f, 4, 1.3f, 0.01f, "How tightly the fibres wind: turns per tube width along the tunnel."},
       {"Weave", 0, 1, 0, 0.01f, "A second set of fibres winding the other way, crossing the first: 0 = none, 1 = as bright."},
-      {"Centre X", -1, 2, 0.5f, 0.01f, "Where along the bars the tunnel's far end is: 0 = the first LED, 1 = the last, beyond the ends off the ceiling. With the preset's Mirror, 0.5 makes the two halves meet in twin arcs."},
-      {"Centre Y", -1, 2, -0.15f, 0.01f, "Where across the bars the tunnel's far end is: 0 = the first bar, 1 = the last. Off the ceiling (below 0 or above 1) only one side of the tunnel shows: long arcs fanning out from there. A slow Motion on it makes the centre drift."},
+      {"Centre X", -1, 2, -0.15f, 0.01f, "Where across the bars the tunnel's far end is: 0 = the first bar, 1 = the last. Off the ceiling (below 0 or above 1) only one side of the tunnel shows: long arcs fanning out from there. A slow Motion on it makes the centre drift."},
+      {"Centre Y", -1, 2, 0.5f, 0.01f, "Where along the bars the tunnel's far end is: 0 = the first LED, 1 = the last, beyond the ends off the ceiling. With the preset's Mirror, 0.5 makes the two halves meet in twin arcs."},
       {"Line width", 0.03f, 0.5f, 0.15f, 0.01f, "How thick the fibres are, as a share of the gap between them. Thin = crisp points racing along the bars."}},
      tunnel, false, "fibre turn", 0,
-     "Flying down a tunnel lined with fibres winding along its wall, seen from inside, its far end at Centre X, Centre Y. The fibres come out of the centre slowly and race outwards ever faster, each in one palette colour. A centre just off the ceiling shows one side of the tunnel as long arcs fanning out; with Mirror, twin arcs; a slow Motion on Centre Y makes it drift. Weave crosses a second set over the first."},
+     "Flying down a tunnel lined with fibres winding along its wall, seen from inside, its far end at Centre X, Centre Y. The fibres come out of the centre slowly and race outwards ever faster, each in one palette colour. A centre just off the ceiling shows one side of the tunnel as long arcs fanning out; with Mirror, twin arcs; a slow Motion on Centre X makes it drift. Weave crosses a second set over the first."},
 };
 const int NUM_EFFECTS = sizeof(EFFECTS) / sizeof(EFFECTS[0]);
 
@@ -1372,6 +1372,34 @@ float effectsMetresToPercent(int e, int j, float v) {
 void effectsMetresToPercent(int e, float* p) {
     if (e < 0 || e >= NUM_EFFECTS) return;
     for (int j = 0; j < EFFECTS[e].n; j++) p[j] = effectsMetresToPercent(e, j, p[j]);
+}
+
+// Slider version 4 (2026-11-19): Centre X is across the bars and Centre Y along them (as the
+// page's preview shows them: the bars upright); before, the other way round. Their places in the
+// list stay, so the two values (and motions on them) swap.
+static void centrePair(int e, int& jx, int& jy) {
+    jx = jy = -1;
+    if (e < 0 || e >= NUM_EFFECTS) return;
+    for (int j = 0; j < EFFECTS[e].n; j++) {
+        if (!strcmp(EFFECTS[e].params[j].name, "Centre X")) jx = j;
+        if (!strcmp(EFFECTS[e].params[j].name, "Centre Y")) jy = j;
+    }
+}
+
+void effectsSwapCentres(int e, float* p) {
+    int jx, jy;
+    centrePair(e, jx, jy);
+    if (jx < 0 || jy < 0) return;
+    const float t = p[jx];
+    p[jx] = p[jy];
+    p[jy] = t;
+}
+
+int effectsSwapCentreParam(int e, int j) {
+    int jx, jy;
+    centrePair(e, jx, jy);
+    if (jx < 0 || jy < 0) return j;
+    return j == jx ? jy : (j == jy ? jx : j);
 }
 
 int effectsParamFromOldOrder(int e, int old) {

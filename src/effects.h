@@ -63,6 +63,10 @@ void effectsToUnits(const EffectDef& e, float* p);
 // Presets saved before 2026-11-19 hold lengths and speeds in metres: to % of a 5 m shorter side
 // (the ceiling they were made for), in place; and one value of slider j
 void effectsMetresToPercent(int e, float* p);
+// Presets saved before slider version 4 hold Centre X along the bars and Centre Y across: swapped,
+// in place; and a motion's slider number (j) to its number now
+void effectsSwapCentres(int e, float* p);
+int effectsSwapCentreParam(int e, int j);
 float effectsMetresToPercent(int e, int j, float v);
 
 // (Re)compute LED positions from the layout; call after a layout change
