@@ -944,7 +944,11 @@ function paletteEditor(q, i) {
     return d;
   };
   const markers = () => {
-    sw.replaceChildren(...q.colors.slice(0, -1).map((c, j) => midHandle(j)), ...q.colors.map((c, j) => {
+    // The diamonds, kept so a dragged colour takes its two neighbours along (each stays the same
+    // share of its stretch, between its two colours)
+    const mh = q.colors.slice(0, -1).map((c, j) => midHandle(j));
+    const follow = k => { if (mh[k]) mh[k].style.left = (q.stops[k] + q.mids[k] * (q.stops[k + 1] - q.stops[k])) * 100 + '%'; };
+    sw.replaceChildren(...mh, ...q.colors.map((c, j) => {
       const mk = tip(h('div', {className: 'stop', tabIndex: 0, role: 'button'}), H.palColour + ' (colour ' + (j + 1) + ' of ' + q.colors.length + ')');
       mk.setAttribute('aria-label', 'Colour ' + (j + 1) + ' of ' + q.colors.length);
       mk.style.left = (q.stops[j] * 100) + '%';
@@ -974,7 +978,7 @@ function paletteEditor(q, i) {
           mk.classList.toggle('off', outside);
           const lo = j > 0 ? q.stops[j - 1] : 0, hi = j < q.stops.length - 1 ? q.stops[j + 1] : 1;
           q.stops[j] = Math.round(Math.min(hi, Math.max(lo, (ev.clientX - r.left) / r.width)) * 1000) / 1000;
-          mk.style.left = (q.stops[j] * 100) + '%'; paint(); send();
+          mk.style.left = (q.stops[j] * 100) + '%'; follow(j - 1); follow(j); paint(); send();
         };
         mk.onpointerup = () => {
           mk.onpointermove = null; mk.classList.remove('drag');
