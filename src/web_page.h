@@ -225,7 +225,8 @@ const H = {
   mirror: 'The right half of the ceiling becomes the mirror image of the left, along the rows: anything moving right on the left half moves left on the right half. Only the left half is rendered, so the effect takes about half the time. The Sparkle overlay is not mirrored.',
   sparkleBurst: 'Off: single twinkles, each with the same soft rise and fade as in Free. On: a batch flashes at once on each tick and fades out before the next; Sparkle overlay sets how many (1 = 6% of the LEDs).',
   paletteLock: 'Lock every preset to one palette, for a show in one set of colours: whichever preset plays (picked here, by the button, by Auto or OSC) uses this palette instead of its own. The presets’ own palettes are kept, so Each preset’s own brings them back. Not saved: after a restart each preset has its own palette again.',
-  preview: 'What the ceiling shows now, live from the board, up to 15 frames a second: seen from below, the first row on the left, the bars at their real places and spacing (drawn thicker than they are, so they show). The colours as the effects make them, without the LEDs’ gamma. Fold this section away when you don’t need it: the board then sends nothing.',
+  preview: 'What the ceiling shows now, live from the board, up to 15 frames a second: seen from below, the first row on the left, the bars at their real places and spacing (drawn thicker than they are, so they show). The colours as the effects make them, without the LEDs’ gamma. The board sends frames only while this section is open, on screen and the tab is in view.',
+  previewLook: 'Diffused bars: each bar as a soft continuous strip, as with a diffuser. Bare LEDs: each LED as a point of light with dark between, and a bloom (glare) around the bright ones, as bare LEDs look to the eye or a camera. Kept in this browser.',
   effectBrightness: 'Dims whatever preset plays, but not the Sparkle overlay’s twinkles: pull the effect down and let the sparkle shine. Under the master Brightness. Saved, like Brightness.',
   sparkleBrightness: 'How strongly the Sparkle overlay’s twinkles show over the effect: 0 = not at all, 50% = each twinkle covers half (a dark one darkens by half), 100% = fully. Under the master Brightness. Saved, like Brightness.',
   sparkleTime: 'How long one twinkle lasts, in seconds; with Through the palette, how long it takes to go through the palette. The amount lit at any moment stays the same: longer twinkles start less often.',
@@ -457,7 +458,11 @@ function draw() {
     lockRow(), ...sparkleRows(p, ef)));
 
   app.append(heading('Preview', H.preview));
-  app.append(h('div', {className: 'card'}, h('canvas', {id: 'pv'})));
+  const look = select('Look', ['Diffused bars', 'Bare LEDs'], pvBare ? 1 : 0, v => {
+    pvBare = v == 1;
+    try { localStorage.setItem('beamled.pvlook', pvBare ? 'bare' : 'diffused'); } catch (e) {}
+  }, H.previewLook);
+  app.append(h('div', {className: 'card'}, h('canvas', {id: 'pv'}), look));
 
   app.append(heading('Presets', H.presets));
   const g = h('div', {className: 'presets'});
@@ -1222,10 +1227,19 @@ document.getElementById('elsewhere-go').onclick = () => {
 };
 
 // ---- Live preview: frames from the board while the Preview section is open and the tab shows
-let pvOn = false, pvOff = null;
+let pvOn = false, pvOff = null, pvDots = null, pvDotImg = null;
+let pvBare = false;  // Look: bare LEDs with bloom (else diffused bars); kept in this browser
+try { pvBare = localStorage.getItem('beamled.pvlook') == 'bare'; } catch (e) {}
+let pvSeen = true, pvWatch = null;  // the preview on screen (not scrolled away)
 function previewSync() {
   const cv = document.getElementById('pv');
-  const want = !!cv && !cv.closest('[hidden]') && document.visibilityState == 'visible';
+  if (cv && (!pvWatch || pvWatch.cv != cv) && 'IntersectionObserver' in window) {
+    if (pvWatch) pvWatch.disconnect();
+    pvWatch = new IntersectionObserver(es => { pvSeen = es[es.length - 1].isIntersecting; previewSync(); });
+    pvWatch.cv = cv;
+    pvWatch.observe(cv);
+  }
+  const want = !!cv && !cv.closest('[hidden]') && document.visibilityState == 'visible' && pvSeen;
   if (want == pvOn || !sock || sock.readyState != 1 || !sock.accepted) return;
   sock.send(JSON.stringify({COMMAND: 'PREVIEW', DATA: want}));
   pvOn = want;
@@ -1246,6 +1260,7 @@ function drawPreview(buf) {
   if (cv.width != Math.round(W * dpr) || cv.height != Math.round(H * dpr)) {
     cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); cv.style.height = H + 'px';
   }
+  if (pvBare) return drawBare(u8, nx, ny, cv, ry, y0, len, pad, scale, W, H, dpr);
   if (!pvOff || pvOff.width != ny || pvOff.height != nx) { pvOff = document.createElement('canvas'); pvOff.width = ny; pvOff.height = nx; }
   const oc = pvOff.getContext('2d'), img = oc.createImageData(ny, nx), d = img.data;
   for (let b = 0; b < ny; b++)
@@ -1267,6 +1282,62 @@ function drawPreview(buf) {
     for (let b = 0; b < ny; b++) c.drawImage(pvOff, b, 0, 1, nx, (pad + ry[b] - y0) * scale - w / 2, top, w, tall);
   }
   c.filter = 'none'; c.globalAlpha = 1;
+}
+// Bare LEDs: every LED one point of light at its place (written straight into an image, no call
+// per LED). The glare comes from a coarse image (a cell per 4 x 4 pixels) where neighbouring LEDs
+// add up, as their glare does in a camera: blurred and laid on top it is the bloom, and bright
+// LEDs go towards white in the middle with their colour in the glare.
+let pvGlow = null, pvGlowImg = null, pvAcc = null;
+function drawBare(u8, nx, ny, cv, ry, y0, len, pad, scale, W, H, dpr) {
+  const w = Math.max(1, Math.round(W)), h = Math.max(1, Math.round(H));
+  const G = 4, gw = Math.ceil(w / G), gh = Math.ceil(h / G);
+  if (!pvDots || pvDots.width != w || pvDots.height != h) {
+    pvDots = document.createElement('canvas'); pvDots.width = w; pvDots.height = h;
+    pvDotImg = pvDots.getContext('2d').createImageData(w, h);
+    pvGlow = document.createElement('canvas'); pvGlow.width = gw; pvGlow.height = gh;
+    pvGlowImg = pvGlow.getContext('2d').createImageData(gw, gh);
+    pvAcc = new Float32Array(gw * gh * 3);
+  }
+  const d = pvDotImg.data, acc = pvAcc;
+  d.fill(0); acc.fill(0);
+  const top = pad * scale, step = len / nx * scale;
+  for (let b = 0; b < ny; b++) {
+    const x = Math.round((pad + ry[b] - y0) * scale);
+    if (x < 0 || x >= w) continue;
+    const gx = (x / G) | 0;
+    for (let i = 0; i < nx; i++) {
+      const y = Math.round(top + (i + 0.5) * step);
+      if (y < 0 || y >= h) continue;
+      const s = 8 + (b * nx + i) * 3, t = (y * w + x) * 4, g = (((y / G) | 0) * gw + gx) * 3;
+      const r = u8[s], gr = u8[s + 1], bl = u8[s + 2];
+      d[t] = r; d[t + 1] = gr; d[t + 2] = bl; d[t + 3] = 255;
+      acc[g] += r; acc[g + 1] += gr; acc[g + 2] += bl;
+    }
+  }
+  pvDots.getContext('2d').putImageData(pvDotImg, 0, 0);
+  const gd = pvGlowImg.data;
+  for (let k = 0, n = gw * gh; k < n; k++) {
+    gd[4 * k] = acc[3 * k] * 0.55; gd[4 * k + 1] = acc[3 * k + 1] * 0.55; gd[4 * k + 2] = acc[3 * k + 2] * 0.55; gd[4 * k + 3] = 255;
+  }
+  pvGlow.getContext('2d').putImageData(pvGlowImg, 0, 0);
+  const c = cv.getContext('2d');
+  c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  c.filter = 'none'; c.globalAlpha = 1; c.globalCompositeOperation = 'source-over';
+  c.fillStyle = '#000'; c.fillRect(0, 0, W, H);
+  c.globalCompositeOperation = 'lighter';
+  // the bloom: the coarse glare, smoothly enlarged and softened
+  c.imageSmoothingEnabled = true;
+  if ('filter' in c) c.filter = 'blur(5px)';
+  c.drawImage(pvGlow, 0, 0, W, H);
+  c.filter = 'none';
+  c.globalAlpha = 0.6;
+  c.drawImage(pvGlow, 0, 0, W, H);  // a tighter, brighter core of glare
+  c.globalAlpha = 1;
+  // the points themselves, sharp, added twice so bright ones go white
+  c.imageSmoothingEnabled = false;
+  c.drawImage(pvDots, 0, 0, W, H);
+  c.drawImage(pvDots, 0, 0, W, H);
+  c.globalCompositeOperation = 'source-over';
 }
 
 function live(take = false) {
