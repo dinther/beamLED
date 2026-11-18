@@ -151,9 +151,11 @@ static inline CRGB bands(float u, float k, float step, float gap, const CRGB* lu
 }
 
 // The same bands with k fixed (per row, say): the divisions are done once
+// hg: half the width of a dark core at each border, in band units (0 = none: the gaps are only the
+// colour transitions)
 struct Bands {
-    float lo, rk, re, step, gap;
-    Bands(float k, float step_, float gap_) : step(step_), gap(gap_) {
+    float lo, rk, re, step, gap, hg;
+    Bands(float k, float step_, float gap_, float hg_ = 0) : step(step_), gap(gap_), hg(hg_) {
         k = fminf(1.f, fmaxf(0.03f, k));
         lo = 0.5f - k * 0.5f;
         rk = 1.f / k;
@@ -163,7 +165,7 @@ struct Bands {
         const int n = floorI(u);
         const float f = u - n;
         const float cpos = (n + sm((f - lo) * rk)) * step;
-        const float w = 1.f - sm(fabsf(f - 0.5f) * re);
+        const float w = 1.f - sm((fabsf(f - 0.5f) - hg) * re);
         return scaleF(lutW(lut, cpos), 1.f - gap * w);
     }
 };
@@ -305,14 +307,14 @@ void sparkleOverlay(CRGB* out, float density, float dt, const CRGB* lut, double 
 
 static void rolling(Ctx& c) {
     const float speed = c.p[0], width = c.p[1], soft = c.p[2], gap = c.p[3], turn = c.p[4],
-                step = c.p[5];
+                step = c.p[5], gapW = c.p[7];
     c.s[0] += c.dt * turn * DEG;
     advance(c, c.s[1], speed / width, 1.f);  // in beats: one band per cycle
     const float ca = cosf(c.s[0]), sa = sinf(c.s[0]), iw = 1.f / width;
     const float ph = c.s[1] + c.p[6] * iw;  // where the bands are: their motion plus Offset
     for (int b = 0; b < NY; b++) {
         // Transition at least the row's footprint projected onto the roll direction
-        const Bands bd(fmaxf(soft, FY[b] * fabsf(sa) * iw), step, gap);
+        const Bands bd(fmaxf(soft, FY[b] * fabsf(sa) * iw), step, gap, gapW * 0.5f);
         const float dy = (Y[b] - CY) * sa;
         CRGB* o = c.out + b * NX;
         for (int i = 0; i < NX; i++) o[i] = bd.at(((X[i] - CX) * ca + dy) * iw - ph, c.lutWrap);
@@ -908,14 +910,15 @@ static void shapesFx(Ctx& c) {
 #define H_SOFT_BANDS "How gradually one band blends into the next. 0 = crisp edges (still softened where they cross the bars, so they don't flicker), 1 = smooth gradients."
 
 const EffectDef EFFECTS[] = {
-    {"Rolling bars", 7,
+    {"Rolling bars", 8,
      {{"Speed (m/s)", 0, 1, 0.15f, 0.01f, "How fast the bands roll, in metres per second. 0 stops them; the direction still turns. Calm: 0.05 to 0.2."},
       {"Band width (m)", 0.8f, 5, 2, 0.1f, "The width of one band, in metres. Narrow bands flicker as they cross the rows: with rows half a metre apart, for example, about 0.8 m is the narrowest that stays smooth."},
       {"Softness", 0, 1, 0.6f, 0.01f, H_SOFT_BANDS},
       {"Dark gaps", 0, 1, 0.3f, 0.01f, H_GAPS},
       {"Turn (deg/s)", -10, 10, 1.5f, 0.1f, "How fast the rolling direction turns, in degrees per second; negative turns the other way. 1.5 = a full turn in 4 minutes, 0 = a fixed direction."},
       {"Colour step", 0, 1, 0.2f, 0.01f, H_STEP},
-      {"Offset (m)", -10, 10, 0, 0.01f, "Shifts the pattern by this many metres, the way Speed moves the bands (in the rolling direction). With Speed at 0 it stays put, so a Motion on Offset moves it back and forth (with easing). 0 = no shift."}},
+      {"Offset (m)", -10, 10, 0, 0.01f, "Shifts the pattern by this many metres, the way Speed moves the bands (in the rolling direction). With Speed at 0 it stays put, so a Motion on Offset moves it back and forth (with easing). 0 = no shift."},
+      {"Gap width", 0, 0.9f, 0, 0.01f, "How wide the dark gaps between the bands are, as a share of a band: 0 = only where the colours meet, 0.5 = half dark, 0.9 = thin bars of colour with wide gaps. Dark gaps sets how dark they get (at Dark gaps 0 they don't show)."}},
      rolling, false, "band", 0,
      "Wide soft bands of palette colour rolling across the ceiling while their direction slowly turns. In Beats timing, each band takes the chosen number of beats to pass."},
     {"Searchlights", 5,
