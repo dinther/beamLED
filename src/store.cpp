@@ -57,9 +57,12 @@ static void setPreset(int i, const char* name, uint8_t effect, uint8_t palette, 
     presetSetEffect(p, effect);
     p.palette = palette;
     (void)sparkle;
+    // The values are listed in the sliders' order before 2026-11-19
+    effectsParamsToOldOrder(effect, p.p);
     int j = 0;
     for (float v : params)
         if (j < MAXP) p.p[j++] = v;
+    effectsParamsFromOldOrder(effect, p.p);
 }
 
 static void defaults() {
@@ -177,6 +180,10 @@ static void rememberSaved() {
     verWritten = true;
 }
 
+// The sliders' order: 2 = since 2026-11-19 (one order for every effect). Missing: the order before.
+static const uint8_t PARAM_ORDER = 2;
+static bool orderWritten = false;
+
 static void save() {
     saves++;
     prefs.begin("beamled", false);
@@ -192,6 +199,10 @@ static void save() {
     putPart(PART_AUTO, "auto", &autoSettings, sizeof(autoSettings));
     putPart(PART_MOTS, "mots", savedMotion, presetCount * sizeof(Motion) * MOTIONS);
     putPart(PART_SPARK, "spark", &sparkleSettings, sizeof(sparkleSettings));
+    if (!orderWritten) {  // after the presets and motions in that order
+        prefs.putUChar("pord", PARAM_ORDER);
+        orderWritten = true;
+    }
     if (prefs.isKey("pal")) prefs.remove("pal");
     if (prefs.isKey("pals7") && prefs.isKey("pals")) prefs.remove("pals");  // up to 5 colours, moved to pals7
     if (prefs.isKey("pre")) prefs.remove("pre");
@@ -343,7 +354,18 @@ void storeLoad() {
             }
         }
     }
+    // Presets saved in the sliders' old order: moved to the order now, once (and saved so)
+    const bool reorder = ok && prefs.getUChar("pord", 1) < PARAM_ORDER;
     prefs.end();
+    if (reorder) {
+        for (int i = 0; i < presetCount; i++) {
+            effectsParamsFromOldOrder(presets[i].effect, presets[i].p);
+            for (Motion& mo : presetMotion[i])
+                if (mo.target) mo.target = effectsParamFromOldOrder(presets[i].effect, mo.target - 1) + 1;
+        }
+        Serial.println("Presets moved to the new slider order");
+    }
+    orderWritten = ok && !reorder;
     for (int i = 0; i < presetCount; i++)
         for (Motion& mo : presetMotion[i]) {
             if (mo.target > EFFECTS[presets[i].effect].n || mo.shape >= NUM_SHAPES) mo = MOTION_OFF;
@@ -361,6 +383,11 @@ void storeLoad() {
     // Saved as loaded: later saves write only what changes. Anything converted or new is written now.
     if (ok && !old && !palOld) rememberSaved();
     if (ok && !old && !palOld && motsOld) {  // write the motions in the new size once
+        partKnown[PART_MOTS] = false;
+        storeMarkDirty();
+    }
+    if (reorder && !old && !palOld) {  // presets and motions in the new slider order: write them once
+        partKnown[PART_PRES] = false;
         partKnown[PART_MOTS] = false;
         storeMarkDirty();
     }

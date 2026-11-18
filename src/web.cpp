@@ -631,6 +631,7 @@ static void handleNetSet() {
 static void handleBackup() {
     JsonDocument d;
     d["beamled"] = 1;  // file format
+    d["paramOrder"] = 2;  // sliders in the one order of 2026-11-19 (missing: the order before)
     d["build"] = BUILD;
     d["current"] = settings.current;
     JsonArray pr = d["presets"].to<JsonArray>();
@@ -709,6 +710,7 @@ static void handleRestore() {
     }
     // Presets, then each one saved as it is
     presetCount = pr.size();
+    const bool oldOrder = (d["paramOrder"] | 1) < 2;  // saved before the sliders' one order
     autoSettings.skip = 0;
     for (int i = 0; i < presetCount; i++) {
         JsonObject q = pr[i];
@@ -720,8 +722,15 @@ static void handleRestore() {
         // (a backup from before the overlay was global has sparkle settings per preset: ignored)
         p.mirror = (q["mirror"] | false) ? 1 : 0;
         JsonArray ps = q["params"].as<JsonArray>();
-        for (int j = 0; j < e.n && j < (int)ps.size(); j++)
-            p.p[j] = constrain(ps[j].as<float>(), e.params[j].min, e.params[j].max);
+        if (oldOrder) {  // a backup from before 2026-11-19: its sliders in their old order
+            effectsParamsToOldOrder(p.effect, p.p);
+            for (int j = 0; j < e.n && j < (int)ps.size(); j++) p.p[j] = ps[j].as<float>();
+            effectsParamsFromOldOrder(p.effect, p.p);
+            for (int j = 0; j < e.n; j++) p.p[j] = constrain(p.p[j], e.params[j].min, e.params[j].max);
+        } else {
+            for (int j = 0; j < e.n && j < (int)ps.size(); j++)
+                p.p[j] = constrain(ps[j].as<float>(), e.params[j].min, e.params[j].max);
+        }
         PresetSync& sy = presetSync[i];
         sy.timing = constrain(q["timing"] | 0, 0, (int)TIMING_BEATS);
         sy.beatsExp = constrain(q["beatsExp"] | 2, 0, 6);
@@ -737,6 +746,7 @@ static void handleRestore() {
             if (m >= (int)ms.size()) continue;
             JsonObject j = ms[m];
             mo.target = constrain(j["target"] | 0, 0, (int)e.n);
+            if (oldOrder && mo.target) mo.target = effectsParamFromOldOrder(p.effect, mo.target - 1) + 1;
             mo.shape = constrain(j["shape"] | 0, 0, NUM_SHAPES - 1);
             mo.inBeats = (j["inBeats"] | false) ? 1 : 0;
             mo.beatsExp = constrain(j["beatsExp"] | 3, 0, 6);

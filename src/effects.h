@@ -43,6 +43,11 @@ struct EffectDef {
 
 extern const EffectDef EFFECTS[];
 extern const int NUM_EFFECTS;
+// Presets and backups saved before 2026-11-19 hold an effect's sliders in its old order: these
+// move them to the order of EFFECTS (and back), or one old slider number to its number now
+void effectsParamsFromOldOrder(int e, float* p);
+void effectsParamsToOldOrder(int e, float* p);
+int effectsParamFromOldOrder(int e, int old);
 
 // (Re)compute LED positions from the layout; call after a layout change
 void effectsInit();
