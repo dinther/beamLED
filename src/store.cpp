@@ -24,6 +24,7 @@ static const Motion MOTION_OFF = {0, SHAPE_SINE, 0, 3, 0, 1, 8, 0};
 LinkSettings linkSettings;
 AutoSettings autoSettings;
 SparkleSettings sparkleSettings;
+int8_t paletteLock = -1;
 
 static const uint32_t SCHEMA = 1;  // bump when a struct above changes
 static const uint32_t SAVE_DELAY_MS = 3000;
@@ -607,6 +608,8 @@ bool paletteDelete(int k) {
         fix(presets[i]);
         fix(savedPresets[i]);
     }
+    if (paletteLock == k) paletteLock = -1;  // its palette is gone: each preset's own again
+    else if (paletteLock > k) paletteLock--;
     uint8_t& sc = sparkleSettings.colour;  // 2 + k: that palette
     if (sc >= 2 && sc - 2 == k) sc = 2;
     else if (sc >= 2 && sc - 2 > k) sc--;

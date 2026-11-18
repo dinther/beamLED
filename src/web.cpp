@@ -301,6 +301,7 @@ static void handleState() {
     JsonDocument d;
     statusJson(d.to<JsonObject>());
     d["brightness"] = settings.brightness;
+    d["paletteLock"] = paletteLock;  // -1 = each preset's own palette, else that palette (not saved)
     d["gamma"] = settings.gamma;
     d["target"] = IPAddress(settings.target).toString();
     JsonObject lay = d["layout"].to<JsonObject>();
@@ -343,6 +344,12 @@ static void handleStatus() {
 static void handleSet() {
     JsonDocument d;
     if (!readBody(d)) return;
+    // The palette lock alone: live only, never saved (so nothing is marked for saving)
+    if (d["paletteLock"].is<int>()) {
+        paletteLock = constrain(d["paletteLock"].as<int>(), -1, paletteCount - 1);
+        webChanged();
+        if (d.size() == 1) { handleStatus(); return; }
+    }
     if (d["brightness"].is<int>()) settings.brightness = constrain(d["brightness"].as<int>(), 0, 255);
     if (d["gamma"].is<float>()) {
         settings.gamma = constrain(d["gamma"].as<float>(), 1.f, 3.f);

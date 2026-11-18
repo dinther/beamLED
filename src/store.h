@@ -103,6 +103,9 @@ extern Settings settings;
 extern LinkSettings linkSettings;
 extern AutoSettings autoSettings;
 extern SparkleSettings sparkleSettings;
+// Palette lock: -1 = every preset plays its own palette, k = every preset plays palette k (its
+// own setting untouched). Never saved: after a restart each preset has its own again.
+extern int8_t paletteLock;
 inline bool presetInAuto(int i) { return !(autoSettings.skip >> i & 1); }
 
 void storeLoad();

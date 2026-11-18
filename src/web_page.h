@@ -220,6 +220,7 @@ const H = {
   sparkleBeat: 'When twinkles start. Free: at any moment. 1/4, 1/8, 1/16, 1/32: only on quarter, eighth, sixteenth or 32nd notes, on the beat of Ableton Link or the board’s own tempo; the same amount of sparkle as Free, in time with the music.',
   mirror: 'The right half of the ceiling becomes the mirror image of the left, along the rows: anything moving right on the left half moves left on the right half. Only the left half is rendered, so the effect takes about half the time. The Sparkle overlay is not mirrored.',
   sparkleBurst: 'Off: single twinkles, each with the same soft rise and fade as in Free. On: a batch flashes at once on each tick and fades out before the next; Sparkle overlay sets how many (1 = 6% of the LEDs).',
+  paletteLock: 'Lock every preset to one palette, for a show in one set of colours: whichever preset plays (picked here, by the button, by Auto or OSC) uses this palette instead of its own. The presets’ own palettes are kept, so Each preset’s own brings them back. Not saved: after a restart each preset has its own palette again.',
   sparkleStep: 'How the twinkles pick their colours from the palette. 0 = each one a random colour. Above 0 = each new twinkle this far along the palette from the one before. A hundred or more twinkles start every second, so tiny steps matter: about 0.0005 = the colours drift slowly through the palette (a burst in neighbouring colours), 0.01 and up already look mixed, 0.5 = opposite colours in turn. The left part of the slider is fine, the right part coarse.',
   sparkleColour: 'The colours of the Sparkle overlay’s twinkles: white, random colours from the playing preset’s palette (they change with the preset), or from any other palette.',
   pulse: 'A brightness accent on the beat: full on each beat and dipping in between, strongest on the bar’s first beat. 0 = steady. Follows Ableton Link, or the board’s own tempo.',
@@ -362,6 +363,14 @@ async function loadOnce() {
 const useState = st => { S = Object.assign(st, {effects: S.effects}); draw(); };
 const presetList = o => post('/api/presets', o).then(useState);
 
+// Palette lock: every preset plays one palette (live only, not saved)
+function lockRow() {
+  const lock = S.paletteLock == null ? -1 : S.paletteLock;
+  const items = [{name: 'Each preset’s own', bg: 'linear-gradient(90deg,#3a3a3a,#5a5a5a)'}]
+    .concat(S.palettes.map(q => ({name: q.name, bg: palGrad(q)})));
+  return gradSelect('Palette lock', items, lock + 1, v => {
+    S.paletteLock = v - 1; post('/api/set', {paletteLock: v - 1}); draw(); }, H.paletteLock);
+}
 // The Sparkle overlay: one for all presets
 function sparkleRows(p, ef) {
   const sk = S.sparkle || {amount: 0, beat: 0, burst: false, colour: 0, step: 0};
@@ -377,7 +386,7 @@ function sparkleRows(p, ef) {
   const bRow = field('Bursts', burst, H.sparkleBurst);
   if (!sk.beat) off(bRow, 'Bursts need a Sparkle timing other than Free: with Free, twinkles start at any moment, so there is no tick to flash on.');
   rows.push(bRow);
-  const own = S.palettes[p.palette] || S.palettes[0];
+  const own = S.palettes[S.paletteLock >= 0 ? S.paletteLock : p.palette] || S.palettes[0];
   const items = [{name: 'White', bg: 'linear-gradient(90deg,#8a8a8a,#e0e0e0)'},
                  {name: 'Preset’s palette (now ' + own.name + ')', bg: palGrad(own)}]
     .concat(S.palettes.map(q => ({name: q.name, bg: palGrad(q)})));
@@ -408,7 +417,7 @@ function draw() {
   app.append(h('div', {className: 'card'},
     slider('Brightness', 0, 255, 1, S.brightness, v => Math.round(v / 2.55) + '%',
       v => { S.brightness = v; liveSend('/beamled/brightness', v / 255, () => post('/api/set', {brightness: v}), true); }, H.brightness, 'brightness'),
-    ...sparkleRows(p, ef)));
+    lockRow(), ...sparkleRows(p, ef)));
 
   app.append(heading('Presets', H.presets));
   const g = h('div', {className: 'presets'});
@@ -455,8 +464,10 @@ function draw() {
   card.append(select('Effect', S.effects.map(e => e.name), p.effect, v =>
     post('/api/preset', {index: S.current, effect: v}).then(np => { S.presets[S.current] = np; draw(); }),
     H.effect + ' ' + ef.name + ': ' + ef.help));
+  const locked = S.paletteLock >= 0 && S.palettes[S.paletteLock];
   card.append(paletteSelect('Palette', p.palette, v => {
-    p.palette = v; post('/api/preset', {index: S.current, palette: v}); }, H.palette));
+    p.palette = v; post('/api/preset', {index: S.current, palette: v}); }, H.palette +
+    (locked ? ' Now the Palette lock (top) plays ' + locked.name + ' instead; this choice is kept and plays again when the lock is off.' : '')));
   const mir = h('input', {type: 'checkbox', checked: !!p.mirror});
   mir.onchange = () => { p.mirror = mir.checked; markChanged(S.current); post('/api/preset', {index: S.current, mirror: mir.checked}); };
   card.append(field('Mirror', mir, H.mirror));
@@ -1054,6 +1065,7 @@ function oscValue(addr, v) {
     else if (S.sparkle && a[2] == 'sparkle_timing') { if (S.sparkle.beat != v) { S.sparkle.beat = v; redraw(); } }
     else if (S.sparkle && a[2] == 'sparkle_burst') { if (S.sparkle.burst != !!v) { S.sparkle.burst = !!v; redraw(); } }
     else if (S.sparkle && a[2] == 'sparkle_colour') { if (S.sparkle.colour != v) { S.sparkle.colour = v; redraw(); } }
+    else if (a[2] == 'palette') { if (S.paletteLock != v - 1) { S.paletteLock = v - 1; redraw(); } }
     else if (S.sparkle && a[2] == 'sparkle_colour_step') { S.sparkle.step = v; moveSlider('sparkleStep', Math.cbrt(v)); }
     return;
   }

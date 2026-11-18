@@ -34,6 +34,8 @@ for this kind of installation (see [docs/background.md](docs/background.md)):
   overlay over whichever plays (it stays on when the preset changes): white or in palette colours
   (random, or stepping along the palette twinkle by twinkle), twinkling freely or starting on
   quarter, eighth, sixteenth or 32nd notes, as single twinkles or in bursts.
+- **Palette lock**: every preset plays one chosen palette instead of its own, for a show in one
+  set of colours; off again, each preset has its own (the lock isn't saved).
 - **Auto**: the presets change by themselves every so many seconds, or every so many bars on the
   beat, in order or shuffled, among the presets you choose.
 - **Presets**: up to 32, each an effect with its settings and a palette. The button on the board
@@ -144,6 +146,7 @@ browsed, sent to (a group's *Sends to* can name the OSCQuery application) and fo
 | `/beamled/brightness` | f 0..1 | master brightness |
 | `/beamled/link` | T/F | Ableton Link enabled |
 | `/beamled/save` | trigger | saves every preset as it plays |
+| `/beamled/palette` | i | palette lock: 0 each preset's own palette, k every preset plays palette k (not saved) |
 | `/beamled/sparkle` | f 0..1 | the sparkle overlay, over every preset |
 | `/beamled/sparkle_timing`, `sparkle_burst` | i 0..4, T/F | sparkle overlay: 0 free, 1..4 twinkles start on 1/4, 1/8, 1/16, 1/32 notes; bursts or single twinkles |
 | `/beamled/sparkle_colour` | i | sparkle overlay colours: 0 white, 1 the playing preset's palette, 1 + k palette k |
@@ -231,7 +234,7 @@ The page uses these; they take and return JSON.
 | `GET /api/state` | everything the page shows |
 | `GET /api/effects?v=<build>` | the effects with their sliders and help (cached per firmware build) |
 | `GET /api/status` | frame rate, network, Link, OSC |
-| `POST /api/set` | brightness, gamma, Art-Net target, preset playing, on/off |
+| `POST /api/set` | brightness, gamma, Art-Net target, preset playing, on/off, `paletteLock` (-1 = off; not saved) |
 | `POST /api/preset` | a preset's settings; `save`, `revert`; `{"motion": m, ...}` for a motion |
 | `POST /api/presets` | `add`, `delete`, `move` |
 | `POST /api/palettes` | `add`, `delete` |

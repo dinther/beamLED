@@ -262,7 +262,9 @@ static float beatPulse() {
 static void renderFrame(float dt) {
     Preset& p = presets[settings.current];
     const PresetSync& y = presetSync[settings.current];
-    const Palette& pal = palettes[p.palette < paletteCount ? p.palette : 0];
+    // The palette lock, when on, overrides each preset's own palette (without changing it)
+    const int pk = paletteLock >= 0 && paletteLock < paletteCount ? paletteLock : p.palette;
+    const Palette& pal = palettes[pk < paletteCount ? pk : 0];
     // The palette tables are rebuilt only when the palette changes
     static Palette built;
     static bool have = false;
