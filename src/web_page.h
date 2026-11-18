@@ -224,7 +224,7 @@ const H = {
   del: 'Deletes this preset: click once, then again within 3 seconds to confirm. The last remaining preset can’t be deleted.',
   effect: 'The effect this preset shows. Changing it resets the parameters below to that effect’s defaults.',
   palette: 'The colours this preset uses, from the Palettes list below. Editing a palette changes every preset that uses it.',
-  timing: 'Time: speeds are in their own units (%/s of the ceiling's shorter side, rpm, …). Time, follow tempo: the set speed is the speed at 120 BPM and scales with the tempo, so at 240 BPM it runs twice as fast. Beats (only for effects with a cycle): one cycle (a band, a revolution, …) takes a whole number of beats and lines up with the bar; the speed slider then gives way to Beats per cycle.',
+  timing: 'Time: speeds are in their own units (%/s of the ceiling’s shorter side, rpm, …). Time, follow tempo: the set speed is the speed at 120 BPM and scales with the tempo, so at 240 BPM it runs twice as fast. Beats (only for effects with a cycle): one cycle (a band, a revolution, …) takes a whole number of beats and lines up with the bar; the speed slider then gives way to Beats per cycle.',
   beats: 'How many beats one cycle takes; 4 beats = one bar. After a change the motion eases onto the new beat grid over a few seconds instead of jumping.',
   reverse: 'Runs the cycle backwards: the lighthouse turns the other way, bands roll back, rings flow in.',
   sparkle: 'Twinkles on top of whatever preset plays: one setting for all presets, kept when the preset changes (not drawn over the Sparkle effect, which is twinkles itself). 0 = none, 1 = about 8% of the LEDs lit at any moment. Their colours: Sparkle colour.',
