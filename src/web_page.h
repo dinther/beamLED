@@ -93,6 +93,13 @@ select,input[type=text],input[type=password],input[type=number]{flex:1;min-width
 .curve path{fill:none;stroke:var(--acc);stroke-width:2}
 .curve line{stroke:#444;stroke-width:1}
 .moving label::after{content:" ↔";color:var(--acc)}
+.seq{display:grid;grid-template-columns:3.6em repeat(32,1fr);column-gap:2px;row-gap:4px;margin:6px 0 4px;user-select:none;touch-action:none}
+.seq .ln{font-size:12px;color:var(--dim);align-self:center}
+.seq .bt{font-size:10px;color:var(--dim);text-align:left}
+.seq .st{height:22px;border-radius:3px;background:#2f2f2f;cursor:pointer}
+.seq .st.q{background:#3a3a3a}
+.seq .st.on{background:var(--acc)}
+.seq .b4{margin-left:3px}.seq .b16{margin-left:8px}
 #elsewhere{position:fixed;inset:0;z-index:20;display:none;align-items:center;justify-content:center;background:#121212e8;padding:16px}
 #elsewhere .card{max-width:360px;text-align:center}
 #elsewhere p{margin:6px 0 14px}
@@ -237,6 +244,8 @@ const H = {
   preview: 'What the ceiling shows now, live from the board, up to 15 frames a second: seen from below, the first row on the left, the bars at their real places and spacing (drawn thicker than they are, so they show). The colours as the effects make them, without the LEDs’ gamma. The board sends frames only while this section is open, on screen and the tab is in view.',
   previewPin: 'Pin (📌): the preview stays at the top of the screen while you scroll and work the controls below it; lit while pinned. Press again to let it scroll away. Kept in this browser.',
   previewLook: 'On: each bar as a soft continuous strip, as with a diffuser. Off: bare LEDs, each a point of light with dark between and a bloom (glare) around the bright ones, as bare LEDs look to the eye or a camera. Kept in this browser.',
+  steps: 'The drum machine: 32 steps (two bars; in Beats timing with 8 beats per pattern each step is a 1/16 note, in Time timing Speed steps a second). Click a box to set or clear that step, or drag across boxes to set or clear several. On a set step its lane flashes: Whole = the whole ceiling, Band = a band at Angle, Block = one cell of a grid of about Size, Shape = a circle or square. Bands, blocks and shapes land somewhere new on every step. The lighter boxes are the beats.',
+  stepsClear: 'Clears every step in all four lanes (Revert brings back the saved pattern).',
   effectBrightness: 'Dims whatever preset plays, but not the Sparkle overlay’s twinkles: pull the effect down and let the sparkle shine. Under the master Brightness. Saved, like Brightness.',
   sparkleBrightness: 'How strongly the Sparkle overlay’s twinkles show over the effect: 0 = not at all, 50% = each twinkle covers half (a dark one darkens by half), 100% = fully. Under the master Brightness. Saved, like Brightness.',
   sparkleTime: 'How long one twinkle lasts, in seconds; with Through the palette, how long it takes to go through the palette. The amount lit at any moment stays the same: longer twinkles start less often.',
@@ -560,6 +569,7 @@ function draw() {
   const rRow = field('Reverse', rev, H.reverse);
   if (!inBeats) for (const r of [bRow, rRow]) off(r, ef.cycle ? 'only with Timing set to Beats.' : noCycle);
   card.append(bRow, rRow);
+  if (ef.steps) card.append(stepGrid(p));
   const motions = p.motions || [];
   const rows = [], moved = j => motions.some(mo => mo.target == j + 1);
   ef.params.forEach((d, j) => {
@@ -1181,6 +1191,44 @@ function oscMessages(buf, out = []) {
   return out;
 }
 
+// The step pattern of a preset whose effect has steps (Strobe): 4 lanes x 32 steps, each lane a
+// number with bit s for step s. Click to toggle a box; dragging paints the same way across boxes.
+const LANES = ['Whole', 'Band', 'Block', 'Shape'];
+let seqPaint = null;  // while dragging over a step grid: true = setting boxes, false = clearing
+addEventListener('pointerup', () => { seqPaint = null; });
+addEventListener('pointercancel', () => { seqPaint = null; });
+function stepGrid(p) {
+  if (!Array.isArray(p.steps)) p.steps = [0, 0, 0, 0];
+  const send = () => throttle('steps', () => post('/api/preset', {index: S.current, steps: p.steps}));
+  const grid = h('div', {className: 'seq'});
+  const set = (k, b, box, v) => {
+    const bit = (1 << b) >>> 0;
+    p.steps[k] = (v ? (p.steps[k] | bit) : (p.steps[k] & ~bit)) >>> 0;
+    box.classList.toggle('on', v);
+    send();
+  };
+  grid.append(h('span'));
+  for (let b = 0; b < 32; b++)
+    grid.append(h('span', {className: 'bt' + (b == 16 ? ' b16' : b % 4 == 0 && b ? ' b4' : ''), textContent: b % 4 == 0 ? (b / 4) % 4 + 1 : ''}));
+  LANES.forEach((name, k) => {
+    grid.append(h('span', {className: 'ln', textContent: name}));
+    for (let b = 0; b < 32; b++) {
+      const box = h('span', {className: 'st' + (b % 4 == 0 ? ' q' : '') + (b == 16 ? ' b16' : b % 4 == 0 && b ? ' b4' : '') +
+        ((p.steps[k] >>> b) & 1 ? ' on' : '')});
+      box.onpointerdown = e => {
+        e.preventDefault();
+        seqPaint = !box.classList.contains('on');
+        set(k, b, box, seqPaint);
+        try { box.releasePointerCapture(e.pointerId); } catch (x) {}  // touch: let the drag reach other boxes
+      };
+      box.onpointerenter = () => { if (seqPaint != null && box.classList.contains('on') != seqPaint) set(k, b, box, seqPaint); };
+      grid.append(box);
+    }
+  });
+  const clear = button('Clear pattern', H.stepsClear);
+  clear.onclick = () => { p.steps = [0, 0, 0, 0]; post('/api/preset', {index: S.current, steps: p.steps}); draw(); };
+  return h('div', {}, tip(grid, H.steps), h('div', {className: 'row'}, h('label'), clear));
+}
 let paramDeps = () => {};  // the playing preset's slider dependencies (greying), set by its card
 function oscValue(addr, v) {
   const a = addr.split('/');

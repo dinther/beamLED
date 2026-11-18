@@ -103,6 +103,15 @@ extern Preset presets[MAX_PRESETS];
 extern PresetSync presetSync[MAX_PRESETS];
 extern int presetCount;  // 1..MAX_PRESETS
 extern Motion (*presetMotion)[MOTIONS];  // [MAX_PRESETS][MOTIONS], from the heap
+// A step pattern (the Strobe effect's drum machine): lane k's bit s = step s flashes. Every preset
+// has one (kept, unused, when its effect has no steps). Saved under its own key.
+constexpr int SEQ_LANES = 4, SEQ_STEPS = 32;
+struct Steps {
+    uint32_t lane[SEQ_LANES];
+};
+extern Steps* presetSteps;  // [MAX_PRESETS], from the heap
+// A pattern to start from when a preset turns to an effect with steps and has none
+void stepsDefault(Steps& s);
 extern Settings settings;
 extern LinkSettings linkSettings;
 extern AutoSettings autoSettings;

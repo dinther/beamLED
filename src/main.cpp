@@ -311,7 +311,8 @@ static void renderFrame(float dt) {
         pp[mo.target - 1] = v;
     }
     effectsToUnits(e, pp);  // lengths and speeds from % of the ceiling's shorter side to its units
-    Ctx c{pp, edt, effState, lutWrap, lutLin, leds, beat.beat, (float)beat.bpm, cycleBeats, y.reverse != 0};
+    Ctx c{pp, edt, effState, lutWrap, lutLin, leds, beat.beat, (float)beat.bpm, cycleBeats, y.reverse != 0,
+          presetSteps[settings.current].lane};
     effectsRender(e, c, p.mirror != 0);
     // Effect brightness: the effect alone, before the overlay's twinkles go on top
     if (levels.effect < 255) {

@@ -158,6 +158,8 @@ static void presetJson(JsonObject o, int i) {
     o["mirror"] = p.mirror != 0;
     JsonArray a = o["params"].to<JsonArray>();
     for (int j = 0; j < EFFECTS[p.effect].n; j++) a.add(p.p[j]);
+    JsonArray st = o["steps"].to<JsonArray>();  // the step pattern: per lane, bit s = step s
+    for (uint32_t l : presetSteps[i].lane) st.add(l);
     JsonArray ms = o["motions"].to<JsonArray>();
     for (const Motion& mo : presetMotion[i]) {
         JsonObject m = ms.add<JsonObject>();
@@ -291,6 +293,7 @@ static void handleEffects() {
         o["sparkle"] = !EFFECTS[i].ownSparkle;
         if (EFFECTS[i].cycle) o["cycle"] = EFFECTS[i].cycle;
         o["speedParam"] = EFFECTS[i].speedParam;
+        if (EFFECTS[i].steps) o["steps"] = true;  // plays the preset's step pattern
         o["help"] = EFFECTS[i].help;
         JsonArray ps = o["params"].to<JsonArray>();
         for (int j = 0; j < EFFECTS[i].n; j++) {
@@ -456,6 +459,10 @@ static void handlePreset() {
         const EffectDef& e = EFFECTS[p.effect];
         for (int j = 0; j < e.n && j < (int)a.size(); j++)
             p.p[j] = constrain(a[j].as<float>(), e.params[j].min, e.params[j].max);
+    }
+    if (d["steps"].is<JsonArray>()) {
+        JsonArray a = d["steps"].as<JsonArray>();
+        for (int k = 0; k < SEQ_LANES && k < (int)a.size(); k++) presetSteps[i].lane[k] = a[k].as<uint32_t>();
     }
     if (d["timing"].is<int>()) presetSync[i].timing = constrain(d["timing"].as<int>(), 0, (int)TIMING_BEATS);
     if (d["beatsExp"].is<int>()) presetSync[i].beatsExp = constrain(d["beatsExp"].as<int>(), 0, 6);
@@ -796,6 +803,8 @@ static void handleRestore() {
             mo.seconds = constrain(j["seconds"] | 8.f, 0.1f, 3600.f);
             mo.phase = constrain(j["phase"] | 0.f, 0.f, 1.f);
         }
+        JsonArray sq = q["steps"].as<JsonArray>();  // missing in backups from before Strobe
+        for (int k = 0; k < SEQ_LANES; k++) presetSteps[i].lane[k] = k < (int)sq.size() ? sq[k].as<uint32_t>() : 0;
         if (!(q["auto"] | true)) autoSettings.skip |= 1u << i;
     }
     presetSaveAll();

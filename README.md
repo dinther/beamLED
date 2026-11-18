@@ -30,8 +30,8 @@ for this kind of installation (see [docs/background.md](docs/background.md)):
 
 ## Features
 
-- **12 effects**, each with its own sliders and a palette: Rolling bars, Searchlights, Lighthouse,
-  Clouds, Sparkle, Sweeps, Plaid, Rings, Drops, Interference, Gradient and Shapes, plus one sparkle
+- **13 effects**, each with its own sliders and a palette: Rolling bars, Searchlights, Lighthouse,
+  Clouds, Sparkle, Sweeps, Plaid, Rings, Drops, Interference, Gradient, Shapes and Strobe, plus one sparkle
   overlay over whichever plays (it stays on when the preset changes): white or in palette colours
   (random, or stepping along the palette twinkle by twinkle), twinkling freely or starting on
   quarter, eighth, sixteenth or 32nd notes, as single twinkles or in bursts.
@@ -70,6 +70,10 @@ for this kind of installation (see [docs/background.md](docs/background.md)):
 | ![Rings](docs/images/beam_rings.jpg) **Rings**: concentric rings flowing out of, or into, a slowly wandering centre. | ![Drops](docs/images/beam_drops.jpg) **Drops**: big rings spreading from where drops land (a point you set and can move with Motions, or random places) and fading out, like raindrops on a pond. |
 | ![Interference](docs/images/beam_interference.jpg) **Interference**: two sets of ring waves around centres that circle each other. | ![Sparkle overlay](docs/images/beam_rolling_ice_sparkle.jpg) **Sparkle**: twinkles in palette colours, as an effect of its own or as an overlay on any other. |
 | ![Gradient](docs/images/beam_gradient.jpg) **Gradient**: a steady gradient through the palette, straight at any angle or round from a centre; Colour drift or a Motion on Colour offset makes the colours flow. | |
+
+**Strobe** is a drum machine of flashes: each preset holds a grid of four lanes and 32 steps (two
+bars of 1/16 notes on the beat, or a set number of steps a second), and on the steps set the lanes
+flash the whole ceiling, a band, a block or a circle or square, somewhere new each time.
 
 The scrolling effects have a position slider: **Offset** (Rolling bars, Plaid, Rings,
 Interference), **Offset X** and **Offset Y** (Clouds), and Lighthouse has **Angle**. With the speed
@@ -240,7 +244,7 @@ The page uses these; they take and return JSON.
 | `GET /api/effects?v=<build>` | the effects with their sliders and help (cached per firmware build) |
 | `GET /api/status` | frame rate, network, Link, OSC |
 | `POST /api/set` | brightness, gamma, Art-Net target, preset playing, on/off, `paletteLock` (-1 = off; not saved) |
-| `POST /api/preset` | a preset's settings; `save`, `revert`; `{"motion": m, ...}` for a motion |
+| `POST /api/preset` | a preset's settings; `steps` (Strobe's pattern: four lanes, bit s = step s); `save`, `revert`; `{"motion": m, ...}` for a motion |
 | `POST /api/presets` | `add`, `delete`, `move` |
 | `POST /api/palettes` | `add`, `delete` |
 | `POST /api/palette`, `/api/layout`, `/api/link`, `/api/net` | palettes, layout, Link, network |

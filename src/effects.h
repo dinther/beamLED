@@ -29,6 +29,8 @@ struct Ctx {
     float bpm;
     float cycleBeats;     // > 0: timing in beats, the effect's cycle takes this many beats
     bool reverse;         // timing in beats: run the cycle backwards
+    // The preset's step pattern (effects with steps): 4 lanes of 32 steps, bit s = step s flashes
+    const uint32_t* steps = nullptr;
 };
 
 struct EffectDef {
@@ -42,6 +44,7 @@ struct EffectDef {
     const char* cycle;
     int8_t speedParam;
     const char* help;  // what the effect looks like
+    bool steps = false;  // plays the preset's step pattern (a drum machine: Strobe)
 };
 
 extern const EffectDef EFFECTS[];

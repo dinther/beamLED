@@ -941,6 +941,112 @@ static void shapesFx(Ctx& c) {
     }
 }
 
+// ---------------------------------------------------------------- Strobe
+// A drum machine of flashes: 32 steps (two bars of 1/16 notes in Beats timing, or Speed steps a
+// second in Time), four lanes, each flashing its own kind of thing on the steps set in the
+// preset's pattern: the whole ceiling, a band, a block of a coarse grid, a circle or square.
+// Bands, blocks and shapes land somewhere new on every step (a hash of the step's count).
+
+static void strobe(Ctx& c) {
+    enum { kSpeed, kSize, kFlash, kAngle, kSoft, kColour, kBackground };
+    const int STEPS = 32;
+    // Where in the pattern: in beats straight from the beat (exactly on the grid), else counted
+    double pos;
+    if (c.cycleBeats > 0) {
+        pos = c.beat / c.cycleBeats * STEPS;
+        if (c.reverse) pos = -pos;
+    } else {
+        c.s[0] = fmodf(c.s[0] + c.p[kSpeed] * c.dt, STEPS * 4096.f);
+        pos = c.s[0];
+    }
+    const double fl = floor(pos);
+    const int64_t n = (int64_t)fl;                     // steps since the start
+    const int step = (int)(((n % STEPS) + STEPS) % STEPS);
+    const float f = (float)(pos - fl);                 // how far into the step
+    const float mark = (float)(n & 0xFFFFF);
+    const bool fresh = c.s[1] != mark || c.s[2] == 0;  // the step began since the last frame
+    c.s[1] = mark;
+    c.s[2] = 1;
+    // A flash lasts Flash length of its step, but always shows for at least one frame
+    const bool lit = f < c.p[kFlash] || fresh;
+    bool any = false, on[4] = {};
+    for (int k = 0; k < 4; k++) {
+        on[k] = lit && c.steps && (c.steps[k] >> step & 1);
+        any |= on[k];
+    }
+    const float bg = c.p[kBackground];
+    const float iw = W > 0 ? 1.f / W : 0;
+    if (!any) {  // between flashes: the background (or black)
+        for (int b = 0; b < NY; b++)
+            for (int i = 0; i < NX; i++)
+                c.out[b * NX + i] = bg > 0 ? scaleF(lutL(c.lutLin, X[i] * iw), bg) : CRGB(0, 0, 0);
+        return;
+    }
+    // Each lane's colour: white, or Colour along the palette per step (lanes a quarter apart)
+    CRGB col[4];
+    const float cs = c.p[kColour];
+    for (int k = 0; k < 4; k++) {
+        if (cs <= 0) col[k] = CRGB(255, 255, 255);
+        else {
+            float u = (float)(n % 4096) * cs + k * 0.25f;
+            col[k] = lutW(c.lutWrap, u - floorI(u));
+        }
+    }
+    const uint32_t seed = (uint32_t)(n & 0xFFFFFFFF);
+    const float size = c.p[kSize], hw = size * 0.5f, soft = c.p[kSoft];
+    const float e = fmaxf(soft * hw, 0.02f * M);  // the edge's width
+    // Band: across the ceiling at Angle, at a random place
+    const float ang = c.p[kAngle] * DEG, ca = cosf(ang), sa = sinf(ang);
+    const float span = fabsf(W * ca) + fabsf(H * sa);
+    const float bandAt = (hrand(seed, 11) - 0.5f) * fmaxf(span - size, 0.f);
+    // Block: one cell of a grid of about Size
+    const int ncx = clampi((int)(W / fmaxf(size, 1e-3f) + 0.5f), 1, 64);
+    const int ncy = clampi((int)(H / fmaxf(size, 1e-3f) + 0.5f), 1, 64);
+    const float cw = W / ncx, ch = H / ncy;
+    const float bx0 = (int)(hrand(seed, 12) * ncx) * cw, by0 = Y[0] + (int)(hrand(seed, 13) * ncy) * ch;
+    // Shape: a circle or a square (at a random angle) somewhere on the ceiling
+    const float mx = fminf(hw, W * 0.5f), my = fminf(hw, H * 0.5f);  // kept on the ceiling
+    const float sx = mx + hrand(seed, 14) * (W - 2 * mx), sy = Y[0] + my + hrand(seed, 15) * (H - 2 * my);
+    const bool circle = hrand(seed, 16) < 0.5f;
+    const float sang = hrand(seed, 17) * 1.5708f, sca = cosf(sang), ssa = sinf(sang);
+    const float ie = 1.f / e;
+    for (int b = 0; b < NY; b++) {
+        const float y = Y[b];
+        // Across the rows an edge is at least a row's footprint wide, so it doesn't flicker
+        const float ieBand = 1.f / fmaxf(e, FY[b] * fabsf(sa)), ieY = 1.f / fmaxf(e, FY[b] * 0.5f);
+        const float iy = on[2] ? sm(fminf(y - by0, by0 + ch - y) * ieY + 0.5f) : 0.f;
+        for (int i = 0; i < NX; i++) {
+            const float x = X[i];
+            float best = 0;
+            int lane = 0;
+            if (on[0]) { best = 1; lane = 0; }
+            if (on[1] && best < 1) {
+                const float d = (x - CX) * ca + (y - CY) * sa - bandAt;
+                const float I = sm((hw - fabsf(d)) * ieBand + 0.5f);
+                if (I > best) { best = I; lane = 1; }
+            }
+            if (on[2] && best < 1 && iy > 0) {
+                const float I = iy * sm(fminf(x - bx0, bx0 + cw - x) * ie + 0.5f);
+                if (I > best) { best = I; lane = 2; }
+            }
+            if (on[3] && best < 1) {
+                const float dx = x - sx, dy = y - sy;
+                float r;
+                if (circle) {
+                    const float d2 = dx * dx + dy * dy;
+                    r = d2 > 1e-12f ? d2 * rsqrtFast(d2) : 0.f;
+                } else {
+                    r = fmaxf(fabsf(dx * sca + dy * ssa), fabsf(-dx * ssa + dy * sca));
+                }
+                const float I = sm((hw - r) * ieY + 0.5f);
+                if (I > best) { best = I; lane = 3; }
+            }
+            const CRGB base = bg > 0 ? scaleF(lutL(c.lutLin, x * iw), bg) : CRGB(0, 0, 0);
+            c.out[b * NX + i] = best > 0 ? mixF(base, col[lane], best) : base;
+        }
+    }
+}
+
 // ---------------------------------------------------------------- table
 // New effects go at the end: presets store the index.
 
@@ -1077,6 +1183,17 @@ const EffectDef EFFECTS[] = {
       {"Fill", 0, 1, 0, 0.01f, "0 = outlines only, 1 = solid shapes. In between: a dimmer inside within a bright outline."}},
      shapesFx, false, "shape", 0,
      "Squares, circles and triangles appearing one after another at random places, sizes and angles, each in a random palette colour, as outlines, solid or both. Each stays a while and fades out."},
+    {"Strobe", 7,
+     {{"Speed (Hz)", 0.5f, 16, 8, 0.1f, "Steps per second, in Time timing (the 32 steps then take 32 / this seconds). In Beats timing this slider gives way to beats per pattern: 8 beats = every step a 1/16 note, two bars for the pattern."},
+      {"Size (%)", 10, 100, 30, 1, "How big a band, block or shape is, as a share of the ceiling's shorter side. The Whole lane always lights everything.", 1},
+      {"Flash length", 0.05f, 1, 0.5f, 0.01f, "How much of its step a flash stays on: short = a crisp strobe, 1 = lit for the whole step (steps in a row then join up). A flash always shows for at least one frame."},
+      {"Angle (deg)", -180, 180, 90, 1, "Which way the bands run: 90 = along the rows (a band lights a few rows), 0 = across them."},
+      {"Softness", 0, 1, 0.2f, 0.01f, "How soft the edges of bands, blocks and shapes are. 0 = hard edges (still softened where they cross the rows, so they don't flicker)."},
+      {"Colour", 0, 1, 0, 0.01f, "0 = white flashes. Above 0 the flashes take the palette's colours: each step this much further along it, and each lane a quarter of the palette apart."},
+      {"Background", 0, 0.5f, 0, 0.01f, "How brightly the palette shows between the flashes. 0 = black."}},
+     strobe, false, "pattern", 0,
+     "A drum machine of flashes: set steps in a grid of four lanes and 32 steps (two bars of 1/16 notes), and the lanes flash the whole ceiling, a band, a block or a shape on those steps, somewhere new each time.",
+     true},
 };
 const int NUM_EFFECTS = sizeof(EFFECTS) / sizeof(EFFECTS[0]);
 

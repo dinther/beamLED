@@ -18,6 +18,8 @@ static Preset* savedPresets = nullptr;
 static PresetSync* savedSync = nullptr;
 Motion (*presetMotion)[MOTIONS] = nullptr;      // what plays
 static Motion (*savedMotion)[MOTIONS] = nullptr;  // as saved
+Steps* presetSteps = nullptr;        // what plays
+static Steps* savedSteps = nullptr;  // as saved
 // Added and not saved since: its first Save takes a new name in place (it is new anyway)
 static bool fresh[MAX_PRESETS];
 static const Motion MOTION_OFF = {0, SHAPE_SINE, 0, 3, 0, 1, 8, 0};
@@ -152,7 +154,7 @@ int32_t storeDirtyMs() { return dirty ? (int32_t)(millis() - dirtyAt) : -1; }
 // Flash wears with every page NVS erases, and NVS erases a page each time a save fills one. So a
 // save writes only what changed since the last: each part is fingerprinted, and a part with the
 // same fingerprint is not written again. Selecting a preset then writes 12 bytes, not 3 KB.
-enum SavePart { PART_PALS, PART_PRES, PART_SET, PART_SYNCS, PART_LINK, PART_AUTO, PART_MOTS, PART_SPARK, PART_LEVELS, NUM_PARTS };
+enum SavePart { PART_PALS, PART_PRES, PART_SET, PART_SYNCS, PART_LINK, PART_AUTO, PART_MOTS, PART_SPARK, PART_LEVELS, PART_STEPS, NUM_PARTS };
 static uint32_t partPrint[NUM_PARTS];
 static bool partKnown[NUM_PARTS];
 static bool verWritten = false;
@@ -183,6 +185,7 @@ static void rememberSaved() {
     partPrint[PART_MOTS] = fingerprint(savedMotion, presetCount * sizeof(Motion) * MOTIONS);
     partPrint[PART_SPARK] = fingerprint(&sparkleSettings, sizeof(sparkleSettings));
     partPrint[PART_LEVELS] = fingerprint(&levels, sizeof(levels));
+    partPrint[PART_STEPS] = fingerprint(savedSteps, presetCount * sizeof(Steps));
     for (bool& k : partKnown) k = true;
     verWritten = true;
 }
@@ -208,6 +211,7 @@ static void save() {
     putPart(PART_MOTS, "mots", savedMotion, presetCount * sizeof(Motion) * MOTIONS);
     putPart(PART_SPARK, "spark", &sparkleSettings, sizeof(sparkleSettings));
     putPart(PART_LEVELS, "lvl", &levels, sizeof(levels));
+    putPart(PART_STEPS, "steps", savedSteps, presetCount * sizeof(Steps));
     if (!orderWritten) {  // after the presets and motions in that order
         prefs.putUChar("pord", PARAM_ORDER);
         orderWritten = true;
@@ -369,6 +373,8 @@ void storeLoad() {
     if (!savedSync) savedSync = (PresetSync*)calloc(MAX_PRESETS, sizeof(PresetSync));
     if (!presetMotion) presetMotion = (Motion (*)[MOTIONS])calloc(MAX_PRESETS, sizeof(Motion) * MOTIONS);
     if (!savedMotion) savedMotion = (Motion (*)[MOTIONS])calloc(MAX_PRESETS, sizeof(Motion) * MOTIONS);
+    if (!presetSteps) presetSteps = (Steps*)calloc(MAX_PRESETS, sizeof(Steps));
+    if (!savedSteps) savedSteps = (Steps*)calloc(MAX_PRESETS, sizeof(Steps));
     // Motions have their own key: presets saved before there were motions get none
     for (int i = 0; i < MAX_PRESETS; i++)
         for (int m = 0; m < MOTIONS; m++) presetMotion[i][m] = MOTION_OFF;
@@ -388,6 +394,13 @@ void storeLoad() {
                 motsOld = true;
             }
         }
+    }
+    // Step patterns have their own key: presets saved before there were any get none
+    for (int i = 0; i < MAX_PRESETS; i++) presetSteps[i] = Steps{};
+    bool stepsMissing = ok;
+    if (ok && prefs.isKey("steps") && prefs.getBytesLength("steps") == presetCount * sizeof(Steps)) {
+        prefs.getBytes("steps", presetSteps, presetCount * sizeof(Steps));
+        stepsMissing = false;
     }
     // Presets saved in the sliders' old order and in metres: moved to the order now, then to %,
     // once (and saved so)
@@ -428,9 +441,14 @@ void storeLoad() {
         savedPresets[i] = presets[i];
         savedSync[i] = presetSync[i];
         for (int m = 0; m < MOTIONS; m++) savedMotion[i][m] = presetMotion[i][m];
+        savedSteps[i] = presetSteps[i];
     }
     // Saved as loaded: later saves write only what changes. Anything converted or new is written now.
     if (ok && !old && !palOld) rememberSaved();
+    if (ok && !old && !palOld && stepsMissing) {  // no patterns saved yet: write the empty ones once
+        partKnown[PART_STEPS] = false;
+        storeMarkDirty();
+    }
     if (ok && !old && !palOld && motsOld) {  // write the motions in the new size once
         partKnown[PART_MOTS] = false;
         storeMarkDirty();
@@ -471,7 +489,12 @@ bool presetChanged(int i) {
     if (!samePreset(presets[i], savedPresets[i]) || !sameSync(presetSync[i], savedSync[i])) return true;
     for (int m = 0; m < MOTIONS; m++)
         if (!sameMotion(presetMotion[i][m], savedMotion[i][m])) return true;
-    return false;
+    return memcmp(&presetSteps[i], &savedSteps[i], sizeof(Steps)) != 0;
+}
+
+void stepsDefault(Steps& s) {
+    s = Steps{};
+    for (int b = 0; b < SEQ_STEPS; b += 4) s.lane[0] |= 1u << b;  // Whole on every beat
 }
 
 // Save. With a new name, the edits become a new preset of that name (added at the end), and
@@ -494,6 +517,7 @@ int presetSave(int i, bool inPlace) {
     savedPresets[i] = presets[i];
     savedSync[i] = presetSync[i];
     for (int m = 0; m < MOTIONS; m++) savedMotion[i][m] = presetMotion[i][m];
+    savedSteps[i] = presetSteps[i];
     storeMarkDirty();
     return i;
 }
@@ -511,12 +535,20 @@ void presetRevert(int i) {
     presets[i] = savedPresets[i];
     presetSync[i] = savedSync[i];
     for (int m = 0; m < MOTIONS; m++) presetMotion[i][m] = savedMotion[i][m];
+    presetSteps[i] = savedSteps[i];
 }
 
 void presetChangeEffect(int i, uint8_t effect) {
     if (i < 0 || i >= presetCount) return;
     presetSetEffect(presets[i], effect);
     for (int m = 0; m < MOTIONS; m++) presetMotion[i][m] = MOTION_OFF;  // their sliders are gone
+    if (EFFECTS[presets[i].effect].steps) {  // a drum machine: in Beats (8 per pattern, so 1/16 steps)
+        presetSync[i].timing = TIMING_BEATS;
+        presetSync[i].beatsExp = 3;
+        bool any = false;  // an empty pattern does nothing: start with a flash on every beat
+        for (uint32_t l : presetSteps[i].lane) any |= l != 0;
+        if (!any) stepsDefault(presetSteps[i]);
+    }
 }
 
 // A new name is an edit: saved with Save (as a new preset), dropped with Revert
@@ -538,11 +570,13 @@ int presetAdd(int from) {
     snprintf(name, sizeof(name), "%.14s copy", presets[from].name);
     strlcpy(presets[i].name, name, sizeof(presets[i].name));
     for (int m = 0; m < MOTIONS; m++) presetMotion[i][m] = presetMotion[from][m];
+    presetSteps[i] = presetSteps[from];
     fresh[i] = true;
     autoSettings.skip &= ~(1u << i);  // a new preset is in Auto
     savedPresets[i] = presets[i];  // a new preset is saved as it is
     savedSync[i] = presetSync[i];
     for (int m = 0; m < MOTIONS; m++) savedMotion[i][m] = presetMotion[i][m];
+    savedSteps[i] = presetSteps[i];
     storeMarkDirty();
     return i;
 }
@@ -560,8 +594,11 @@ bool presetDelete(int i) {
             presetMotion[k][m] = presetMotion[k + 1][m];
             savedMotion[k][m] = savedMotion[k + 1][m];
         }
+        presetSteps[k] = presetSteps[k + 1];
+        savedSteps[k] = savedSteps[k + 1];
     }
     presetCount--;
+    presetSteps[presetCount] = savedSteps[presetCount] = Steps{};
     presetSync[presetCount] = savedSync[presetCount] = SYNC_DEFAULT;
     fresh[presetCount] = false;
     {  // the In Auto bits after i move down one
@@ -578,6 +615,7 @@ bool presetMove(int from, int to) {
     Motion mo[MOTIONS], smo[MOTIONS];
     for (int m = 0; m < MOTIONS; m++) { mo[m] = presetMotion[from][m]; smo[m] = savedMotion[from][m]; }
     const bool fr = fresh[from];
+    const Steps st = presetSteps[from], sst = savedSteps[from];
     const Preset p = presets[from], sp = savedPresets[from];
     const PresetSync y = presetSync[from], sy = savedSync[from];
     const int d = to > from ? 1 : -1;
@@ -591,8 +629,12 @@ bool presetMove(int from, int to) {
             presetMotion[k][m] = presetMotion[k + d][m];
             savedMotion[k][m] = savedMotion[k + d][m];
         }
+        presetSteps[k] = presetSteps[k + d];
+        savedSteps[k] = savedSteps[k + d];
     }
     presets[to] = p;
+    presetSteps[to] = st;
+    savedSteps[to] = sst;
     presetSync[to] = y;
     savedPresets[to] = sp;
     savedSync[to] = sy;
