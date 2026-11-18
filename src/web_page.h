@@ -1336,6 +1336,7 @@ function drawBare(u8, nx, ny, cv, ry, y0, M, scale, W, H, dpr, per) {
   d.fill(0); acc.fill(0);
   // Each LED a square dot that grows with the spacing: about a third of it, at least 2 pixels wide
   const dot = Math.max(2, Math.round(per * 0.35)), dh = Math.max(1, Math.min(dot, per - 1));
+  const round = dot >= 3 && dh >= 3;  // big enough to round: leave out the corner pixels
   const top = M, mid = (per - dh + 1) >> 1;
   for (let b = 0; b < ny; b++) {
     const x = M + Math.round((ry[b] - y0) * scale) - (dot >> 1);  // the dot: x .. x + dot - 1
@@ -1346,10 +1347,12 @@ function drawBare(u8, nx, ny, cv, ry, y0, M, scale, W, H, dpr, per) {
       if (y < 0 || y + dh > h) continue;
       const s = 8 + (b * nx + i) * 3, g = (((y / G) | 0) * gw + gx) * 3;
       const r = u8[s], gr = u8[s + 1], bl = u8[s + 2];
-      for (let yy = y; yy < y + dh; yy++)
-        for (let t = (yy * w + x) * 4, e = t + dot * 4; t < e; t += 4) {
+      for (let yy = y; yy < y + dh; yy++) {
+        const edge = round && (yy == y || yy == y + dh - 1);  // top and bottom rows lose their corners
+        for (let t = (yy * w + x) * 4 + (edge ? 4 : 0), e = (yy * w + x + dot - (edge ? 1 : 0)) * 4; t < e; t += 4) {
           d[t] = r; d[t + 1] = gr; d[t + 2] = bl; d[t + 3] = 255;
         }
+      }
       acc[g] += r; acc[g + 1] += gr; acc[g + 2] += bl;
     }
   }
