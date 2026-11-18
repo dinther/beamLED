@@ -1279,18 +1279,20 @@ function drawPreview(buf) {
   if (u8.length < 8 + nx * ny * 3 || !nx || !ny) return;
   const L = S.layout || {};
   const ry = L.rowY && L.rowY.length == ny ? L.rowY : Array.from({length: ny}, (_, b) => b * 0.5);
-  const len = L.length || 5, y0 = ry[0], depth = Math.max(ry[ny - 1] - y0, 0.5), pad = 0.4;
+  const len = L.length || 5, y0 = ry[0], depth = Math.max(ry[ny - 1] - y0, len * 0.05);
   // Sized in the screen's own pixels so that a bar is a whole number of pixels per LED: every LED
   // on its own pixel, evenly spaced (no 2-then-3 pattern), the ceiling in its true proportions
   const dpr = window.devicePixelRatio || 1, box = cv.parentElement, cs = getComputedStyle(box);
   const avail = (box.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)) * dpr;
-  const per = Math.max(1, Math.floor(avail / (depth + 2 * pad) * len / nx));  // pixels per LED
+  const M = Math.round(12 * dpr);  // a small margin round the bars, in screen pixels (room for the glow)
+  const maxH = innerHeight * 0.8 * dpr;  // a layout of few rows can't make it taller than the window
+  const per = Math.max(1, Math.min(Math.floor((avail - 2 * M) / depth * len / nx), Math.floor((maxH - 2 * M) / nx)));  // pixels per LED
   const scale = per * nx / len;  // screen pixels per metre
-  const W = Math.round((depth + 2 * pad) * scale), H = Math.round((len + 2 * pad) * scale);
+  const W = Math.round(depth * scale) + 2 * M, H = per * nx + 2 * M;
   if (cv.width != W || cv.height != H) {
     cv.width = W; cv.height = H; cv.style.width = W / dpr + 'px'; cv.style.height = H / dpr + 'px';
   }
-  if (pvBare) return drawBare(u8, nx, ny, cv, ry, y0, pad, scale, W, H, dpr, per);
+  if (pvBare) return drawBare(u8, nx, ny, cv, ry, y0, M, scale, W, H, dpr, per);
   if (!pvOff || pvOff.width != ny || pvOff.height != nx) { pvOff = document.createElement('canvas'); pvOff.width = ny; pvOff.height = nx; }
   const oc = pvOff.getContext('2d'), img = oc.createImageData(ny, nx), d = img.data;
   for (let b = 0; b < ny; b++)
@@ -1303,13 +1305,13 @@ function drawPreview(buf) {
   c.setTransform(1, 0, 0, 1, 0, 0);
   c.imageSmoothingEnabled = true;
   c.fillStyle = '#000'; c.fillRect(0, 0, W, H);
-  const top = Math.round(pad * scale), tall = per * nx;
+  const top = M, tall = per * nx;
   const glow = 'filter' in c;
   for (const pass of glow ? [0, 1] : [1]) {
     c.filter = pass == 0 ? 'blur(' + 6 * dpr + 'px)' : 'none';
     c.globalAlpha = pass == 0 ? 0.9 : 1;
     const w = (pass == 0 ? 14 : 5) * dpr;
-    for (let b = 0; b < ny; b++) c.drawImage(pvOff, b, 0, 1, nx, (pad + ry[b] - y0) * scale - w / 2, top, w, tall);
+    for (let b = 0; b < ny; b++) c.drawImage(pvOff, b, 0, 1, nx, M + (ry[b] - y0) * scale - w / 2, top, w, tall);
   }
   c.filter = 'none'; c.globalAlpha = 1;
 }
@@ -1318,7 +1320,7 @@ function drawPreview(buf) {
 // add up, as their glare does in a camera: blurred and laid on top it is the bloom, and bright
 // LEDs go towards white in the middle with their colour in the glare.
 let pvGlow = null, pvGlowImg = null, pvAcc = null;
-function drawBare(u8, nx, ny, cv, ry, y0, pad, scale, W, H, dpr, per) {
+function drawBare(u8, nx, ny, cv, ry, y0, M, scale, W, H, dpr, per) {
   const w = Math.max(1, Math.round(W)), h = Math.max(1, Math.round(H));
   const G = 4, gw = Math.ceil(w / G), gh = Math.ceil(h / G);
   if (!pvDots || pvDots.width != w || pvDots.height != h) {
@@ -1330,9 +1332,9 @@ function drawBare(u8, nx, ny, cv, ry, y0, pad, scale, W, H, dpr, per) {
   }
   const d = pvDotImg.data, acc = pvAcc;
   d.fill(0); acc.fill(0);
-  const top = Math.round(pad * scale), mid = per >> 1;
+  const top = M, mid = per >> 1;
   for (let b = 0; b < ny; b++) {
-    const x = Math.round((pad + ry[b] - y0) * scale) - 1;  // two pixels side by side: x, x + 1
+    const x = M + Math.round((ry[b] - y0) * scale) - 1;  // two pixels side by side: x, x + 1
     if (x < 0 || x + 1 >= w) continue;
     const gx = (x / G) | 0;
     for (let i = 0; i < nx; i++) {
