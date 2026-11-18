@@ -56,6 +56,9 @@ select,input[type=text],input[type=password],input[type=number]{flex:1;min-width
 .card.pv-card.pinned{position:sticky;top:0;z-index:5;box-shadow:0 6px 14px #000d}
 .pv-bar{display:flex;align-items:center;gap:10px}
 .pv-bar .row{flex:1}
+.pv-bar .row label{flex:0 0 auto}
+.pv-pin{background:none;border:1px solid transparent;font-size:18px;line-height:1;padding:4px 7px;filter:grayscale(1);opacity:.45}
+.pv-pin.on{filter:none;opacity:1;border-color:var(--acc);background:#2a2a2a}
 .pal .mid{position:absolute;top:19px;width:10px;height:10px;margin-left:-5px;background:#bbb;border:1px solid #000;transform:rotate(45deg);cursor:ew-resize;touch-action:none}
 .pal .mid.set{background:var(--acc)}
 .pal .mid:hover,.pal .mid.drag{background:#fff}
@@ -230,7 +233,7 @@ const H = {
   sparkleBurst: 'Off: single twinkles, each with the same soft rise and fade as in Free. On: a batch flashes at once on each tick and fades out before the next; Sparkle overlay sets how many (1 = 6% of the LEDs).',
   paletteLock: 'Lock every preset to one palette, for a show in one set of colours: whichever preset plays (picked here, by the button, by Auto or OSC) uses this palette instead of its own. The presets’ own palettes are kept, so Each preset’s own brings them back. Not saved: after a restart each preset has its own palette again.',
   preview: 'What the ceiling shows now, live from the board, up to 15 frames a second: seen from below, the first row on the left, the bars at their real places and spacing (drawn thicker than they are, so they show). The colours as the effects make them, without the LEDs’ gamma. The board sends frames only while this section is open, on screen and the tab is in view.',
-  previewPin: 'Pin: the preview stays at the top of the screen while you scroll and work the controls below it. Press again to let it scroll away. Kept in this browser.',
+  previewPin: 'Pin (📌): the preview stays at the top of the screen while you scroll and work the controls below it; lit while pinned. Press again to let it scroll away. Kept in this browser.',
   previewLook: 'On: each bar as a soft continuous strip, as with a diffuser. Off: bare LEDs, each a point of light with dark between and a bloom (glare) around the bright ones, as bare LEDs look to the eye or a camera. Kept in this browser.',
   effectBrightness: 'Dims whatever preset plays, but not the Sparkle overlay’s twinkles: pull the effect down and let the sparkle shine. Under the master Brightness. Saved, like Brightness.',
   sparkleBrightness: 'How strongly the Sparkle overlay’s twinkles show over the effect: 0 = not at all, 50% = each twinkle covers half (a dark one darkens by half), 100% = fully. Under the master Brightness. Saved, like Brightness.',
@@ -463,7 +466,9 @@ function draw() {
     try { localStorage.setItem('beamled.pvlook', pvBare ? 'bare' : 'diffused'); } catch (e) {}
   };
   const look = field('Diffuse', diffuse, H.previewLook);
-  const pin = button(pvPinned ? 'Pinned' : 'Pin', H.previewPin, {className: 'pv-pin' + (pvPinned ? ' on' : '')});
+  const pin = button('📌', H.previewPin, {className: 'pv-pin' + (pvPinned ? ' on' : '')});
+  pin.setAttribute('aria-label', pvPinned ? 'Unpin the preview' : 'Pin the preview');
+  pin.setAttribute('aria-pressed', pvPinned ? 'true' : 'false');
   pin.onclick = () => {
     pvPinned = !pvPinned;
     try { localStorage.setItem('beamled.pvpin', pvPinned ? '1' : ''); } catch (e) {}
