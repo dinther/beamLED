@@ -295,7 +295,7 @@ static void gridStep(float density, double beat, float div, float dt, float life
 }
 
 void sparkleOverlay(CRGB* out, float density, float dt, const CRGB* lut, double beat, float bpm, float div,
-                    bool burst, float colourStep, const CRGB* ramp, float life) {
+                    bool burst, float colourStep, const CRGB* ramp, float life, uint8_t level) {
     burst = burst && div > 0;
     spStep = lut ? colourStep : 0;  // white: nothing to step along
     if (burst) burstStep(density, beat, bpm, div, dt);
@@ -316,6 +316,7 @@ void sparkleOverlay(CRGB* out, float density, float dt, const CRGB* lut, double 
             a = (int)((burst ? burstLevel(spPhase[i]) : sparkleLevel(spPhase[i])) * 255.f);
             k = lut ? lut[spColour[i]] : CRGB(255, 255, 255);
         }
+        if (level < 255) k = CRGB(k.r * level / 255, k.g * level / 255, k.b * level / 255);
         CRGB& o = out[i];
         o = CRGB((uint8_t)(o.r + (k.r - o.r) * a / 255), (uint8_t)(o.g + (k.g - o.g) * a / 255),
                  (uint8_t)(o.b + (k.b - o.b) * a / 255));

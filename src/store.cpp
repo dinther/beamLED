@@ -24,6 +24,7 @@ static const Motion MOTION_OFF = {0, SHAPE_SINE, 0, 3, 0, 1, 8, 0};
 LinkSettings linkSettings;
 AutoSettings autoSettings;
 SparkleSettings sparkleSettings;
+Levels levels = {255, 255};
 int8_t paletteLock = -1;
 
 static const uint32_t SCHEMA = 1;  // bump when a struct above changes
@@ -147,7 +148,7 @@ int32_t storeDirtyMs() { return dirty ? (int32_t)(millis() - dirtyAt) : -1; }
 // Flash wears with every page NVS erases, and NVS erases a page each time a save fills one. So a
 // save writes only what changed since the last: each part is fingerprinted, and a part with the
 // same fingerprint is not written again. Selecting a preset then writes 12 bytes, not 3 KB.
-enum SavePart { PART_PALS, PART_PRES, PART_SET, PART_SYNCS, PART_LINK, PART_AUTO, PART_MOTS, PART_SPARK, NUM_PARTS };
+enum SavePart { PART_PALS, PART_PRES, PART_SET, PART_SYNCS, PART_LINK, PART_AUTO, PART_MOTS, PART_SPARK, PART_LEVELS, NUM_PARTS };
 static uint32_t partPrint[NUM_PARTS];
 static bool partKnown[NUM_PARTS];
 static bool verWritten = false;
@@ -177,6 +178,7 @@ static void rememberSaved() {
     partPrint[PART_AUTO] = fingerprint(&autoSettings, sizeof(autoSettings));
     partPrint[PART_MOTS] = fingerprint(savedMotion, presetCount * sizeof(Motion) * MOTIONS);
     partPrint[PART_SPARK] = fingerprint(&sparkleSettings, sizeof(sparkleSettings));
+    partPrint[PART_LEVELS] = fingerprint(&levels, sizeof(levels));
     for (bool& k : partKnown) k = true;
     verWritten = true;
 }
@@ -200,6 +202,7 @@ static void save() {
     putPart(PART_AUTO, "auto", &autoSettings, sizeof(autoSettings));
     putPart(PART_MOTS, "mots", savedMotion, presetCount * sizeof(Motion) * MOTIONS);
     putPart(PART_SPARK, "spark", &sparkleSettings, sizeof(sparkleSettings));
+    putPart(PART_LEVELS, "lvl", &levels, sizeof(levels));
     if (!orderWritten) {  // after the presets and motions in that order
         prefs.putUChar("pord", PARAM_ORDER);
         orderWritten = true;
@@ -321,6 +324,7 @@ void storeLoad() {
     linkSettings = {0, 120, 20};
     autoSettings = {0, 1, 3, 0, 60, 0};  // off; every 8 bars, or 60 s
     sparkleSettings = {0, 0, 0, 0, 1.2f};  // off
+    levels = {255, 255};
     prefs.begin("beamled", true);
     if (prefs.isKey("lay") && prefs.getBytesLength("lay") == sizeof(layout))
         prefs.getBytes("lay", &layout, sizeof(layout));
@@ -338,6 +342,8 @@ void storeLoad() {
         prefs.getBytes("spark", &sparkleSettings, 12);
     else if (prefs.isKey("spark") && prefs.getBytesLength("spark") == 8)  // from before colourStep
         prefs.getBytes("spark", &sparkleSettings, 8);
+    if (prefs.isKey("lvl") && prefs.getBytesLength("lvl") == sizeof(levels))
+        prefs.getBytes("lvl", &levels, sizeof(levels));
     prefs.end();
     layoutSanitize(layout);
     linkSettings.enabled = linkSettings.enabled ? 1 : 0;

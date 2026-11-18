@@ -144,6 +144,7 @@ browsed, sent to (a group's *Sends to* can name the OSCQuery application) and fo
 | `/beamled/next`, `/beamled/prev` | trigger | as a short press of the button |
 | `/beamled/on` | T/F | on or off with a fade; no argument toggles |
 | `/beamled/brightness` | f 0..1 | master brightness |
+| `/beamled/effect_brightness`, `sparkle_brightness` | f 0..1 | the effect alone, the sparkle overlay's twinkles alone (under the master brightness) |
 | `/beamled/link` | T/F | Ableton Link enabled |
 | `/beamled/save` | trigger | saves every preset as it plays |
 | `/beamled/palette` | i | palette lock: 0 each preset's own palette, k every preset plays palette k (not saved) |

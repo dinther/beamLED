@@ -21,11 +21,11 @@
 // MAX_PALETTES blocks of CSLOTS. A preset's parameters take the slots after its fixed ones.
 
 enum Global : uint8_t { G_PRESET, G_NEXT, G_PREV, G_ON, G_BRIGHTNESS, G_LINK, G_SAVE, G_AUTO,
-                        G_SPARKLE, G_SPARKLE_TIMING, G_SPARKLE_BURST, G_SPARKLE_COLOUR, G_SPARKLE_STEP, G_PALETTE, G_SPARKLE_THROUGH, G_SPARKLE_TIME, NUM_GLOBALS };
+                        G_SPARKLE, G_SPARKLE_TIMING, G_SPARKLE_BURST, G_SPARKLE_COLOUR, G_SPARKLE_STEP, G_PALETTE, G_SPARKLE_THROUGH, G_SPARKLE_TIME, G_EFFECT_BRIGHTNESS, G_SPARKLE_BRIGHTNESS, NUM_GLOBALS };
 static const char* const GLOBAL_NAME[NUM_GLOBALS] = {"preset", "next", "prev", "on", "brightness", "link", "save", "auto",
                                                      "sparkle", "sparkle_timing", "sparkle_burst", "sparkle_colour",
                                                      "sparkle_colour_step", "palette", "sparkle_through",
-                                                     "sparkle_time"};
+                                                     "sparkle_time", "effect_brightness", "sparkle_brightness"};
 
 enum PSlot : uint8_t { P_PLAY, P_EFFECT, P_PALETTE, P_TIMING, P_BEATS, P_REVERSE, P_PULSE, P_AUTO, P_MIRROR, P_FIXED };
 static const char* const PSLOT_NAME[P_FIXED] = {"play", "effect", "palette", "timing", "beats",
@@ -99,6 +99,8 @@ static bool nodeInfo(int id, NodeInfo& n, char* path, size_t len) {
             case G_PALETTE: n = {'i', 3, true, 0, (float)paletteCount, "Palette lock: 0 = every preset plays its own palette; 1, 2, ... = every preset plays that palette instead (their own settings are kept). Not saved: after a restart each preset has its own again."}; break;
             case G_SPARKLE_THROUGH: n = {'T', 3, false, 0, 1, "Sparkle overlay: true = each twinkle runs through its palette, first colour to last, over its life (a palette black, black, red: goes dark, pops red, fades); false = each twinkle one colour. Not with white twinkles. No argument toggles."}; break;
             case G_SPARKLE_TIME: n = {'f', 3, true, 0.2f, 5, "Sparkle overlay: how long a twinkle lasts, in seconds (with Through the palette, how long it takes to go through the palette). Not with bursts: they last until the next tick."}; break;
+            case G_EFFECT_BRIGHTNESS: n = {'f', 3, true, 0, 1, "Effect brightness, 0..1: dims whatever preset plays (not the Sparkle overlay's twinkles), under the master brightness."}; break;
+            case G_SPARKLE_BRIGHTNESS: n = {'f', 3, true, 0, 1, "Sparkle brightness, 0..1: dims the Sparkle overlay's twinkles, under the master brightness."}; break;
             case G_SAVE: n = {'N', 2, false, 0, 0, "Saves every preset as it plays now (as Save on each preset on the web page), with the palettes and settings, so they survive a power cut. Until then, preset changes from OSC or the web page play but are not saved."}; break;
         }
         return true;
@@ -189,6 +191,8 @@ static bool nodeValue(int id, char type, uint32_t& v) {
             case G_PALETTE: return i(paletteLock + 1);
             case G_SPARKLE_THROUGH: return i((sparkleSettings.beat & SPARKLE_THROUGH) != 0);
             case G_SPARKLE_TIME: return f(sparkleSettings.life);
+            case G_EFFECT_BRIGHTNESS: return f(levels.effect / 255.f);
+            case G_SPARKLE_BRIGHTNESS: return f(levels.sparkle / 255.f);
         }
         return false;
     }
@@ -382,6 +386,8 @@ static void apply(const char* path, const Arg* a, int n) {
             case G_SPARKLE_STEP: sparkleSettings.colourStep = constrain(v, 0.f, 1.f); storeMarkDirty(); break;
             case G_PALETTE: paletteLock = constrain((int)lroundf(v), 0, paletteCount) - 1; webChanged(); break;  // not saved
             case G_SPARKLE_TIME: sparkleSettings.life = constrain(v, 0.2f, 5.f); storeMarkDirty(); break;
+            case G_EFFECT_BRIGHTNESS: levels.effect = (uint8_t)lroundf(constrain(v, 0.f, 1.f) * 255.f); storeMarkDirty(); break;
+            case G_SPARKLE_BRIGHTNESS: levels.sparkle = (uint8_t)lroundf(constrain(v, 0.f, 1.f) * 255.f); storeMarkDirty(); break;
             case G_SPARKLE_THROUGH:
                 sparkleSettings.beat = (sparkleSettings.beat & ~SPARKLE_THROUGH) | (on ? SPARKLE_THROUGH : 0);
                 storeMarkDirty(); webChanged(); break;  // the page greys Colour step with it

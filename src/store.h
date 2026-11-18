@@ -107,6 +107,13 @@ extern Settings settings;
 extern LinkSettings linkSettings;
 extern AutoSettings autoSettings;
 extern SparkleSettings sparkleSettings;
+// Live levels under the master Brightness: the effect (whatever preset plays) and the Sparkle
+// overlay's twinkles, 0..255 each (255 = full). Saved like Brightness, under their own key.
+struct Levels {
+    uint8_t effect;
+    uint8_t sparkle;
+};
+extern Levels levels;
 // Palette lock: -1 = every preset plays its own palette, k = every preset plays palette k (its
 // own setting untouched). Never saved: after a restart each preset has its own again.
 extern int8_t paletteLock;

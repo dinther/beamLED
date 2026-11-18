@@ -225,6 +225,8 @@ const H = {
   mirror: 'The right half of the ceiling becomes the mirror image of the left, along the rows: anything moving right on the left half moves left on the right half. Only the left half is rendered, so the effect takes about half the time. The Sparkle overlay is not mirrored.',
   sparkleBurst: 'Off: single twinkles, each with the same soft rise and fade as in Free. On: a batch flashes at once on each tick and fades out before the next; Sparkle overlay sets how many (1 = 6% of the LEDs).',
   paletteLock: 'Lock every preset to one palette, for a show in one set of colours: whichever preset plays (picked here, by the button, by Auto or OSC) uses this palette instead of its own. The presets’ own palettes are kept, so Each preset’s own brings them back. Not saved: after a restart each preset has its own palette again.',
+  effectBrightness: 'Dims whatever preset plays, but not the Sparkle overlay’s twinkles: pull the effect down and let the sparkle shine. Under the master Brightness. Saved, like Brightness.',
+  sparkleBrightness: 'Dims the Sparkle overlay’s twinkles, but not the effect under them. Under the master Brightness. Saved, like Brightness.',
   sparkleTime: 'How long one twinkle lasts, in seconds; with Through the palette, how long it takes to go through the palette. The amount lit at any moment stays the same: longer twinkles start less often.',
   sparkleThrough: 'On: each twinkle runs through the sparkle palette over its life, from its first colour to its last: it covers what is under it at once, goes through the colours and fades back at the end. Black, black, red: goes dark, pops red, fades. Off: each twinkle has one colour.',
   sparkleStep: 'How the twinkles pick their colours from the palette. 0 = each one a random colour. Above 0 = each new twinkle this far along the palette from the one before. A hundred or more twinkles start every second, so tiny steps matter: about 0.0005 = the colours drift slowly through the palette (a burst in neighbouring colours), 0.01 and up already look mixed, 0.5 = opposite colours in turn. The left part of the slider is fine, the right part coarse.',
@@ -395,6 +397,8 @@ function sparkleRows(p, ef) {
   const rows = [slider('Sparkle overlay', 0, 1, 0.01, sk.amount, v => v.toFixed(2),
     v => { sk.amount = v; liveSend('/beamled/sparkle', v, () => send({amount: v}), true); },
     H.sparkle + (ef.sparkle ? '' : ' (The playing effect is Sparkle itself: no overlay on it.)'), 'sparkle')];
+  rows.push(slider('Sparkle brightness', 0, 255, 1, S.sparkleBrightness == null ? 255 : S.sparkleBrightness, v => Math.round(v / 2.55) + '%',
+    v => { S.sparkleBrightness = v; liveSend('/beamled/sparkle_brightness', v / 255, () => post('/api/set', {sparkleBrightness: v}), true); }, H.sparkleBrightness, 'sparkleBrightness'));
   const timeRow = slider('Twinkle time (s)', 0.2, 5, 0.1, sk.time || 1.2, v => v.toFixed(1),
     v => { sk.time = v; liveSend('/beamled/sparkle_time', v, () => send({time: v}), true); }, H.sparkleTime, 'sparkleTime');
   if (sk.beat && sk.burst) off(timeRow, 'Bursts last until the next tick, so their length comes from Sparkle timing. Turn Bursts off to set it here.');
@@ -446,6 +450,8 @@ function draw() {
   app.append(h('div', {className: 'card'},
     slider('Brightness', 0, 255, 1, S.brightness, v => Math.round(v / 2.55) + '%',
       v => { S.brightness = v; liveSend('/beamled/brightness', v / 255, () => post('/api/set', {brightness: v}), true); }, H.brightness, 'brightness'),
+    slider('Effect brightness', 0, 255, 1, S.effectBrightness == null ? 255 : S.effectBrightness, v => Math.round(v / 2.55) + '%',
+      v => { S.effectBrightness = v; liveSend('/beamled/effect_brightness', v / 255, () => post('/api/set', {effectBrightness: v}), true); }, H.effectBrightness, 'effectBrightness'),
     lockRow(), ...sparkleRows(p, ef)));
 
   app.append(heading('Presets', H.presets));
@@ -1122,6 +1128,8 @@ function oscValue(addr, v) {
   if (a[1] != 'beamled' || !S) return;
   if (a.length == 3) {
     if (a[2] == 'brightness') { S.brightness = Math.round(v * 255); moveSlider('brightness', S.brightness); }
+    else if (a[2] == 'effect_brightness') { S.effectBrightness = Math.round(v * 255); moveSlider('effectBrightness', S.effectBrightness); }
+    else if (a[2] == 'sparkle_brightness') { S.sparkleBrightness = Math.round(v * 255); moveSlider('sparkleBrightness', S.sparkleBrightness); }
     else if (a[2] == 'on') { if (S.on != v) { S.on = v; redraw(); } }
     else if (a[2] == 'preset') { if (S.current != v - 1) { S.current = v - 1; redraw(); } }
     else if (a[2] == 'link') { if (S.link.enabled != v) { S.link.enabled = v; redraw(); } }

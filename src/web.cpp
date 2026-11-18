@@ -312,6 +312,8 @@ static void handleState() {
     JsonDocument d;
     statusJson(d.to<JsonObject>());
     d["brightness"] = settings.brightness;
+    d["effectBrightness"] = levels.effect;    // 0..255, under the master brightness
+    d["sparkleBrightness"] = levels.sparkle;  // 0..255
     d["paletteLock"] = paletteLock;  // -1 = each preset's own palette, else that palette (not saved)
     d["gamma"] = settings.gamma;
     d["target"] = IPAddress(settings.target).toString();
@@ -362,6 +364,8 @@ static void handleSet() {
         if (d.size() == 1) { handleStatus(); return; }
     }
     if (d["brightness"].is<int>()) settings.brightness = constrain(d["brightness"].as<int>(), 0, 255);
+    if (d["effectBrightness"].is<int>()) levels.effect = constrain(d["effectBrightness"].as<int>(), 0, 255);
+    if (d["sparkleBrightness"].is<int>()) levels.sparkle = constrain(d["sparkleBrightness"].as<int>(), 0, 255);
     if (d["gamma"].is<float>()) {
         settings.gamma = constrain(d["gamma"].as<float>(), 1.f, 3.f);
         webChanged();
@@ -659,6 +663,8 @@ static void handleBackup() {
     JsonObject o = d["output"].to<JsonObject>();
     o["target"] = IPAddress(settings.target).toString();
     o["brightness"] = settings.brightness;
+    o["effectBrightness"] = levels.effect;
+    o["sparkleBrightness"] = levels.sparkle;
     o["gamma"] = settings.gamma;
     JsonObject l = d["link"].to<JsonObject>();
     l["enabled"] = linkSettings.enabled != 0;
@@ -784,6 +790,8 @@ static void handleRestore() {
     IPAddress t;
     if (o["target"].is<const char*>() && t.fromString(o["target"].as<const char*>())) settings.target = (uint32_t)t;
     settings.brightness = constrain(o["brightness"] | (int)settings.brightness, 0, 255);
+    levels.effect = constrain(o["effectBrightness"] | 255, 0, 255);
+    levels.sparkle = constrain(o["sparkleBrightness"] | 255, 0, 255);
     settings.gamma = constrain(o["gamma"] | settings.gamma, 1.f, 3.f);
     JsonObject l = d["link"];
     linkSettings.enabled = (l["enabled"] | (linkSettings.enabled != 0)) ? 1 : 0;

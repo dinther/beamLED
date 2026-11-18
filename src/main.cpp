@@ -312,6 +312,11 @@ static void renderFrame(float dt) {
     }
     Ctx c{pp, edt, effState, lutWrap, lutLin, leds, beat.beat, (float)beat.bpm, cycleBeats, y.reverse != 0};
     effectsRender(e, c, p.mirror != 0);
+    // Effect brightness: the effect alone, before the overlay's twinkles go on top
+    if (levels.effect < 255) {
+        const int L = levels.effect, n = layoutLeds();
+        for (int i = 0; i < n; i++) leds[i] = CRGB(leds[i].r * L / 255, leds[i].g * L / 255, leds[i].b * L / 255);
+    }
     // The Sparkle overlay, the same over every preset (not on the Sparkle effect itself)
     const SparkleSettings& sk = sparkleSettings;
     if (!e.ownSparkle && sk.amount > 0) {
@@ -349,7 +354,7 @@ static void renderFrame(float dt) {
         const int grid = sk.beat & SPARKLE_GRID;
         const float div = grid <= 6 ? DIV[grid] : 0;
         sparkleOverlay(leds, sk.amount, dt, lut, beat.beat, (float)beat.bpm, div, (sk.beat & SPARKLE_BURST) != 0, sk.colourStep,
-                       ramp, sk.life);
+                       ramp, sk.life, levels.sparkle);
     }
 }
 
