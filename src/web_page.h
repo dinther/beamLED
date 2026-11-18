@@ -225,7 +225,7 @@ const H = {
   mirror: 'The right half of the ceiling becomes the mirror image of the left, along the rows: anything moving right on the left half moves left on the right half. Only the left half is rendered, so the effect takes about half the time. The Sparkle overlay is not mirrored.',
   sparkleBurst: 'Off: single twinkles, each with the same soft rise and fade as in Free. On: a batch flashes at once on each tick and fades out before the next; Sparkle overlay sets how many (1 = 6% of the LEDs).',
   paletteLock: 'Lock every preset to one palette, for a show in one set of colours: whichever preset plays (picked here, by the button, by Auto or OSC) uses this palette instead of its own. The presets’ own palettes are kept, so Each preset’s own brings them back. Not saved: after a restart each preset has its own palette again.',
-  preview: 'What the ceiling shows now, live from the board, up to 15 frames a second: seen from below, the stage on the left, the bars at their real places and spacing (drawn thicker than they are, so they show). The colours as the effects make them, without the LEDs’ gamma. Fold this section away when you don’t need it: the board then sends nothing.',
+  preview: 'What the ceiling shows now, live from the board, up to 15 frames a second: seen from below, the first row on the left, the bars at their real places and spacing (drawn thicker than they are, so they show). The colours as the effects make them, without the LEDs’ gamma. Fold this section away when you don’t need it: the board then sends nothing.',
   effectBrightness: 'Dims whatever preset plays, but not the Sparkle overlay’s twinkles: pull the effect down and let the sparkle shine. Under the master Brightness. Saved, like Brightness.',
   sparkleBrightness: 'How strongly the Sparkle overlay’s twinkles show over the effect: 0 = not at all, 50% = each twinkle covers half (a dark one darkens by half), 100% = fully. Under the master Brightness. Saved, like Brightness.',
   sparkleTime: 'How long one twinkle lasts, in seconds; with Through the palette, how long it takes to go through the palette. The amount lit at any moment stays the same: longer twinkles start less often.',
@@ -1226,7 +1226,7 @@ function previewSync() {
   pvOn = want;
 }
 document.addEventListener('visibilitychange', previewSync);
-// The ceiling from below, the stage on the left: each row at its measured place, its LEDs up the
+// The ceiling from below, the first row on the left: each row at its place, its LEDs up the
 // bar. The frame goes into a small image (a column per row) and each column is stretched to scale.
 function drawPreview(buf) {
   const cv = document.getElementById('pv');
@@ -1262,9 +1262,6 @@ function drawPreview(buf) {
     for (let b = 0; b < ny; b++) c.drawImage(pvOff, b, 0, 1, nx, (pad + ry[b] - y0) * scale - w / 2, top, w, tall);
   }
   c.filter = 'none'; c.globalAlpha = 1;
-  c.save(); c.translate(11, H / 2); c.rotate(-Math.PI / 2);
-  c.fillStyle = '#666'; c.font = '10px system-ui'; c.textAlign = 'center'; c.fillText('STAGE', 0, 0);
-  c.restore();
 }
 
 function live(take = false) {
