@@ -48,7 +48,7 @@ for this kind of installation (see [docs/background.md](docs/background.md)):
   together give four-way symmetry.
 - **Animations**: up to three per preset, each moving one slider back and forth by itself (a beam
   swinging, bands scrolling to and fro, a width breathing) along a shape, in seconds or in beats.
-- **Palettes**: up to 16, of 2 to 5 colours, shared by the presets. Each colour has a position\n  along the palette: drag its marker to bunch colours together or give one a long blend.
+- **Palettes**: up to 32, of 2 to 7 colours, shared by the presets. Each colour has a position\n  along the palette: drag its marker to bunch colours together or give one a long blend.
 - **Ableton Link**: tempo and beat shared with Ableton Live and other Link apps. Per preset, an
   effect can run in time, follow the tempo, or run in beats (one band, revolution or ring per 1 to
   64 beats, landing on the bar), with an optional brightness pulse on the beat.
