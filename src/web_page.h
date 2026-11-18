@@ -53,7 +53,7 @@ select,input[type=text],input[type=password],input[type=number]{flex:1;min-width
 .pal .stop:hover,.pal .stop.drag{border-color:var(--acc)}
 #pv{display:block;margin:0 auto;border-radius:6px;background:#000}
 .card.pv-card{background:#000}
-.card.pv-card.pinned{position:sticky;top:0;z-index:5;box-shadow:0 6px 14px #000d}
+.card.pv-card.pinned{position:sticky;top:4px;z-index:5;box-shadow:0 6px 14px #000d}
 .pv-bar{display:flex;align-items:center;gap:10px}
 .pv-bar .row{flex:1}
 .pv-bar .row label{flex:0 0 auto}
