@@ -592,17 +592,23 @@ function draw() {
   });
   // Sliders that only count for one setting of a switch slider (Radial): greyed while it is the
   // other way. A switch moved by a motion can be either, so nothing is greyed then.
-  const rad = ef.params.findIndex(d => d.name == 'Radial');
+  const rad = ef.params.findIndex(d => d.name == 'Radial'), arm = ef.params.findIndex(d => d.name == 'Arms');
   paramDeps = () => {
-    if (rad < 0) return;
-    const radial = p.params[rad] >= 0.5, free = moved(rad);
     ef.params.forEach((d, j) => {
       if (moved(j)) return;  // greyed for its motion already
-      const centre = /^Centre [XY]$/.test(d.name), angle = /^Angle/.test(d.name);
-      if (!centre && !angle) return;
-      if (!free && centre && !radial) off(rows[j], 'Radial is off: a straight gradient has no centre. Set Radial to 1 to use it.');
-      else if (!free && angle && radial) off(rows[j], 'Radial is on: a round gradient has no direction. Set Radial to 0 to use it.');
-      else on(rows[j]);
+      let why = null, rule = false;
+      if (rad >= 0 && (/^Centre [XY]$/.test(d.name) || /^Angle/.test(d.name))) {  // Gradient
+        rule = true;
+        const radial = p.params[rad] >= 0.5;
+        if (!moved(rad) && !radial && d.name.startsWith('Centre')) why = 'Radial is off: a straight gradient has no centre. Set Radial to 1 to use it.';
+        if (!moved(rad) && radial && d.name.startsWith('Angle')) why = 'Radial is on: a round gradient has no direction. Set Radial to 0 to use it.';
+      }
+      if (arm >= 0 && (d.name == 'Weave' || d.name.startsWith('Turn'))) {  // Fibres
+        rule = true;
+        if (!moved(arm) && p.params[arm] < 0.5) why = 'Arms is 0: rings have no arms to cross or turn. Set Arms to 1 or more to use it.';
+      }
+      if (!rule) return;
+      if (why) off(rows[j], why); else on(rows[j]);
     });
   };
   paramDeps();

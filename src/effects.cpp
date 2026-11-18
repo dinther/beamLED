@@ -941,6 +941,51 @@ static void shapesFx(Ctx& c) {
     }
 }
 
+// ---------------------------------------------------------------- Fibres
+// Thin curves behind the bars: rings, or spiral arms (with Weave a second family twisted the other
+// way, crossing the first). The bars act as slits: a line shows only where it crosses a bar, as a
+// point, and the point slides along the bar at the line's speed / sin(angle to the bar), so it
+// races off as the line turns towards the bar's direction, and points overtake each other along
+// curves. Deliberately not softened across the rows: the streaks are the effect.
+// Each LED: its distance to the nearest line (the phase's distance to a whole number over the
+// phase's gradient), as a glow of Line width.
+
+static void fibres(Ctx& c) {
+    enum { kSpeed, kSize, kArms, kWeave, kTurn, kCentreX, kCentreY, kWidth };
+    const float size = fmaxf(c.p[kSize], 0.01f * M), arms = roundFast(c.p[kArms]), weave = c.p[kWeave];
+    advance(c, c.s[0], c.p[kSpeed], size);  // outwards: one line spacing per cycle
+    c.s[0] = fmodf(c.s[0], size * 4096.f);
+    c.s[1] = fmodf(c.s[1] + c.p[kTurn] * DEG * c.dt, TAU);
+    const float shift = c.s[0] / size;           // cycles the lines have moved out
+    const float spin = arms * c.s[1] / TAU;       // cycles the arms have turned
+    const float cx = c.p[kCentreX] * W, cy = Y[0] + c.p[kCentreY] * H;
+    const float isize = 1.f / size, k = 2.8f / (c.p[kWidth] * c.p[kWidth] + 1e-9f);
+    const float aT = arms / TAU, core = 1.f / (size * 0.6f);  // dark centre, where the arms crowd
+    const bool two = weave > 0.004f && arms > 0;
+    for (int b = 0; b < NY; b++) {
+        const float dy = Y[b] - cy;
+        CRGB* o = c.out + b * NX;
+        for (int i = 0; i < NX; i++) {
+            const float dx = X[i] - cx, r2 = dx * dx + dy * dy;
+            const float r = r2 > 1e-12f ? r2 * rsqrtFast(r2) : 0.f;
+            const float th = arms > 0 ? atan2Fast(dy, dx) : 0.f;
+            // the phase's gradient (cycles per unit): radially 1/size, around arms/(2 pi r)
+            const float ga = r > 1e-6f ? aT / r : 1e6f;
+            const float ig = rsqrtFast(isize * isize + ga * ga);
+            const float base = r * isize - shift;
+            float best = 0, pos = 0;
+            for (int f = 0; f < (two ? 2 : 1); f++) {
+                const float u = base + (f ? -1.f : 1.f) * (arms * th / TAU - spin);
+                const float n = roundFast(u), d = fabsf(u - n) * ig;  // distance to the line
+                const float I = expNeg(-k * d * d) * (f ? weave : 1.f);
+                if (I > best) { best = I; pos = n * 0.137f + f * 0.5f; }
+            }
+            best *= sm(r * core);
+            o[i] = best > 0.002f ? scaleF(lutW(c.lutWrap, pos - floorI(pos)), best) : CRGB(0, 0, 0);
+        }
+    }
+}
+
 // ---------------------------------------------------------------- Strobe
 // In Beats timing a drum machine of flashes: 32 steps (two bars of 1/16 notes), four lanes, each
 // flashing its own kind of thing on the steps set in the preset's pattern: the whole ceiling, a
@@ -1206,6 +1251,17 @@ const EffectDef EFFECTS[] = {
      strobe, false, "pattern", 0,
      "A drum machine of flashes: set steps in a grid of four lanes and 32 steps (two bars of 1/16 notes), and the lanes flash the whole ceiling, a band, a block or a shape on those steps, somewhere new each time. The flashes stay at full power whatever Effect brightness is (the master Brightness still applies); Effect brightness dims only the Background.",
      true, true},
+    {"Fibres", 8,
+     {{"Speed (%/s)", -40, 40, 20, 0.2f, "How fast the lines move outwards, as a share of the ceiling's shorter side per second (below 0: inwards). In Beats timing this slider gives way to beats per line: one line spacing per cycle.", 1},
+      {"Size (%)", 5, 100, 20, 1, "The distance from one line to the next (between rings, or between the turns of an arm), as a share of the ceiling's shorter side.", 1},
+      {"Arms", 0, 8, 4, 1, "0 = rings around the centre; 1 to 8 = that many spiral arms. Lines that run nearly along the bars make the fastest streaks."},
+      {"Weave", 0, 1, 1, 0.01f, "A second set of arms twisted the other way, crossing the first: 0 = none, 1 = as bright as the first. Not with rings (Arms 0)."},
+      {"Turn (deg/s)", -90, 90, 30, 1, "How fast the arms turn around the centre. Not with rings (Arms 0)."},
+      {"Centre X", -0.2f, 1.2f, 0.5f, 0.01f, "Where along the bars the centre is: 0 = the first LED, 1 = the last."},
+      {"Centre Y", -0.2f, 1.2f, 0.5f, 0.01f, "Where across the bars the centre is: 0 = the first bar, 1 = the last bar."},
+      {"Line width (%)", 1, 12, 2.5f, 0.1f, "How thick the lines are, as a share of the ceiling's shorter side. Thin lines make crisp points racing along the bars; too thin and a point jumps from LED to LED instead of sliding.", 1}},
+     fibres, false, "line", 0,
+     "Thin rings or spiral arms moving behind the bars. A line shows only where it crosses a bar, as a point of light, so the points race along the bars, speeding up as a line turns towards the bar's direction and overtaking each other along the curves. Weave crosses a second set of arms over the first."},
 };
 const int NUM_EFFECTS = sizeof(EFFECTS) / sizeof(EFFECTS[0]);
 
