@@ -1,5 +1,6 @@
 // beamLED: standalone LED ceiling renderer (WT32-ETH01 -> Art-Net -> pixel controller).
 // Effects work in real coordinates (metres) on the LEDs that exist, never on a dense grid.
+#include <atomic>
 #include <Arduino.h>
 
 #include "artnet.h"
@@ -40,7 +41,22 @@ static const uint32_t DOUBLE_MS = 400;  // a second press within this of the fir
 // ---------------------------------------------------------------- engine
 
 static SemaphoreHandle_t engineMutex = nullptr;  // created first thing in setup()
-void engineLock() { xSemaphoreTakeRecursive(engineMutex, portMAX_DELAY); }
+// The render loop holds the lock for most of each frame and takes it again microseconds after
+// letting go. The web server waiting for it runs on the other core, often busy with Art-Net just
+// then, so it could lose that race every time: with 6000 LEDs the page and the API stopped
+// answering altogether. So the render loop lets anyone waiting go first (up to 20 ms).
+static TaskHandle_t renderTask = nullptr;  // the loop's task (setup() runs on it)
+static std::atomic<int> lockWaiters{0};    // other tasks waiting for the lock
+void engineLock() {
+    if (xTaskGetCurrentTaskHandle() == renderTask) {
+        for (int t = 0; lockWaiters.load() > 0 && t < 20; t++) vTaskDelay(1);
+        xSemaphoreTakeRecursive(engineMutex, portMAX_DELAY);
+        return;
+    }
+    lockWaiters++;
+    xSemaphoreTakeRecursive(engineMutex, portMAX_DELAY);
+    lockWaiters--;
+}
 void engineUnlock() { xSemaphoreGiveRecursive(engineMutex); }
 
 static bool pendingByAuto = false;  // the change under way is Auto's: not one to remember
@@ -432,6 +448,7 @@ static void pollButton() {
 
 void setup() {
     engineMutex = xSemaphoreCreateRecursiveMutex();
+    renderTask = xTaskGetCurrentTaskHandle();
     Serial.begin(115200);
     Serial.println("\nbeamLED starting");
     pinMode(cfg::BUTTON_PIN, INPUT_PULLUP);
@@ -489,6 +506,11 @@ void loop() {
         if (netCanSendTo(to)) artnet.send(to, leds, outLut);  // handed to its task
         else if (netCanSend()) artnet.skipped++;
     }
+
+    // A frame that ran into the next one (a big layout, a heavy effect): give way for a moment, or
+    // the loop takes the engine lock again at once and the web server (on the other core, waiting
+    // for it) never gets in: with 6000 LEDs the page and the API stopped answering altogether
+    if ((int32_t)(micros() - due) >= 0) vTaskDelay(1);
 
     // Stats, smoothed
     renderMs += ((t1 - t0) / 1000.f - renderMs) * 0.05f;
