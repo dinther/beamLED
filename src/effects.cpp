@@ -557,11 +557,11 @@ struct Drop { float x, y, r, fade; uint8_t col; bool live; };
 static Drop drops[10];
 
 static void dropsFx(Ctx& c) {
-    enum { kSpeed, kWidth, kRate, kMaxRadius, kCentreX, kCentreY, kAim, kBg };
+    enum { kSpeed, kWidth, kRate, kMaxRadius, kCentreX, kCentreY, kColourStep, kBg };
     const float rate = c.p[kRate], speed = c.p[kSpeed], width = c.p[kWidth], maxR = c.p[kMaxRadius],
-                bg = c.p[kBg];
-    // Where drops land: aim 0 = anywhere, 1 = at Centre X, Y
-    const float aimX = c.p[kCentreY] * W, aimY = Y[0] + c.p[kCentreX] * H, aim = c.p[kAim];
+                bg = c.p[kBg], step = c.p[kColourStep];
+    // Where drops land: at Centre X (across the bars), Centre Y (along them)
+    const float landX = c.p[kCentreY] * W, landY = Y[0] + c.p[kCentreX] * H;
     if (c.s[7] == 0) {
         c.s[7] = 1;
         for (Drop& d : drops) d.live = false;
@@ -590,9 +590,15 @@ static void dropsFx(Ctx& c) {
     for (; spawn > 0; spawn--) {
         for (Drop& d : drops) {
             if (d.live) continue;
-            d = {frand() * W, Y[0] + frand() * H, 0, 0, random8(), true};
-            d.x += aim * (aimX - d.x);
-            d.y += aim * (aimY - d.y);
+            // Its colour: random from the palette, or Colour step further along it than the last drop's
+            uint8_t col;
+            if (step > 0.001f) {
+                c.s[4] = fmodf(c.s[4] + step, 1.f);
+                col = (uint8_t)(c.s[4] * 256.f);
+            } else {
+                col = random8();
+            }
+            d = {landX, landY, 0, 0, col, true};
             break;
         }
     }
@@ -1344,12 +1350,12 @@ const EffectDef EFFECTS[] = {
       {"Ring width (%)", 8, 50, 20, 1, "The width of a ring's bright band, as a share of the ceiling's shorter side.", 1},
       {"Drops per minute", 1, 60, 10, 1, "How many new drops fall per minute. At most 10 rings show at once. In Beats timing this slider is replaced by beats per drop, and each drop lands on the beat."},
       {"Max radius (%)", 20, 240, 120, 1, "How far a ring spreads before it has faded out completely, as a share of the ceiling's shorter side.", 1},
-      {"Centre X", -0.2f, 1.2f, 0.5f, 0.01f, "Where across the rows the drops land: 0 = the first row, 1 = the last. Only used when Aim is above 0: at Aim 0 drops fall at random places and Centre X, Y do nothing. A Motion on it moves the landing point; each ring stays where its drop fell."},
-      {"Centre Y", -0.2f, 1.2f, 0.5f, 0.01f, "Where along the rows the drops land: 0 = the start of the rows, 1 = their end. Only used when Aim is above 0: at Aim 0 drops fall at random places and Centre X, Y do nothing. A Motion on it moves the landing point; each ring stays where its drop fell."},
-      {"Aim (0 = random)", 0, 1, 1, 0.01f, "Where drops land. 0 = at random places anywhere on the ceiling (Centre X, Y do nothing). 1 = exactly at Centre X, Y. In between: scattered around Centre X, Y, the closer to 1 the tighter."},
+      {"Centre X", -0.2f, 1.2f, 0.5f, 0.01f, "Where across the rows the drops land: 0 = the first row, 1 = the last. A Motion on it moves the landing point; each ring stays where its drop fell."},
+      {"Centre Y", -0.2f, 1.2f, 0.5f, 0.01f, "Where along the rows the drops land: 0 = the start of the rows, 1 = their end. A Motion on it moves the landing point; each ring stays where its drop fell."},
+      {"Colour step", 0, 1, 0, 0.01f, "Each drop's colour: 0 = a random colour from the palette; above 0 each new drop this far along the palette from the one before (0.5 = opposite colours in turn, small = walking slowly through it)."},
       {"Background", 0, 0.5f, 0.03f, 0.01f, H_BG}},
      dropsFx, false, "drop", 2,
-     "Big rings spreading from where drops land and fading out, like raindrops on a pond: at the point Centre X, Y sets (which Motions can move), or at random places. Each drop takes a random palette colour."},
+     "Big rings spreading from where drops land and fading out, like raindrops on a pond, at the point Centre X, Y sets (Motions on them move it). Each drop takes a palette colour: random, or Colour step further along the palette than the last."},
     {"Interference", 7,
      {{"Speed (%/s)", -20, 20, 3, 0.2f, "How fast the waves travel, as a share of the ceiling's shorter side per second (100%/s crosses it in a second): positive outward, negative inward. In Beats timing this slider is replaced by beats per wave.", 1},
       {"Wave spacing (%)", 16, 100, 36, 1, "The distance from one wave to the next, as a share of the ceiling's shorter side.", 1},
