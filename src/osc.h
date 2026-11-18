@@ -13,7 +13,7 @@
 //   /beamled/preset i, /beamled/next, /beamled/prev, /beamled/on T, /beamled/brightness f 0..1,
 //   /beamled/link T, /beamled/save (no tempo: Ableton Link moves it by fractions of a BPM all the
 //   time, which would reach every listener as a stream of changes; set it on the web page or in Live)
-//   /beamled/sparkle f 0..1 | sparkle_timing i (0 free, 1..4 = 1/4 .. 1/32) | sparkle_burst T |
+//   /beamled/sparkle f 0..1 | sparkle_timing i (0 free; every 1 = 1, 2 = 1/2, 3 = 1/4, 4 = 1/8, 5 = 2, 6 = 4 beats) | sparkle_burst T |
 //   sparkle_colour i (0 white, 1 the playing preset's palette, 1 + n palette n) |
 //   sparkle_colour_step f 0..1 (0 random): the Sparkle overlay, one for all presets
 //   /beamled/palette i: palette lock, 0 = each preset's own, k = every preset plays palette k (not saved)

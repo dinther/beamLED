@@ -315,7 +315,7 @@ void storeLoad() {
     if (autoSettings.barsExp > 6) autoSettings.barsExp = 3;
     if (!(autoSettings.seconds >= 2 && autoSettings.seconds <= 3600)) autoSettings.seconds = 60;
     if (!(sparkleSettings.amount >= 0 && sparkleSettings.amount <= 1)) sparkleSettings.amount = 0;
-    if ((sparkleSettings.beat & SPARKLE_GRID) > 4 || (sparkleSettings.beat & ~(SPARKLE_GRID | SPARKLE_BURST)))
+    if ((sparkleSettings.beat & SPARKLE_GRID) > 6 || (sparkleSettings.beat & ~(SPARKLE_GRID | SPARKLE_BURST)))
         sparkleSettings.beat = 0;
     if (sparkleSettings.colour > 1 + paletteCount) sparkleSettings.colour = 0;
     if (!(sparkleSettings.colourStep >= 0 && sparkleSettings.colourStep <= 1)) sparkleSettings.colourStep = 0;

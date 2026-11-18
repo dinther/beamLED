@@ -217,7 +217,7 @@ const H = {
   beats: 'How many beats one cycle takes; 4 beats = one bar. After a change the motion eases onto the new beat grid over a few seconds instead of jumping.',
   reverse: 'Runs the cycle backwards: the lighthouse turns the other way, bands roll back, rings flow in.',
   sparkle: 'Twinkles on top of whatever preset plays: one setting for all presets, kept when the preset changes (not drawn over the Sparkle effect, which is twinkles itself). 0 = none, 1 = about 8% of the LEDs lit at any moment. Their colours: Sparkle colour.',
-  sparkleBeat: 'When twinkles start. Free: at any moment. 1/4, 1/8, 1/16, 1/32: only on quarter, eighth, sixteenth or 32nd notes, on the beat of Ableton Link or the board’s own tempo; the same amount of sparkle as Free, in time with the music.',
+  sparkleBeat: 'When twinkles start. Free: at any moment. Otherwise only on the beat grid of Ableton Link or the board’s own tempo: every 4 beats (once a bar), 2 beats, 1 beat, 1/2, 1/4 or 1/8 beat. The same amount of sparkle as Free, in time with the music.',
   mirror: 'The right half of the ceiling becomes the mirror image of the left, along the rows: anything moving right on the left half moves left on the right half. Only the left half is rendered, so the effect takes about half the time. The Sparkle overlay is not mirrored.',
   sparkleBurst: 'Off: single twinkles, each with the same soft rise and fade as in Free. On: a batch flashes at once on each tick and fades out before the next; Sparkle overlay sets how many (1 = 6% of the LEDs).',
   paletteLock: 'Lock every preset to one palette, for a show in one set of colours: whichever preset plays (picked here, by the button, by Auto or OSC) uses this palette instead of its own. The presets’ own palettes are kept, so Each preset’s own brings them back. Not saved: after a restart each preset has its own palette again.',
@@ -379,8 +379,11 @@ function sparkleRows(p, ef) {
   const rows = [slider('Sparkle overlay', 0, 1, 0.01, sk.amount, v => v.toFixed(2),
     v => { sk.amount = v; liveSend('/beamled/sparkle', v, () => send({amount: v}), true); },
     H.sparkle + (ef.sparkle ? '' : ' (The playing effect is Sparkle itself: no overlay on it.)'), 'sparkle')];
-  rows.push(select('Sparkle timing', ['Free', '1/4', '1/8', '1/16', '1/32'], sk.beat || 0, v => {
-    sk.beat = v; send({beat: v}); draw(); }, H.sparkleBeat));
+  // Listed slow to fast; the codes are the board's (1..4 = 1, 1/2, 1/4, 1/8 beat; 5 = 2, 6 = 4 beats)
+  const beatCodes = [0, 6, 5, 1, 2, 3, 4];
+  rows.push(select('Sparkle timing', ['Free', '4 beats (1 bar)', '2 beats', '1 beat', '1/2 beat', '1/4 beat', '1/8 beat'],
+    Math.max(0, beatCodes.indexOf(sk.beat || 0)), i => {
+      sk.beat = beatCodes[i]; send({beat: sk.beat}); draw(); }, H.sparkleBeat));
   const burst = h('input', {type: 'checkbox', checked: !!sk.burst});
   burst.onchange = () => { sk.burst = burst.checked; send({burst: burst.checked}); };
   const bRow = field('Bursts', burst, H.sparkleBurst);

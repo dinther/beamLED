@@ -243,9 +243,9 @@ static inline float burstLevel(uint16_t p) {
     return d * d;
 }
 
-// On the beat: on each tick (div per beat) a batch of random LEDs lights up; each fades out within
+// On the beat: on each tick (div per beat, 0.25 = once a bar) a batch of random LEDs lights up; each fades out within
 // 90% of a tick. density 1 = 6% of the LEDs per burst.
-static void burstStep(float density, double beat, float bpm, int div, float dt) {
+static void burstStep(float density, double beat, float bpm, float div, float dt) {
     static int64_t lastTick = INT64_MIN;
     const int64_t tick = (int64_t)floor(beat * div);
     const float life = 0.9f * 60.f / (fmaxf(bpm, 20.f) * div);
@@ -269,7 +269,7 @@ static void burstStep(float density, double beat, float bpm, int div, float dt) 
 
 // Twinkles as in free sparkle, but each starts on a tick: the ones that would have started at
 // random since the last tick all start on it
-static void gridStep(float density, double beat, int div, float dt) {
+static void gridStep(float density, double beat, float div, float dt) {
     const float life = 1.2f;
     static int64_t lastTick = INT64_MIN;
     static float due = 0;  // twinkles owed since the last tick
@@ -295,7 +295,7 @@ static void gridStep(float density, double beat, int div, float dt) {
     }
 }
 
-void sparkleOverlay(CRGB* out, float density, float dt, const CRGB* lut, double beat, float bpm, int div,
+void sparkleOverlay(CRGB* out, float density, float dt, const CRGB* lut, double beat, float bpm, float div,
                     bool burst, float colourStep) {
     burst = burst && div > 0;
     spStep = lut ? colourStep : 0;  // white: nothing to step along

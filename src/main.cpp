@@ -335,8 +335,10 @@ static void renderFrame(float dt) {
                 lut = spLut;
             }
         }
-        const int grid = sk.beat & SPARKLE_GRID;  // 1/4, 1/8, 1/16, 1/32: 1, 2, 4, 8 per beat
-        const int div = grid >= 1 && grid <= 4 ? 1 << (grid - 1) : 0;
+        // Ticks per beat by timing code: 1..4 = every 1, 1/2, 1/4, 1/8 beat; 5 = every 2 beats, 6 = every 4
+        static const float DIV[7] = {0, 1, 2, 4, 8, 0.5f, 0.25f};
+        const int grid = sk.beat & SPARKLE_GRID;
+        const float div = grid <= 6 ? DIV[grid] : 0;
         sparkleOverlay(leds, sk.amount, dt, lut, beat.beat, (float)beat.bpm, div, (sk.beat & SPARKLE_BURST) != 0, sk.colourStep);
     }
 }

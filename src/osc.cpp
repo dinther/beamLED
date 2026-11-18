@@ -91,7 +91,7 @@ static bool nodeInfo(int id, NodeInfo& n, char* path, size_t len) {
             case G_AUTO: n = {'T', 3, false, 0, 1, "Auto: the presets change by themselves, every so many seconds or bars as set on the web page, among the presets that are in Auto. No argument toggles."}; break;
             case G_LINK: n = {'T', 3, false, 0, 1, "Ableton Link: Enabled (true) or Disabled (false). No argument toggles."}; break;
             case G_SPARKLE: n = {'f', 3, true, 0, 1, "Sparkle overlay, the same over every preset: twinkles on top of the effect (their colours: sparkle_colour). 0 = none, 1 = about 8% of the LEDs lit at a time. Not drawn over the Sparkle effect."}; break;
-            case G_SPARKLE_TIMING: n = {'i', 3, true, 0, 4, "Sparkle overlay timing: 0 = free, twinkles start at any moment; 1, 2, 3, 4 = they start only on quarter, eighth, sixteenth or 32nd notes."}; break;
+            case G_SPARKLE_TIMING: n = {'i', 3, true, 0, 6, "Sparkle overlay timing: 0 = free, twinkles start at any moment; otherwise they start only every 1 = 1 beat, 2 = 1/2 beat, 3 = 1/4 beat, 4 = 1/8 beat, 5 = 2 beats, 6 = 4 beats (a bar)."}; break;
             case G_SPARKLE_BURST: n = {'T', 3, false, 0, 1, "Sparkle overlay, with a timing other than free: true = a batch flashes on each tick and fades out before the next, false = single twinkles. No argument toggles."}; break;
             case G_SPARKLE_COLOUR: n = {'i', 3, true, 0, (float)(1 + paletteCount), "Sparkle overlay colours: 0 = white, 1 = the playing preset's palette, 2 = palette 1, 3 = palette 2, and so on (palette n = n + 1)."}; break;
             case G_SPARKLE_STEP: n = {'f', 3, true, 0, 1, "Sparkle overlay colour step: 0 = each twinkle a random colour from its palette; above 0 each new twinkle this far along the palette from the one before (0.5 = opposite colours in turn). Not with white twinkles."}; break;
@@ -357,8 +357,8 @@ static void apply(const char* path, const Arg* a, int n) {
             case G_AUTO: autoSettings.enabled = on; storeMarkDirty(); webChanged(); break;
             case G_SPARKLE: sparkleSettings.amount = constrain(v, 0.f, 1.f); storeMarkDirty(); break;
             case G_SPARKLE_TIMING:
-                sparkleSettings.beat = (sparkleSettings.beat & SPARKLE_BURST) | constrain((int)v, 0, 4);
-                storeMarkDirty(); webChanged(); break;  // the page shows Bursts only with a timing
+                sparkleSettings.beat = (sparkleSettings.beat & SPARKLE_BURST) | constrain((int)v, 0, 6);
+                storeMarkDirty(); webChanged(); break;  // the page greys Bursts with free timing
             case G_SPARKLE_BURST:
                 sparkleSettings.beat = (sparkleSettings.beat & SPARKLE_GRID) | (on ? SPARKLE_BURST : 0);
                 storeMarkDirty(); break;

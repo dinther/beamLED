@@ -80,8 +80,9 @@ struct AutoSettings {
 // is twinkles itself). One for all presets, kept across preset changes.
 struct SparkleSettings {
     float amount;    // 0 = off .. 1 = about 8% of the LEDs lit at a time
-    uint8_t beat;    // low bits (SPARKLE_GRID): 0 = free, 1..4 = new twinkles start only on 1/4,
-                     // 1/8, 1/16 or 1/32 notes; SPARKLE_BURST: short flashes, gone before the next tick
+    uint8_t beat;    // low bits (SPARKLE_GRID): 0 = free; new twinkles start only every 1 = 1 beat,
+                     // 2 = 1/2, 3 = 1/4, 4 = 1/8 beat, 5 = 2 beats, 6 = 4 beats (codes kept from when
+                     // 1..4 were called 1/4 .. 1/32 notes); SPARKLE_BURST: short flashes, gone before the next tick
     uint8_t colour;  // 0 = white, 1 = the playing preset's palette, 2 + k = palette k
     float colourStep;  // 0 = random colours; else each new twinkle this far along the palette
                        // from the one before (added later: an 8-byte save loads it as 0)

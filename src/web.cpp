@@ -123,7 +123,7 @@ static bool readBody(JsonDocument& d) {
 // The Sparkle overlay, one for all presets
 static void sparkleJson(JsonObject o) {
     o["amount"] = sparkleSettings.amount;
-    o["beat"] = sparkleSettings.beat & SPARKLE_GRID;  // 0 = free, 1..4 = 1/4, 1/8, 1/16, 1/32
+    o["beat"] = sparkleSettings.beat & SPARKLE_GRID;  // 0 = free; every 1 = 1, 2 = 1/2, 3 = 1/4, 4 = 1/8, 5 = 2, 6 = 4 beats
     o["burst"] = (sparkleSettings.beat & SPARKLE_BURST) != 0;
     o["colour"] = sparkleSettings.colour;  // 0 = white, 1 = the playing preset's palette, 2 + k = palette k
     o["step"] = sparkleSettings.colourStep;  // 0 = random colours, else along the palette by this much
@@ -131,7 +131,7 @@ static void sparkleJson(JsonObject o) {
 static void sparkleFromJson(JsonObject d) {
     SparkleSettings& s = sparkleSettings;
     if (d["amount"].is<float>()) s.amount = constrain(d["amount"].as<float>(), 0.f, 1.f);
-    if (d["beat"].is<int>()) s.beat = (s.beat & SPARKLE_BURST) | constrain(d["beat"].as<int>(), 0, 4);
+    if (d["beat"].is<int>()) s.beat = (s.beat & SPARKLE_BURST) | constrain(d["beat"].as<int>(), 0, 6);
     if (d["burst"].is<bool>()) s.beat = (s.beat & SPARKLE_GRID) | (d["burst"].as<bool>() ? SPARKLE_BURST : 0);
     if (d["colour"].is<int>()) s.colour = constrain(d["colour"].as<int>(), 0, 1 + paletteCount);
     if (d["step"].is<float>()) s.colourStep = constrain(d["step"].as<float>(), 0.f, 1.f);
