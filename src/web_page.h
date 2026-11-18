@@ -272,7 +272,7 @@ const H = {
   nx: 'How many LEDs each row (bar) has.',
   ny: 'How many rows (bars) there are.',
   len: 'The length of a row in metres; the LED spacing is this divided by LEDs per row.',
-  aspect: 'Row spacing divided by LED spacing, for evenly spaced rows. Used when Measured rows is off or the row count differs from the ceiling’s.',
+  rowSpacing: 'The distance from one row to the next in metres, for evenly spaced rows. Used when Measured rows is off or the row count differs from the ceiling’s.',
   measured: 'Uses measured, uneven row positions built into the firmware, when the number of rows matches them. Off: rows evenly spaced by Aspect.',
   rowUni: 'The Art-Net universe each row starts at. A row of more than 170 LEDs continues into the next universe(s). Set them to match how the pixel controller is patched.',
   fill: 'Numbers the rows one after another, starting at the number given, leaving each row the universes it needs.',
@@ -938,7 +938,10 @@ function paletteEditor(q, i) {
 function layoutCard() {
   const L = S.layout;
   const num = (v, step) => h('input', {type: 'number', value: v, step, min: 0});
-  const nx = num(L.nx, 1), ny = num(L.ny, 1), len = num(L.length, 0.01), asp = num(L.aspect, 0.1);
+  const nx = num(L.nx, 1), ny = num(L.ny, 1), len = num(L.length, 0.01);
+  // Row spacing in metres; the board keeps it as row spacing ÷ LED spacing (aspect)
+  const sp = num(+(L.aspect * L.length / Math.max(1, L.nx)).toFixed(3), 0.001);
+  const aspect = () => +sp.value / (+len.value / Math.max(1, +nx.value));
   const meas = h('input', {type: 'checkbox', checked: L.measured});
   const info = h('div', {className: 'hint'});
   // Start universe per row; a row uses ceil(LEDs per row / 170) universes from there
@@ -977,23 +980,23 @@ function layoutCard() {
     const used = uni.slice(0, +ny.value), dup = new Set();
     used.forEach((u, i) => used.forEach((v, j) => { if (i != j && u < v + upr() && v < u + upr()) dup.add(i + 1); }));
     info.textContent = 'LED spacing ' + (pitch * 1000).toFixed(1) + ' mm, row spacing ' +
-      (m ? 'measured (ceiling)' : (pitch * +asp.value).toFixed(3) + ' m') + ' · ' + leds + ' LEDs' +
+      (m ? 'measured (ceiling)' : (+sp.value).toFixed(3) + ' m') + ' · ' + leds + ' LEDs' +
       (leds > L.maxLeds ? ' (max ' + L.maxLeds + ')' : '') + ' · ' + upr() + ' universe' + (upr() > 1 ? 's' : '') +
       ' per row' + (dup.size ? ' · overlapping universes: rows ' + [...dup].join(', ') : '');
   };
   nx.oninput = () => { table(); upd(); };
   ny.oninput = () => { table(); upd(); };
-  [len, asp, meas].forEach(e => e.oninput = upd);
+  [len, sp, meas].forEach(e => e.oninput = upd);
   const apply = button('Apply', H.apply, {className: 'on'});
   const msg = h('div', {className: 'hint'});
-  apply.onclick = () => post('/api/layout', {nx: +nx.value, ny: +ny.value, length: +len.value, aspect: +asp.value,
+  apply.onclick = () => post('/api/layout', {nx: +nx.value, ny: +ny.value, length: +len.value, aspect: aspect(),
       measured: meas.checked, rowUni: uni.slice(0, +ny.value), rowOrder: ord.slice(0, +ny.value)})
     .then(useState).catch(e => { msg.textContent = e.message; });
   table();
   upd();
   return h('div', {className: 'card'},
     field('LEDs per row', nx, H.nx), field('Rows', ny, H.ny), field('Row length (m)', len, H.len),
-    field('Aspect', asp, H.aspect), h('div', {className: 'row'}, h('label'), h('span', {className: 'hint', textContent: 'row spacing ÷ LED spacing'})),
+    field('Row spacing (m)', sp, H.rowSpacing),
     field('Measured rows', meas, H.measured),
     tip(h('div', {className: 'row'}, h('label', {textContent: 'Row universes'}), h('span', {className: 'hint', textContent: 'consecutive from'}), fillFrom, fill), H.rowUni),
     tip(h('div', {className: 'row'}, h('label', {textContent: 'Colour order'}), h('span', {className: 'hint', textContent: 'all rows'}), allOrd), H.rowOrder),

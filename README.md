@@ -210,8 +210,8 @@ fetches it into `.pio/deps/link` at build time.
 ## Layout
 
 Set on the page under **Layout**: LEDs per row, rows, row length in metres, and either the
-ceiling's measured row positions (`Measured rows`, 15 rows) or evenly spaced rows (`Aspect`: row
-spacing divided by LED spacing). Each row's start universe can be set, or filled in one after
+ceiling's measured row positions (`Measured rows`, 15 rows) or evenly spaced rows (`Row spacing`
+in metres). Each row's start universe can be set, or filled in one after
 another. The Art-Net destination and the gamma curve are under **Output**.
 
 ## How it works
