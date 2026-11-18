@@ -258,10 +258,10 @@ const H = {
   save: 'Stores this preset as it plays now: its name, effect, palette, sliders, motions, timing and pulse. Until you save, changes (here or from OSC) play on the ceiling but the preset keeps its saved settings, so you can tinker freely. Unsaved changes are kept while you switch presets, and lost on a power cut.',
   revert: 'Goes back to this preset’s saved settings, dropping the changes since the last Save.',
   motion: 'A Motion moves one of this effect’s sliders back and forth by itself, between From and To: a beam swinging (Lighthouse Angle), bands scrolling to and fro (Offset), a width breathing. Off: no motion. The slider it moves shows ↔ and follows it. Up to three motions can move three sliders (Drops: Centre X and Centre Y, say), or run out of step with Phase.',
-  shape: 'How it travels between the ends. Sine: smooth, like a pendulum. Linear: a steady speed, turning sharply at the ends. Ease in-out: slow at the ends, quick through the middle. Hold at ends: rests at each end before turning back. Overshoot: goes a little past each end and settles. Bounce: bounces as it arrives at each end. Random slide: glides to a new random value between From and To every half period (the same values every time, on the beat grid in beats). Min max: From for the first half of the period, To for the second, switching at once with no transition. Random jump: the same random values as Random slide, but it jumps to each one at once and holds it for half a period. The drawing below shows one there-and-back (Random slide and Random jump: three).',
+  shape: 'How it travels between the ends. Sine: smooth, like a pendulum. Linear: a steady speed, turning sharply at the ends. Ease in-out: slow at the ends, quick through the middle. Hold at ends: rests at each end before turning back. Overshoot: goes a little past each end and settles. Bounce: bounces as it arrives at each end. Random slide: glides to a new random value between From and To every half period (the same values every time, on the beat grid in beats). Min max: From for the first half of the period, To for the second, switching at once with no transition. Random jump: the same random values as Random slide, but it jumps to each one at once and holds it for half a period. The drawing below shows one there-and-back (Random slide and Random jump: three). Sawtooth: steadily from From to To over the whole period, then straight back to From; on an Angle from −180 to 180 that is a turn that never stops (−180 and 180 are the same direction).',
   periodIn: 'Seconds: one there-and-back takes a set time (scaled with the tempo when the preset follows it). Beats: it takes a number of beats and keeps to the beat grid with Ableton Link, at From on the bar.',
-  periodBeats: 'How many beats one full there-and-back takes; 4 beats = one bar. With 8 beats it is at From on one bar, at To on the next bar, and back at From on the bar after that.',
-  periodSec: 'How many seconds one full there-and-back takes.',
+  periodBeats: 'How many beats one full there-and-back takes; 4 beats = one bar. With 8 beats it is at From on one bar, at To on the next bar, and back at From on the bar after that. Sawtooth: one run from From to To takes that many beats (on an Angle from −180 to 180, one full turn).',
+  periodSec: 'How many seconds one full there-and-back takes (Sawtooth: one run from From to To).',
   from: 'One end of the motion, in the slider’s own units.',
   to: 'The other end of the motion, in the slider’s own units. To below From is fine: it simply runs the other way.',
   phase: 'Where in its cycle the motion is: 0 = at From at the start (or on the bar), 0.5 = at To. Give a second motion 0.25 or 0.5 to run it out of step with the first.',
@@ -734,7 +734,7 @@ function applyFolds(app) {
 }
 
 // ---- Motions: the same shapes as the board (store.cpp, motionShape)
-const SHAPES = ['Sine', 'Linear', 'Ease in-out', 'Hold at ends', 'Overshoot', 'Bounce', 'Random slide', 'Min max', 'Random jump'];
+const SHAPES = ['Sine', 'Linear', 'Ease in-out', 'Hold at ends', 'Overshoot', 'Bounce', 'Random slide', 'Min max', 'Random jump', 'Sawtooth'];
 // Random's value for half-cycle n of motion m: the board's hash (store.cpp, randomAt)
 function randomAt(n, m) {
   let x = (Math.imul(n >>> 0, 2654435761) + Math.imul(m, 40503) + 12345) >>> 0;
@@ -747,6 +747,7 @@ function motionShape(s, ph, cycle = 0, m = 0) {
   ph -= Math.floor(ph);
   const easeIO = x => x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
   if (s == 7) return ph < 0.5 ? 0 : 1;
+  if (s == 9) return ph;  // Sawtooth: From to To, then straight back
   if (s == 8) return randomAt((cycle * 2 + (ph < 0.5 ? 0 : 1)) >>> 0, m);
   if (s == 6) {
     const n = (cycle * 2 + (ph < 0.5 ? 0 : 1)) >>> 0, u = ph < 0.5 ? ph * 2 : ph * 2 - 1;
@@ -773,7 +774,8 @@ function curve(mo) {
   const ns = 'http://www.w3.org/2000/svg', svg = document.createElementNS(ns, 'svg');
   svg.setAttribute('viewBox', '0 0 200 44'); svg.setAttribute('preserveAspectRatio', 'none'); svg.classList.add('curve');
   let d = '';
-  const span = mo.shape == 6 || mo.shape == 8 ? 3 : 1;  // Random slide and Random jump: three cycles, to show them wander
+  // Random slide and Random jump: three cycles, to show them wander; Sawtooth: two, to show the jump back
+  const span = mo.shape == 6 || mo.shape == 8 ? 3 : (mo.shape == 9 ? 2 : 1);
   for (let k = 0; k <= 200; k++) { const x = k / 200 * span + mo.phase; const y = motionShape(mo.shape, x, Math.floor(x), 0); d += (k ? 'L' : 'M') + k + ' ' + (36 - y * 28).toFixed(1); }
   for (const y of [8, 36]) { const l = document.createElementNS(ns, 'line'); l.setAttribute('x1', 0); l.setAttribute('x2', 200); l.setAttribute('y1', y); l.setAttribute('y2', y); svg.append(l); }
   const path = document.createElementNS(ns, 'path'); path.setAttribute('d', d); svg.append(path);

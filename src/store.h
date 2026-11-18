@@ -52,7 +52,7 @@ static_assert(sizeof(PresetSync) == 8, "PresetSync is saved as is: its size must
 // along a shape. Its period is one full there-and-back, in seconds or in beats (then it is on the
 // beat grid: From on the bar at phase 0). It doesn't change the slider's own value.
 enum MotionShape : uint8_t { SHAPE_SINE, SHAPE_LINEAR, SHAPE_EASE, SHAPE_HOLD, SHAPE_OVERSHOOT, SHAPE_BOUNCE,
-                             SHAPE_RANDOM, SHAPE_MINMAX, SHAPE_JUMP, NUM_SHAPES };
+                             SHAPE_RANDOM, SHAPE_MINMAX, SHAPE_JUMP, SHAPE_SAW, NUM_SHAPES };
 struct Motion {
     uint8_t target;    // 0 = off, else the effect's parameter + 1
     uint8_t shape;     // MotionShape

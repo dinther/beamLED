@@ -694,6 +694,9 @@ float motionShape(uint8_t shape, float ph, uint32_t cycle, int m) {
     if (shape == SHAPE_JUMP)  // Random's values, but jumped to at once and held for each half cycle
         return randomAt(cycle * 2 + (ph < 0.5f ? 0 : 1), m);
     if (shape == SHAPE_SINE) return 0.5f - 0.5f * cosf(6.2831853f * ph);
+    // Steadily From to To over the whole period, then straight back to From: on an Angle from -180 to
+    // 180 a turn that never stops (the jump lands on the same direction)
+    if (shape == SHAPE_SAW) return ph;
     if (shape == SHAPE_BOUNCE) return ph < 0.5f ? bounceOut(2 * ph) : 1 - bounceOut(2 * ph - 1);
     const float x = ph < 0.5f ? 2 * ph : 2 - 2 * ph;  // there, then back
     switch (shape) {
