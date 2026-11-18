@@ -1289,7 +1289,7 @@ const EffectDef EFFECTS[] = {
      tunnel, false, "fibre turn", 0,
      "Flying down a fibre-lined tunnel. Its centre swings on a pendulum."},
     {"Chain", 8,
-     {{"Speed (bars/s)", 0.1f, 20, 4, 0.1f, "How many bars a shot travels per second."},
+     {{"Speed (bars/s)", 0.01f, 20, 4, 0.01f, "How many bars a shot travels per second."},
       {"Length (bars)", 0.01f, 5, 1, 0.01f, "Length of a shot, in bars: the whole palette over that stretch."},
       {"Shots per minute", 1, 240, 60, 1, "Time: shots fired per minute. Beats: beats per shot."},
       {"Fade (s)", 0.2f, 20, 4, 0.1f, "Seconds until a shot has faded out."},
