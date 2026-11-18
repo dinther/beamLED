@@ -1051,7 +1051,7 @@ static inline float lnFast(float x) {
 }
 
 struct RiflingLook {
-    float grooves, twist, sharp, halo, glowW;
+    float grooves, twist, power, halo, glowW;
     // Brightness at p (relative to the rifling's centre, in screen units: the height is 1)
     float at(float px, float py) const {
         const float r2 = px * px + py * py;
@@ -1060,8 +1060,12 @@ struct RiflingLook {
         const float tw = a - twist * lnFast(fmaxf(r, 0.015f));  // radians
         const float cs = cosCyc((tw * grooves - 0.5f) * (1.f / TAU));            // cos(phase - 0.5)
         float sp = fmaxf(cs, 0.f);
-        const float s2 = sp * sp, s4 = s2 * s2, s8 = s4 * s4;
-        sp = s8 * s4;                                       // ^12: the sharp highlight
+        if (power == 12.f) {  // the original's sharp highlight, ^12 by squarings
+            const float s2 = sp * sp, s4 = s2 * s2, s8 = s4 * s4;
+            sp = s8 * s4;
+        } else {              // softer (Smooth): ^power
+            sp = sp > 1e-6f ? expNeg(power * lnFast(sp)) : 0.f;
+        }
         float red = fminf(sp * 1.4f, 1.f);
         if (halo > 0) {  // thin lines where the cosine crosses 0
             const float g = cs * glowW;
@@ -1072,12 +1076,12 @@ struct RiflingLook {
 };
 
 static void fibres(Ctx& c) {
-    enum { kSpeed, kSize, kGrooves, kTwist, kWidth, kHalo, kSpacing, kCentreY };
+    enum { kSpeed, kSize, kGrooves, kSmooth, kWidth, kHalo, kSpacing, kCentreY };
     RiflingLook look;
     look.grooves = roundFast(c.p[kGrooves]);
-    look.twist = c.p[kTwist];
+    look.twist = -0.8f;  // as the original
     look.halo = c.p[kHalo];
-    look.sharp = 1.f;
+    look.power = 12.f - 10.5f * c.p[kSmooth];  // Smooth 0: the original's ^12; 1: ^1.5
     look.glowW = 32.f * c.p[kWidth];  // Line width 1 = the original's sharpness; higher = finer
     advance(c, c.s[0], c.p[kSpeed] * (1.f / 360.f), 1.f);  // turns
     c.s[0] = fmodf(c.s[0], 4096.f);
@@ -1386,7 +1390,7 @@ const EffectDef EFFECTS[] = {
      {{"Speed (deg/s)", -90, 90, -8.6f, 0.1f, "How fast the riflings turn about their centres, in degrees per second (the second one the other way, as it is mirrored); 0 = still. In Beats timing this slider gives way to beats per turn."},
       {"Size (%)", 20, 300, 100, 1, "How big the riflings are: 100% = as the original, smaller = tighter spirals with more of them showing."},
       {"Grooves", 1, 24, 12, 1, "How many grooves each rifling has."},
-      {"Twist", -3, 3, -0.8f, 0.01f, "How tightly the grooves wind (below 0 the other way): 0 = straight spokes."},
+      {"Smooth", 0, 1, 0, 0.01f, "How soft the grooves' highlights are: 0 = sharp, as the original; higher = softer and wider, gliding along the bars rather than flickering."},
       {"Line width", 0.2f, 3, 1, 0.01f, "How fine the halo lines beside each groove are: 1 = as the original, higher = finer."},
       {"Halo", 0, 1, 0.2f, 0.01f, "How bright the thin halo lines beside each groove are. 0 = only the sharp highlights."},
       {"Spacing", 0, 0.5f, 0.35f, 0.01f, "How far in from the side the second rifling of each quarter is, as a share of the ceiling's width across the bars."},
