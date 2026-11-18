@@ -51,7 +51,7 @@ select,input[type=text],input[type=password],input[type=number]{flex:1;min-width
 .pal .sw{cursor:copy}
 .pal .stop input{position:absolute;left:0;top:100%;width:1px;height:1px;opacity:0;pointer-events:none;border:0;padding:0}
 .pal .stop:hover,.pal .stop.drag{border-color:var(--acc)}
-#pv{display:block;width:100%;border-radius:6px;background:#050505}
+#pv{display:block;margin:0 auto;border-radius:6px;background:#050505}
 .pal .mid{position:absolute;top:19px;width:10px;height:10px;margin-left:-5px;background:#bbb;border:1px solid #000;transform:rotate(45deg);cursor:ew-resize;touch-action:none}
 .pal .mid.set{background:var(--acc)}
 .pal .mid:hover,.pal .mid.drag{background:#fff}
@@ -1255,12 +1255,17 @@ function drawPreview(buf) {
   const L = S.layout || {};
   const ry = L.rowY && L.rowY.length == ny ? L.rowY : Array.from({length: ny}, (_, b) => b * 0.5);
   const len = L.length || 5, y0 = ry[0], depth = Math.max(ry[ny - 1] - y0, 0.5), pad = 0.4;
-  const dpr = window.devicePixelRatio || 1, W = cv.clientWidth, scale = W / (depth + 2 * pad);
-  const H = Math.round((len + 2 * pad) * scale);
-  if (cv.width != Math.round(W * dpr) || cv.height != Math.round(H * dpr)) {
-    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); cv.style.height = H + 'px';
+  // Sized in the screen's own pixels so that a bar is a whole number of pixels per LED: every LED
+  // on its own pixel, evenly spaced (no 2-then-3 pattern), the ceiling in its true proportions
+  const dpr = window.devicePixelRatio || 1, box = cv.parentElement, cs = getComputedStyle(box);
+  const avail = (box.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)) * dpr;
+  const per = Math.max(1, Math.floor(avail / (depth + 2 * pad) * len / nx));  // pixels per LED
+  const scale = per * nx / len;  // screen pixels per metre
+  const W = Math.round((depth + 2 * pad) * scale), H = Math.round((len + 2 * pad) * scale);
+  if (cv.width != W || cv.height != H) {
+    cv.width = W; cv.height = H; cv.style.width = W / dpr + 'px'; cv.style.height = H / dpr + 'px';
   }
-  if (pvBare) return drawBare(u8, nx, ny, cv, ry, y0, len, pad, scale, W, H, dpr);
+  if (pvBare) return drawBare(u8, nx, ny, cv, ry, y0, pad, scale, W, H, dpr, per);
   if (!pvOff || pvOff.width != ny || pvOff.height != nx) { pvOff = document.createElement('canvas'); pvOff.width = ny; pvOff.height = nx; }
   const oc = pvOff.getContext('2d'), img = oc.createImageData(ny, nx), d = img.data;
   for (let b = 0; b < ny; b++)
@@ -1270,15 +1275,15 @@ function drawPreview(buf) {
     }
   oc.putImageData(img, 0, 0);
   const c = cv.getContext('2d');
-  c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  c.setTransform(1, 0, 0, 1, 0, 0);
   c.imageSmoothingEnabled = true;
   c.fillStyle = '#050505'; c.fillRect(0, 0, W, H);
-  const top = pad * scale, tall = len * scale;
+  const top = Math.round(pad * scale), tall = per * nx;
   const glow = 'filter' in c;
   for (const pass of glow ? [0, 1] : [1]) {
-    c.filter = pass == 0 ? 'blur(6px)' : 'none';
+    c.filter = pass == 0 ? 'blur(' + 6 * dpr + 'px)' : 'none';
     c.globalAlpha = pass == 0 ? 0.9 : 1;
-    const w = pass == 0 ? 14 : 5;
+    const w = (pass == 0 ? 14 : 5) * dpr;
     for (let b = 0; b < ny; b++) c.drawImage(pvOff, b, 0, 1, nx, (pad + ry[b] - y0) * scale - w / 2, top, w, tall);
   }
   c.filter = 'none'; c.globalAlpha = 1;
@@ -1288,7 +1293,7 @@ function drawPreview(buf) {
 // add up, as their glare does in a camera: blurred and laid on top it is the bloom, and bright
 // LEDs go towards white in the middle with their colour in the glare.
 let pvGlow = null, pvGlowImg = null, pvAcc = null;
-function drawBare(u8, nx, ny, cv, ry, y0, len, pad, scale, W, H, dpr) {
+function drawBare(u8, nx, ny, cv, ry, y0, pad, scale, W, H, dpr, per) {
   const w = Math.max(1, Math.round(W)), h = Math.max(1, Math.round(H));
   const G = 4, gw = Math.ceil(w / G), gh = Math.ceil(h / G);
   if (!pvDots || pvDots.width != w || pvDots.height != h) {
@@ -1300,13 +1305,13 @@ function drawBare(u8, nx, ny, cv, ry, y0, len, pad, scale, W, H, dpr) {
   }
   const d = pvDotImg.data, acc = pvAcc;
   d.fill(0); acc.fill(0);
-  const top = pad * scale, step = len / nx * scale;
+  const top = Math.round(pad * scale), mid = per >> 1;
   for (let b = 0; b < ny; b++) {
     const x = Math.round((pad + ry[b] - y0) * scale);
     if (x < 0 || x >= w) continue;
     const gx = (x / G) | 0;
     for (let i = 0; i < nx; i++) {
-      const y = Math.round(top + (i + 0.5) * step);
+      const y = top + i * per + mid;  // exactly per pixels apart
       if (y < 0 || y >= h) continue;
       const s = 8 + (b * nx + i) * 3, t = (y * w + x) * 4, g = (((y / G) | 0) * gw + gx) * 3;
       const r = u8[s], gr = u8[s + 1], bl = u8[s + 2];
@@ -1321,13 +1326,13 @@ function drawBare(u8, nx, ny, cv, ry, y0, len, pad, scale, W, H, dpr) {
   }
   pvGlow.getContext('2d').putImageData(pvGlowImg, 0, 0);
   const c = cv.getContext('2d');
-  c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  c.setTransform(1, 0, 0, 1, 0, 0);
   c.filter = 'none'; c.globalAlpha = 1; c.globalCompositeOperation = 'source-over';
   c.fillStyle = '#000'; c.fillRect(0, 0, W, H);
   c.globalCompositeOperation = 'lighter';
   // the bloom: the coarse glare, smoothly enlarged and softened
   c.imageSmoothingEnabled = true;
-  if ('filter' in c) c.filter = 'blur(5px)';
+  if ('filter' in c) c.filter = 'blur(' + 5 * dpr + 'px)';
   c.drawImage(pvGlow, 0, 0, W, H);
   c.filter = 'none';
   c.globalAlpha = 0.6;
