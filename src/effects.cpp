@@ -325,6 +325,7 @@ static void rolling(Ctx& c) {
 // last, with a trail. Angle turns them all.
 
 static float sweepAng[4], sweepPrev[4];  // each bar's direction before Angle; where it is
+static float sweepAt[4];                 // Angle as it was when the bar's pass began
 static uint8_t sweepCol[4];
 
 static void sweeps(Ctx& c) {
@@ -337,6 +338,7 @@ static void sweeps(Ctx& c) {
             sweepAng[k] = k * 1.3f;
             sweepCol[k] = k * 64;
             sweepPrev[k] = 1e9f;
+            sweepAt[k] = angle;
         }
     }
     const float L = hypotf(W, H) + 2 * width + 2 * trail + 1.f;  // full travel
@@ -349,12 +351,13 @@ static void sweeps(Ctx& c) {
         // wrapped (not just eased back a little by the beat lock): next pass, new angle
         if (p < sweepPrev[k] - L * 0.5f && sweepPrev[k] < 1e8f) {
             sweepAng[k] += change * DEG;
+            sweepAt[k] = angle;  // Angle is taken at the start of a pass: a change never turns a bar mid-pass
             sweepCol[k] += 51;
         }
         sweepPrev[k] = p;
         pos[k] = p - L * 0.5f;
-        ca[k] = cosf(sweepAng[k] + angle);
-        sa[k] = sinf(sweepAng[k] + angle);
+        ca[k] = cosf(sweepAng[k] + sweepAt[k]);
+        sa[k] = sinf(sweepAng[k] + sweepAt[k]);
         col[k] = c.lutWrap[sweepCol[k]];
     }
     const CRGB back = c.lutLin[0];
@@ -964,7 +967,7 @@ const EffectDef EFFECTS[] = {
       {"Bar width (m)", 0.3f, 4, 1, 0.1f, "The width of the solid part of each bar, in metres."},
       {"Trail (m)", 0, 6, 1.5f, 0.1f, "How far behind the bar its glow fades out, in metres. 0 = no trail."},
       {"Angle change (deg)", 0, 180, 37, 1, "How much the direction turns after each pass. 180 = back and forth, 90 = crosswise in turn, 0 = always the same way. Odd angles such as 37 rarely repeat."},
-      {"Angle (deg)", -180, 180, 0, 1, "Turns the direction of every bar by this many degrees: with Angle change at 0 and one bar, the direction it sweeps (0 = along the rows, 90 = across them). Takes effect at once, even mid-pass, so a controller or Motion on it steers the sweeps."},
+      {"Angle (deg)", -180, 180, 0, 1, "Turns the direction of every bar by this many degrees: with Angle change at 0 and one bar, the direction it sweeps (0 = along the rows, 90 = across them). Each bar takes it as its pass begins and keeps it to the end, so a controller or Motion on it (a Random jump, say) sets the direction of the next pass, never turns a bar halfway."},
       {"Background", 0, 0.3f, 0.02f, 0.01f, H_BG},
       {"Softness", 0, 1, 0.2f, 0.01f, "How soft the bar's edges are, as a part of its width. 0 = crisp (still softened where they cross the bars)."}},
      sweeps, false, "sweep", 1,
@@ -1113,10 +1116,10 @@ float effectsBenchmark(int e, const CRGB* lutWrap, const CRGB* lutLin, int frame
     }
     memcpy(phase, spPhase, NL * sizeof(uint16_t));
     memcpy(colour, spColour, NL);
-    float ang[4], prev[4];
+    float ang[4], prev[4], at[4];
     uint8_t col[4];
     Drop drp[10];
-    memcpy(ang, sweepAng, sizeof(ang)); memcpy(prev, sweepPrev, sizeof(prev));
+    memcpy(ang, sweepAng, sizeof(ang)); memcpy(prev, sweepPrev, sizeof(prev)); memcpy(at, sweepAt, sizeof(at));
     memcpy(col, sweepCol, sizeof(col)); memcpy(drp, drops, sizeof(drp));
 
     const EffectDef& d = EFFECTS[e];
@@ -1133,7 +1136,7 @@ float effectsBenchmark(int e, const CRGB* lutWrap, const CRGB* lutLin, int frame
 
     memcpy(spPhase, phase, NL * sizeof(uint16_t));
     memcpy(spColour, colour, NL);
-    memcpy(sweepAng, ang, sizeof(ang)); memcpy(sweepPrev, prev, sizeof(prev));
+    memcpy(sweepAng, ang, sizeof(ang)); memcpy(sweepPrev, prev, sizeof(prev)); memcpy(sweepAt, at, sizeof(at));
     memcpy(sweepCol, col, sizeof(col)); memcpy(drops, drp, sizeof(drp));
     free(out); free(phase); free(colour);
     return ms;
