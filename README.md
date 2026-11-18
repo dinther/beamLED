@@ -29,8 +29,8 @@ for this kind of installation (see [docs/background.md](docs/background.md)):
 
 ## Features
 
-- **13 effects**, each with its own sliders and a palette: Rolling bars, Searchlights, Lighthouse,
-  Clouds, Sparkle, Sweeps, Plaid, Rings, Drops, Gradient, Shapes, Strobe and Tunnel, plus
+- **14 effects**, each with its own sliders and a palette: Rolling bars, Searchlights, Lighthouse,
+  Clouds, Sparkle, Sweeps, Plaid, Rings, Drops, Gradient, Shapes, Strobe, Tunnel and Chain, plus
   one sparkle
   overlay over whichever plays (it stays on when the preset changes): white or in palette colours
   (random, or stepping along the palette twinkle by twinkle), twinkling freely or starting on
@@ -81,6 +81,9 @@ every row (fewer lit LEDs ask less of the power supply, so they flash brighter).
 **Tunnel** flies down a tube lined with fibres winding along its wall, seen from inside: each LED is
 a ray from the eye meeting the wall. The fibres come out of the middle slowly and race outwards ever
 faster, and the tube's axis sways, so its near end swings while the far end stays put.
+
+**Chain** joins all bars into one strip (zigzag with Snake) and fires shots of the whole palette into
+it, on the beat or so many a minute; each travels along the chain and fades out.
 
 The scrolling effects have a position slider: **Offset** (Rolling bars, Plaid, Rings),
 **Offset X** and **Offset Y** (Clouds), and Lighthouse has **Angle**. With the speed

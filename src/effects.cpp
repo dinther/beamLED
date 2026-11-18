@@ -1007,6 +1007,74 @@ static void tunnel(Ctx& c) {
     }
 }
 
+// ---------------------------------------------------------------- Chain
+// All bars joined end to end into one long strip (with Snake every second bar runs back up, like
+// one cable zigzagging). Shots of the whole palette, first colour at the head, fired into the chain
+// on the beat (Beats timing) or so many a minute (Time), travel along it and fade out.
+
+struct Shot { float age; bool live; };
+static Shot shots[16];
+
+static void chain(Ctx& c) {
+    enum { kSpeed, kLength, kRate, kFade, kSnake, kSoft, kBg };
+    const float nxf = (float)NX, total = nxf * NY;           // chain length in LEDs
+    const float speed = c.p[kSpeed] * nxf;                   // LEDs per second
+    const float len = fmaxf(c.p[kLength] * nxf, 1.f);        // segment length in LEDs
+    const float fade = fmaxf(c.p[kFade], 0.05f), bg = c.p[kBg];
+    const bool snake = c.p[kSnake] >= 0.5f;
+    if (c.s[7] == 0) {  // a fresh start: an empty chain, the first shot at once
+        c.s[7] = 1;
+        for (Shot& h : shots) h.live = false;
+        c.s[0] = 0.999f;
+    }
+    // When to fire: on the beat grid (Beats), or Shots per minute (Time)
+    int fire = 0;
+    if (c.cycleBeats > 0) {
+        const float idx = (float)floor(c.beat / c.cycleBeats);
+        if (c.s[6] != c.cycleBeats) { c.s[6] = c.cycleBeats; c.s[5] = idx; }
+        else if (idx != c.s[5]) { c.s[5] = idx; fire = 1; }
+    } else {
+        c.s[6] = 0;
+        c.s[0] += c.dt * c.p[kRate] / 60.f;
+        while (c.s[0] >= 1.f) { c.s[0] -= 1.f; fire++; }
+    }
+    for (; fire > 0; fire--)
+        for (Shot& h : shots)
+            if (!h.live) { h = {0, true}; break; }
+    // Age them; gone when faded or when the tail has left the chain
+    for (Shot& h : shots) {
+        if (!h.live) continue;
+        h.age += c.dt;
+        if (h.age >= fade || speed * h.age - len > total) h.live = false;
+    }
+    // Soft head and tail: the edge over Softness of the segment (at least one LED)
+    const float edge = fmaxf(c.p[kSoft] * len * 0.5f, 1.f), iedge = 1.f / edge, ilen = 1.f / len;
+    const bool rev = c.reverse;  // Beats timing: fired in from the end of the chain
+    for (int b = 0; b < NY; b++) {
+        CRGB* o = c.out + b * NX;
+        const bool back = snake && (b & 1);
+        for (int i = 0; i < NX; i++) {
+            float at = (float)b * nxf + (back ? nxf - 1 - i : i);  // place in the chain
+            if (rev) at = total - 1 - at;
+            float r = 0, g = 0, bl = 0;
+            if (bg > 0) {
+                const CRGB k = c.lutLin[0];
+                r = k.r * bg; g = k.g * bg; bl = k.b * bg;
+            }
+            for (const Shot& h : shots) {
+                if (!h.live) continue;
+                const float d = speed * h.age - at;  // how far behind the head this LED is
+                if (d < -edge || d > len + edge) continue;
+                const float w = sm((d + edge * 0.5f) * iedge) * sm((len - d + edge * 0.5f) * iedge);
+                const float a = w * (1.f - h.age / fade);
+                const CRGB k = lutL(c.lutLin, d * ilen);  // the whole palette along the segment
+                r += k.r * a; g += k.g * a; bl += k.b * a;
+            }
+            o[i] = CRGB((uint8_t)fminf(r, 255.f), (uint8_t)fminf(g, 255.f), (uint8_t)fminf(bl, 255.f));
+        }
+    }
+}
+
 // ---------------------------------------------------------------- Strobe
 // Flashes on all bars. Beats timing: a drum machine of 32 steps (two bars of 1/16 notes) in three
 // lanes, Top, Center and Bottom: on a set step that third of every bar flashes (Size of it: Top from
@@ -1215,6 +1283,16 @@ const EffectDef EFFECTS[] = {
       {"Line width", 0.03f, 0.5f, 0.15f, 0.01f, "Fibre width."}},
      tunnel, false, "fibre turn", 0,
      "Flying down a fibre-lined tunnel. Its centre swings on a pendulum."},
+    {"Chain", 7,
+     {{"Speed (bars/s)", 0.1f, 20, 4, 0.1f, "How many bars a shot travels per second."},
+      {"Length (bars)", 0.1f, 5, 1, 0.05f, "Length of a shot, in bars: the whole palette over that stretch."},
+      {"Shots per minute", 1, 240, 60, 1, "Time: shots fired per minute. Beats: beats per shot."},
+      {"Fade (s)", 0.2f, 20, 4, 0.1f, "Seconds until a shot has faded out."},
+      {"Snake", 0, 1, 1, 1, "0 = every bar runs top to bottom; 1 = every second bar runs back up, one zigzag chain."},
+      {"Softness", 0, 1, 0.2f, 0.01f, "Soft head and tail. 0 = hard edges."},
+      {"Background", 0, 0.5f, 0, 0.01f, "Background in the palette's first colour. 0 = black."}},
+     chain, false, "shot", 2,
+     "All bars joined into one chain; shots of the whole palette fired into it on the beat or in time, travelling and fading. Reverse: fired from the end."},
 };
 const int NUM_EFFECTS = sizeof(EFFECTS) / sizeof(EFFECTS[0]);
 
