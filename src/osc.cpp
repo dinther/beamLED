@@ -108,7 +108,7 @@ static bool nodeInfo(int id, NodeInfo& n, char* path, size_t len) {
                 case M_TO: n = {'f', 3, true, lo, hi, "Motion: the other end, in the slider's own units."}; break;
                 case M_SECONDS: n = {'f', 3, true, 0.25f, 120, "Motion: one full there-and-back, in seconds (when beats is 0). Following the tempo when the preset does."}; break;
                 case M_BEATS: n = {'i', 3, true, 0, 64, "Motion: 0 = its period is in seconds; 1, 2, 4 ... 64 = one there-and-back takes that many beats, on the beat grid (at phase 0 it is at From on the bar)."}; break;
-                case M_PHASE: n = {'f', 3, true, 0, 1, "Motion: where in its cycle it is, 0..1: 0 = at From, 0.5 = at To. Two motions out of step, say."}; break;
+                case M_PHASE: n = {'f', 3, true, 0, 1, "Motion: where in its cycle it is, 0..1: 0 = at From, 0.5 = at To. Motions out of step, say."}; break;
             }
             return true;
         }

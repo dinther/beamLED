@@ -510,13 +510,16 @@ static void rings(Ctx& c) {
 }
 
 // ---------------------------------------------------------------- Drops
-// Big rings expanding from random points and fading out, like raindrops on a pond.
+// Big rings expanding from random points (or from the point Drop X, Y sets) and fading out, like
+// raindrops on a pond.
 
 struct Drop { float x, y, r, fade; uint8_t col; bool live; };
 static Drop drops[10];
 
 static void dropsFx(Ctx& c) {
     const float rate = c.p[0], speed = c.p[1], width = c.p[2], maxR = c.p[3], bg = c.p[4];
+    // Where drops land: aim 0 = anywhere (as before these sliders), 1 = at Drop X, Y
+    const float aimX = c.p[5] * W, aimY = Y[0] + c.p[6] * H, aim = c.p[7];
     if (c.s[7] == 0) {
         c.s[7] = 1;
         for (Drop& d : drops) d.live = false;
@@ -546,6 +549,8 @@ static void dropsFx(Ctx& c) {
         for (Drop& d : drops) {
             if (d.live) continue;
             d = {frand() * W, Y[0] + frand() * H, 0, 0, random8(), true};
+            d.x += aim * (aimX - d.x);
+            d.y += aim * (aimY - d.y);
             break;
         }
     }
@@ -978,14 +983,17 @@ const EffectDef EFFECTS[] = {
       {"Offset (m)", -10, 10, 0, 0.01f, "Shifts the pattern by this many metres, the way Speed moves the rings (positive outward). With Speed at 0 it stays put, so a Motion on Offset moves it back and forth (with easing). 0 = no shift."}},
      rings, false, "ring", 1,
      "Concentric rings flowing out of (or into) a centre that slowly wanders over the ceiling."},
-    {"Drops", 5,
-     {{"Drops per minute", 1, 60, 10, 1, "How many new drops fall per minute, at random places. At most 10 rings show at once. In Beats timing this slider is replaced by beats per drop, and each drop lands on the beat."},
+    {"Drops", 8,
+     {{"Drops per minute", 1, 60, 10, 1, "How many new drops fall per minute. At most 10 rings show at once. In Beats timing this slider is replaced by beats per drop, and each drop lands on the beat."},
       {"Speed (m/s)", 0.1f, 2, 0.5f, 0.01f, "How fast a ring spreads, in metres per second."},
       {"Ring width (m)", 0.4f, 2.5f, 1, 0.1f, "The width of a ring's bright band, in metres."},
       {"Max radius (m)", 1, 12, 6, 0.1f, "How far a ring spreads before it has faded out completely, in metres."},
-      {"Background", 0, 0.3f, 0.03f, 0.01f, H_BG}},
+      {"Background", 0, 0.3f, 0.03f, 0.01f, H_BG},
+      {"Drop X", 0, 1, 0.5f, 0.01f, "Where along the rows the drops land: 0 = the start of the rows, 1 = their end. A Motion on it moves the landing point; each ring stays where its drop fell. Used as far as Aim at X, Y says."},
+      {"Drop Y", 0, 1, 0.5f, 0.01f, "Where across the rows the drops land: 0 = the first row, 1 = the last. A Motion on it moves the landing point; each ring stays where its drop fell. Used as far as Aim at X, Y says."},
+      {"Aim at X, Y", 0, 1, 1, 0.01f, "Where drops land. 1 = exactly at Drop X, Y. 0 = anywhere on the ceiling, at random. In between: scattered around Drop X, Y, the closer to 1 the tighter."}},
      dropsFx, false, "drop", 0,
-     "Big rings spreading from random points and fading out, like raindrops on a pond. Each drop takes a random palette colour."},
+     "Big rings spreading from where drops land and fading out, like raindrops on a pond: at the point Drop X, Y sets (which Motions can move), or at random places. Each drop takes a random palette colour."},
     {"Interference", 7,
      {{"Wavelength (m)", 0.8f, 5, 1.8f, 0.1f, "The distance from one wave to the next, in metres."},
       {"Speed (m/s)", -1, 1, 0.15f, 0.01f, "How fast the waves travel, in metres per second: positive outward, negative inward. In Beats timing this slider is replaced by beats per wave."},

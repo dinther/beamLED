@@ -18,7 +18,7 @@
 //                        sparkle_timing i (0 free, 1..4 = 1/4 .. 1/32) | sparkle_burst T |
 //                        <parameter> (named after it: speed, bars, ...)
 //                        motion1_target i | motion1_shape i | motion1_from f | motion1_to f |
-//                        motion1_seconds f | motion1_beats i | motion1_phase f (and motion2_...)
+//                        motion1_seconds f | motion1_beats i | motion1_phase f (and motion2_, motion3_)
 //   /beamled/palettes/<k>/colours i 2..7 | colour1 .. colour7 r
 // Values are in real units, as the web page shows them. Preset changes from OSC play at once but,
 // as edits on the web page, aren't saved until Save on the page or /beamled/save (all presets).

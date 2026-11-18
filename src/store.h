@@ -61,7 +61,7 @@ struct Motion {
     float seconds;     // the period in seconds
     float phase;       // 0..1: where in the cycle it starts
 };
-constexpr int MOTIONS = 2;
+constexpr int MOTIONS = 3;  // saves from when there were 2 load with the third off
 // 0..1 (Overshoot goes a little beyond). cycle: how many whole cycles have gone by (Random's values
 // come from it, so they are the same on every run and on the page); m: which motion (its own values).
 float motionShape(uint8_t shape, float phase, uint32_t cycle = 0, int m = 0);

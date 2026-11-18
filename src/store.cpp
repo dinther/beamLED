@@ -314,8 +314,22 @@ void storeLoad() {
     for (int i = 0; i < MAX_PRESETS; i++)
         for (int m = 0; m < MOTIONS; m++) presetMotion[i][m] = MOTION_OFF;
     prefs.begin("beamled", true);
-    if (ok && prefs.isKey("mots") && prefs.getBytesLength("mots") == presetCount * sizeof(Motion) * MOTIONS)
-        prefs.getBytes("mots", presetMotion, presetCount * sizeof(Motion) * MOTIONS);
+    bool motsOld = false;  // saved when there were 2 motions per preset: the third starts off
+    if (ok && prefs.isKey("mots")) {
+        const size_t len = prefs.getBytesLength("mots");
+        if (len == presetCount * sizeof(Motion) * MOTIONS)
+            prefs.getBytes("mots", presetMotion, len);
+        else if (len == presetCount * sizeof(Motion) * 2) {
+            Motion* two = (Motion*)malloc(len);
+            if (two) {
+                prefs.getBytes("mots", two, len);
+                for (int i = 0; i < presetCount; i++)
+                    for (int m = 0; m < 2; m++) presetMotion[i][m] = two[i * 2 + m];
+                free(two);
+                motsOld = true;
+            }
+        }
+    }
     prefs.end();
     for (int i = 0; i < presetCount; i++)
         for (Motion& mo : presetMotion[i]) {
@@ -333,6 +347,10 @@ void storeLoad() {
     }
     // Saved as loaded: later saves write only what changes. Anything converted or new is written now.
     if (ok && !old && !palOld) rememberSaved();
+    if (ok && !old && !palOld && motsOld) {  // write the motions in the new size once
+        partKnown[PART_MOTS] = false;
+        storeMarkDirty();
+    }
     if (ok && pal5) {  // moved from up to 5 colours: write them under pals7 once
         partKnown[PART_PALS] = false;
         storeMarkDirty();
