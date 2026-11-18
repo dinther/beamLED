@@ -441,7 +441,8 @@ function draw() {
   sliders = {};
   const app = document.getElementById('app');
   app.replaceChildren();
-  const p = S.presets[S.current], ef = S.effects[p.effect];
+  const p = S.presets[S.current], ef = p && S.effects[p.effect];
+  if (!ef) { reload(); return; }  // the lists changed under this page: fetch them again
 
   const onb = button(S.on ? 'On' : 'Off', H.on, {className: S.on ? 'on' : ''});
   onb.onclick = () => { S.on = !S.on; post('/api/set', {on: S.on}); draw(); };
@@ -1137,7 +1138,11 @@ function oscValue(addr, v) {
     else if (a[2] == 'effect_brightness') { S.effectBrightness = Math.round(v * 255); moveSlider('effectBrightness', S.effectBrightness); }
     else if (a[2] == 'sparkle_brightness') { S.sparkleBrightness = Math.round(v * 255); moveSlider('sparkleBrightness', S.sparkleBrightness); }
     else if (a[2] == 'on') { if (S.on != v) { S.on = v; redraw(); } }
-    else if (a[2] == 'preset') { if (S.current != v - 1) { S.current = v - 1; redraw(); } }
+    else if (a[2] == 'preset') {
+      // a preset this page doesn't have yet (one was just added): fetch the list first
+      if (v - 1 >= S.presets.length) reload();
+      else if (S.current != v - 1) { S.current = v - 1; redraw(); }
+    }
     else if (a[2] == 'link') { if (S.link.enabled != v) { S.link.enabled = v; redraw(); } }
     else if (a[2] == 'auto') { if (S.auto && S.auto.enabled != v) { S.auto.enabled = v; redraw(); } }
     else if (S.sparkle && a[2] == 'sparkle') { S.sparkle.amount = v; moveSlider('sparkle', v); }
