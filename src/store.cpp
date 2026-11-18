@@ -287,7 +287,7 @@ void storeLoad() {
     layoutDefaults();
     linkSettings = {0, 120, 20};
     autoSettings = {0, 1, 3, 0, 60, 0};  // off; every 8 bars, or 60 s
-    sparkleSettings = {0, 0, 0};          // off
+    sparkleSettings = {0, 0, 0, 0};       // off
     prefs.begin("beamled", true);
     if (prefs.isKey("lay") && prefs.getBytesLength("lay") == sizeof(layout))
         prefs.getBytes("lay", &layout, sizeof(layout));
@@ -301,6 +301,8 @@ void storeLoad() {
         prefs.getBytes("auto", &autoSettings, sizeof(autoSettings));
     if (prefs.isKey("spark") && prefs.getBytesLength("spark") == sizeof(sparkleSettings))
         prefs.getBytes("spark", &sparkleSettings, sizeof(sparkleSettings));
+    else if (prefs.isKey("spark") && prefs.getBytesLength("spark") == 8)  // from before colourStep
+        prefs.getBytes("spark", &sparkleSettings, 8);
     prefs.end();
     layoutSanitize(layout);
     linkSettings.enabled = linkSettings.enabled ? 1 : 0;
@@ -315,6 +317,7 @@ void storeLoad() {
     if ((sparkleSettings.beat & SPARKLE_GRID) > 4 || (sparkleSettings.beat & ~(SPARKLE_GRID | SPARKLE_BURST)))
         sparkleSettings.beat = 0;
     if (sparkleSettings.colour > 1 + paletteCount) sparkleSettings.colour = 0;
+    if (!(sparkleSettings.colourStep >= 0 && sparkleSettings.colourStep <= 1)) sparkleSettings.colourStep = 0;
     if (!savedPresets) savedPresets = (Preset*)calloc(MAX_PRESETS, sizeof(Preset));
     if (!savedSync) savedSync = (PresetSync*)calloc(MAX_PRESETS, sizeof(PresetSync));
     if (!presetMotion) presetMotion = (Motion (*)[MOTIONS])calloc(MAX_PRESETS, sizeof(Motion) * MOTIONS);

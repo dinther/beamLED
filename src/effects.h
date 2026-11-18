@@ -56,5 +56,7 @@ float effectsBenchmark(int e, const CRGB* lutWrap, const CRGB* lutLin, int frame
 // div > 0: on the beat grid, div ticks per beat (1 = quarter notes ... 8 = 32nds): new twinkles
 // start only on a tick (as many as would have started freely since the last one), or with burst
 // a batch flashes on each tick and fades out before the next. beat: beats since the origin.
+// colourStep: 0 = each twinkle a random colour from lut; above 0 each new twinkle that much
+// further along the palette than the one before (0.5 = opposite colours in turn)
 void sparkleOverlay(CRGB* out, float density, float dt, const CRGB* lut = nullptr, double beat = 0,
-                    float bpm = 120, int div = 0, bool burst = false);
+                    float bpm = 120, int div = 0, bool burst = false, float colourStep = 0);

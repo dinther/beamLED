@@ -200,6 +200,17 @@ static float fbm(float x, float y, float z, float size) {
 static uint16_t spPhase[MAX_LEDS];  // 0 = idle, else 1..65535 through one twinkle
 static uint8_t spColour[MAX_LEDS];
 
+// A new twinkle's colour (where on the palette, 0..255): random, or with a colour step (overlay
+// only) each next one that much further along the palette than the one before
+static float spStep = 0, spNext = 0;
+static inline uint8_t newColour() {
+    if (spStep <= 0) return random8();
+    const uint8_t c = (uint8_t)(spNext * 256.f);
+    spNext += spStep;
+    spNext -= floorf(spNext);
+    return c;
+}
+
 static void sparkleStep(float density, float life, float dt) {
     // density 1 = about 8% of the LEDs lit at any moment
     const float prob = density * 0.08f / life * dt;
@@ -211,7 +222,7 @@ static void sparkleStep(float density, float life, float dt) {
             spPhase[i] = n >= 65535 ? 0 : n;
         } else if (th && random16() < th) {
             spPhase[i] = 1;
-            spColour[i] = random8();
+            spColour[i] = newColour();
         }
     }
 }
@@ -252,7 +263,7 @@ static void burstStep(float density, double beat, float bpm, int div, float dt) 
     for (int k = 0; k < n; k++) {
         const int i = random16() % NL;
         spPhase[i] = 1;
-        spColour[i] = random8();
+        spColour[i] = newColour();
     }
 }
 
@@ -280,16 +291,18 @@ static void gridStep(float density, double beat, int div, float dt) {
         const int i = random16() % NL;
         if (spPhase[i]) continue;  // already twinkling (free sparkle only starts dark ones too)
         spPhase[i] = 1;
-        spColour[i] = random8();
+        spColour[i] = newColour();
     }
 }
 
 void sparkleOverlay(CRGB* out, float density, float dt, const CRGB* lut, double beat, float bpm, int div,
-                    bool burst) {
+                    bool burst, float colourStep) {
     burst = burst && div > 0;
+    spStep = lut ? colourStep : 0;  // white: nothing to step along
     if (burst) burstStep(density, beat, bpm, div, dt);
     else if (div > 0) gridStep(density, beat, div, dt);
     else sparkleStep(density, 1.2f, dt);
+    spStep = 0;  // the Sparkle effect keeps random colours
     for (int i = 0; i < NL; i++) {
         if (!spPhase[i]) continue;
         uint8_t a = (uint8_t)((burst ? burstLevel(spPhase[i]) : sparkleLevel(spPhase[i])) * 255.f);

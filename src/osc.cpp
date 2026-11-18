@@ -21,9 +21,10 @@
 // MAX_PALETTES blocks of CSLOTS. A preset's parameters take the slots after its fixed ones.
 
 enum Global : uint8_t { G_PRESET, G_NEXT, G_PREV, G_ON, G_BRIGHTNESS, G_LINK, G_SAVE, G_AUTO,
-                        G_SPARKLE, G_SPARKLE_TIMING, G_SPARKLE_BURST, G_SPARKLE_COLOUR, NUM_GLOBALS };
+                        G_SPARKLE, G_SPARKLE_TIMING, G_SPARKLE_BURST, G_SPARKLE_COLOUR, G_SPARKLE_STEP, NUM_GLOBALS };
 static const char* const GLOBAL_NAME[NUM_GLOBALS] = {"preset", "next", "prev", "on", "brightness", "link", "save", "auto",
-                                                     "sparkle", "sparkle_timing", "sparkle_burst", "sparkle_colour"};
+                                                     "sparkle", "sparkle_timing", "sparkle_burst", "sparkle_colour",
+                                                     "sparkle_colour_step"};
 
 enum PSlot : uint8_t { P_PLAY, P_EFFECT, P_PALETTE, P_TIMING, P_BEATS, P_REVERSE, P_PULSE, P_AUTO, P_MIRROR, P_FIXED };
 static const char* const PSLOT_NAME[P_FIXED] = {"play", "effect", "palette", "timing", "beats",
@@ -93,6 +94,7 @@ static bool nodeInfo(int id, NodeInfo& n, char* path, size_t len) {
             case G_SPARKLE_TIMING: n = {'i', 3, true, 0, 4, "Sparkle overlay timing: 0 = free, twinkles start at any moment; 1, 2, 3, 4 = they start only on quarter, eighth, sixteenth or 32nd notes."}; break;
             case G_SPARKLE_BURST: n = {'T', 3, false, 0, 1, "Sparkle overlay, with a timing other than free: true = a batch flashes on each tick and fades out before the next, false = single twinkles. No argument toggles."}; break;
             case G_SPARKLE_COLOUR: n = {'i', 3, true, 0, (float)(1 + paletteCount), "Sparkle overlay colours: 0 = white, 1 = the playing preset's palette, 2 = palette 1, 3 = palette 2, and so on (palette n = n + 1)."}; break;
+            case G_SPARKLE_STEP: n = {'f', 3, true, 0, 1, "Sparkle overlay colour step: 0 = each twinkle a random colour from its palette; above 0 each new twinkle this far along the palette from the one before (0.5 = opposite colours in turn). Not with white twinkles."}; break;
             case G_SAVE: n = {'N', 2, false, 0, 0, "Saves every preset as it plays now (as Save on each preset on the web page), with the palettes and settings, so they survive a power cut. Until then, preset changes from OSC or the web page play but are not saved."}; break;
         }
         return true;
@@ -174,6 +176,7 @@ static bool nodeValue(int id, char type, uint32_t& v) {
             case G_SPARKLE_TIMING: return i(sparkleSettings.beat & SPARKLE_GRID);
             case G_SPARKLE_BURST: return i((sparkleSettings.beat & SPARKLE_BURST) != 0);
             case G_SPARKLE_COLOUR: return i(sparkleSettings.colour);
+            case G_SPARKLE_STEP: return f(sparkleSettings.colourStep);
         }
         return false;
     }
@@ -357,7 +360,8 @@ static void apply(const char* path, const Arg* a, int n) {
             case G_SPARKLE_BURST:
                 sparkleSettings.beat = (sparkleSettings.beat & SPARKLE_GRID) | (on ? SPARKLE_BURST : 0);
                 storeMarkDirty(); break;
-            case G_SPARKLE_COLOUR: sparkleSettings.colour = constrain((int)v, 0, 1 + paletteCount); storeMarkDirty(); break;
+            case G_SPARKLE_COLOUR: sparkleSettings.colour = constrain((int)v, 0, 1 + paletteCount); storeMarkDirty(); webChanged(); break;
+            case G_SPARKLE_STEP: sparkleSettings.colourStep = constrain(v, 0.f, 1.f); storeMarkDirty(); break;
         }
         return;
     }

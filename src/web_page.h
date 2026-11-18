@@ -220,6 +220,7 @@ const H = {
   sparkleBeat: 'When twinkles start. Free: at any moment. 1/4, 1/8, 1/16, 1/32: only on quarter, eighth, sixteenth or 32nd notes, on the beat of Ableton Link or the board’s own tempo; the same amount of sparkle as Free, in time with the music.',
   mirror: 'The right half of the ceiling becomes the mirror image of the left, along the rows: anything moving right on the left half moves left on the right half. Only the left half is rendered, so the effect takes about half the time. The Sparkle overlay is not mirrored.',
   sparkleBurst: 'Off: single twinkles, each with the same soft rise and fade as in Free. On: a batch flashes at once on each tick and fades out before the next; Sparkle overlay sets how many (1 = 6% of the LEDs).',
+  sparkleStep: 'How the twinkles pick their colours from the palette. 0 = each one a random colour. Above 0 = each new twinkle this far along the palette from the one before: small = neighbours in similar colours, 0.5 = opposite colours in turn.',
   sparkleColour: 'The colours of the Sparkle overlay’s twinkles: white, random colours from the playing preset’s palette (they change with the preset), or from any other palette.',
   pulse: 'A brightness accent on the beat: full on each beat and dipping in between, strongest on the bar’s first beat. 0 = steady. Follows Ableton Link, or the board’s own tempo.',
   reset: 'Sets this preset’s effect parameters back to the effect’s defaults (not saved until you click Save). Name, palette, timing and pulse stay as they are.',
@@ -363,7 +364,7 @@ const presetList = o => post('/api/presets', o).then(useState);
 
 // The Sparkle overlay: one for all presets
 function sparkleRows(p, ef) {
-  const sk = S.sparkle || {amount: 0, beat: 0, burst: false, colour: 0};
+  const sk = S.sparkle || {amount: 0, beat: 0, burst: false, colour: 0, step: 0};
   S.sparkle = sk;
   const send = o => post('/api/sparkle', o);
   const rows = [slider('Sparkle overlay', 0, 1, 0.01, sk.amount, v => v.toFixed(2),
@@ -380,7 +381,11 @@ function sparkleRows(p, ef) {
   const items = [{name: 'White', bg: 'linear-gradient(90deg,#8a8a8a,#e0e0e0)'},
                  {name: 'Preset’s palette (now ' + own.name + ')', bg: palGrad(own)}]
     .concat(S.palettes.map(q => ({name: q.name, bg: palGrad(q)})));
-  rows.push(gradSelect('Sparkle colour', items, sk.colour || 0, v => { sk.colour = v; send({colour: v}); }, H.sparkleColour));
+  rows.push(gradSelect('Sparkle colour', items, sk.colour || 0, v => { sk.colour = v; send({colour: v}); draw(); }, H.sparkleColour));
+  const stepRow = slider('Colour step', 0, 1, 0.01, sk.step || 0, v => v ? v.toFixed(2) : 'random',
+    v => { sk.step = v; liveSend('/beamled/sparkle_colour_step', v, () => send({step: v}), true); }, H.sparkleStep, 'sparkleStep');
+  if (!sk.colour) off(stepRow, 'Sparkle colour is White: there is no palette to step along. Pick a palette above.');
+  rows.push(stepRow);
   return rows;
 }
 function draw() {
@@ -1044,6 +1049,7 @@ function oscValue(addr, v) {
     else if (S.sparkle && a[2] == 'sparkle_timing') { if (S.sparkle.beat != v) { S.sparkle.beat = v; redraw(); } }
     else if (S.sparkle && a[2] == 'sparkle_burst') { if (S.sparkle.burst != !!v) { S.sparkle.burst = !!v; redraw(); } }
     else if (S.sparkle && a[2] == 'sparkle_colour') { if (S.sparkle.colour != v) { S.sparkle.colour = v; redraw(); } }
+    else if (S.sparkle && a[2] == 'sparkle_colour_step') { S.sparkle.step = v; moveSlider('sparkleStep', v); }
     return;
   }
   const n = +a[3] - 1, key = a[4];

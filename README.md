@@ -147,6 +147,7 @@ browsed, sent to (a group's *Sends to* can name the OSCQuery application) and fo
 | `/beamled/sparkle` | f 0..1 | the sparkle overlay, over every preset |
 | `/beamled/sparkle_timing`, `sparkle_burst` | i 0..4, T/F | sparkle overlay: 0 free, 1..4 twinkles start on 1/4, 1/8, 1/16, 1/32 notes; bursts or single twinkles |
 | `/beamled/sparkle_colour` | i | sparkle overlay colours: 0 white, 1 the playing preset's palette, 1 + k palette k |
+| `/beamled/sparkle_colour_step` | f 0..1 | sparkle overlay: 0 random colours, else each new twinkle this far along the palette from the one before |
 | `/beamled/presets/<n>/play` | T/F | true while preset n plays; true plays it |
 | `/beamled/presets/<n>/effect`, `palette` | i | by number, as on the page |
 | `/beamled/presets/<n>/pulse` | f 0..1 | beat pulse |
