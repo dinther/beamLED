@@ -245,7 +245,7 @@ const H = {
   preview: 'Live view of the LEDs, up to 15 frames/s, bars at their real spacing, first row on the left. No gamma. Sent only while open and on screen.',
   previewPin: 'Pin (📌): keeps the preview at the top while you scroll. Kept in this browser.',
   previewLook: 'On: bars as diffused strips. Off: bare LEDs with glare. Kept in this browser.',
-  steps: 'A set step flashes that third of every bar: Top, Center, Bottom. Beats: 32 steps, a 1/16 note each (8 beats per pattern). Frequency: only the first column, which thirds flash. Click or drag to set. Lighter boxes are beats.',
+  steps: 'A set step flashes that third of every bar: Top, Center, Bottom. Beats: 32 steps, a 1/16 note each (8 beats per pattern). Frequency: only the first column, which thirds flash (at least one). Click or drag to set. Lighter boxes are beats.',
   stepsClear: 'Clear all steps (Revert brings them back).',
   effectBrightness: 'Dims the effect, not the Sparkle overlay. On Strobe: only the Background. Saved.',
   sparkleBrightness: 'How strongly the twinkles cover the effect: 0 = not at all, 100% = fully. Saved.',
@@ -1249,7 +1249,14 @@ function stepGrid(p, firstOnly) {
   if (!Array.isArray(p.steps)) p.steps = [0, 0, 0, 0];
   const send = () => throttle('steps', () => post('/api/preset', {index: S.current, steps: p.steps}));
   const grid = h('div', {className: 'seq'});
+  // Frequency: at least one third in the first column (an empty one would never flash)
+  const firstSet = () => [0, 1, 2].filter(k => p.steps[k] & 1).length;
+  if (firstOnly && !firstSet()) {
+    for (let k = 0; k < 3; k++) p.steps[k] = (p.steps[k] | 1) >>> 0;
+    post('/api/preset', {index: S.current, steps: p.steps});
+  }
   const set = (k, b, box, v) => {
+    if (firstOnly && b == 0 && !v && firstSet() <= 1) return;  // the last one stays
     const bit = (1 << b) >>> 0;
     p.steps[k] = (v ? (p.steps[k] | bit) : (p.steps[k] & ~bit)) >>> 0;
     box.classList.toggle('on', v);

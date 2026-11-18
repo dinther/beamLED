@@ -1124,8 +1124,10 @@ static void strobe(Ctx& c) {
     // A flash lasts Flash length of its step, but always shows for at least one frame
     const bool lit = (f < c.p[kFlash] || fresh) && (pattern || c.p[kSpeed] > 0);
     bool on[3];
-    // Beats: the step's column of the pattern; Frequency: its first column
-    for (int k = 0; k < 3; k++) on[k] = lit && c.steps && (c.steps[k] >> (pattern ? step : 0) & 1);
+    // Beats: the step's column of the pattern; Frequency: its first column (empty: all three)
+    const bool firstEmpty = !c.steps || !((c.steps[0] | c.steps[1] | c.steps[2]) & 1);
+    for (int k = 0; k < 3; k++)
+        on[k] = lit && (pattern ? c.steps && (c.steps[k] >> step & 1) : (firstEmpty || (c.steps[k] & 1)));
     // Each lane's colour: white, or Colour along the palette per step (lanes a third apart)
     CRGB col[3];
     const float cs = c.p[kColour];
