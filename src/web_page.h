@@ -270,7 +270,7 @@ const H = {
   palColour: 'Tap to change, drag along to move, drag off (or Delete) to remove.',
   palMid: 'Where the blend is half-way. Double-click (or Home): straight blend. Arrow keys nudge.',
   palStops: 'Click the bar to add a colour (up to 7). Drag markers to move them, off the bar to remove (2 stay).',
-  palAddPalette: 'New palette at the end: a copy of the last one. Up to 16.',
+  palAddPalette: 'New palette at the end: a copy of the last one. Up to 32.',
   palDelete: 'Delete: click twice within 3 s. Its presets switch to the first palette.',
   saveAsNew: 'Renamed: Save makes a new preset with this name; this one goes back to its saved state.',
   target: 'Art-Net destination: the pixel controller, a visualiser PC, or a broadcast (x.x.x.255 or 255.255.255.255). Cable only.',

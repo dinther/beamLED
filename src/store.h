@@ -7,7 +7,7 @@
 #include "config.h"
 
 constexpr int MAX_PRESETS = 32;  // presets can be added up to this many
-constexpr int MAX_PALETTES = 16;  // palettes can be added up to this many
+constexpr int MAX_PALETTES = 32;  // palettes can be added up to this many
 
 struct Preset {
     char name[20];
