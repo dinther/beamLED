@@ -93,13 +93,13 @@ select,input[type=text],input[type=password],input[type=number]{flex:1;min-width
 .curve path{fill:none;stroke:var(--acc);stroke-width:2}
 .curve line{stroke:#444;stroke-width:1}
 .moving label::after{content:" ↔";color:var(--acc)}
-.seq{display:grid;grid-template-columns:3.6em repeat(32,1fr);column-gap:2px;row-gap:4px;margin:6px 0 4px;user-select:none;touch-action:none}
+.seq{display:grid;column-gap:2px;row-gap:4px;margin:6px 0 4px;user-select:none;touch-action:none}
 .seq .ln{font-size:12px;color:var(--dim);align-self:center}
 .seq .bt{font-size:10px;color:var(--dim);text-align:left}
 .seq .st{height:22px;border-radius:3px;background:#2f2f2f;cursor:pointer}
 .seq .st.q{background:#3a3a3a}
 .seq .st.on{background:var(--acc)}
-.seq .b4{margin-left:3px}.seq .b16{margin-left:8px}
+
 #elsewhere{position:fixed;inset:0;z-index:20;display:none;align-items:center;justify-content:center;background:#121212e8;padding:16px}
 #elsewhere .card{max-width:360px;text-align:center}
 #elsewhere p{margin:6px 0 14px}
@@ -244,7 +244,7 @@ const H = {
   preview: 'What the ceiling shows now, live from the board, up to 15 frames a second: seen from below, the first row on the left, the bars at their real places and spacing (drawn thicker than they are, so they show). The colours as the effects make them, without the LEDs’ gamma. The board sends frames only while this section is open, on screen and the tab is in view.',
   previewPin: 'Pin (📌): the preview stays at the top of the screen while you scroll and work the controls below it; lit while pinned. Press again to let it scroll away. Kept in this browser.',
   previewLook: 'On: each bar as a soft continuous strip, as with a diffuser. Off: bare LEDs, each a point of light with dark between and a bloom (glare) around the bright ones, as bare LEDs look to the eye or a camera. Kept in this browser.',
-  steps: 'The drum machine: 32 steps (two bars; in Beats timing with 8 beats per pattern each step is a 1/16 note, in Time timing Speed steps a second). Click a box to set or clear that step, or drag across boxes to set or clear several. On a set step its lane flashes: Whole = the whole ceiling, Band = a band at Angle, Block = one cell of a grid of about Size, Shape = a circle or square. Bands, blocks and shapes land somewhere new on every step. The lighter boxes are the beats.',
+  steps: 'The drum machine: 32 steps (two bars; in Beats timing with 8 beats per pattern each step is a 1/16 note, in Time timing Speed is beats a second, 4 steps each). Click a box to set or clear that step, or drag across boxes to set or clear several. On a set step its lane flashes: Whole = the whole ceiling, Band = a band at Angle, Block = one cell of a grid of about Size, Shape = a circle or square. Bands, blocks and shapes land somewhere new on every step. The lighter boxes are the beats.',
   stepsClear: 'Clears every step in all four lanes (Revert brings back the saved pattern).',
   effectBrightness: 'Dims whatever preset plays, but not the Sparkle overlay’s twinkles: pull the effect down and let the sparkle shine. Under the master Brightness. Saved, like Brightness.',
   sparkleBrightness: 'How strongly the Sparkle overlay’s twinkles show over the effect: 0 = not at all, 50% = each twinkle covers half (a dark one darkens by half), 100% = fully. Under the master Brightness. Saved, like Brightness.',
@@ -1207,14 +1207,17 @@ function stepGrid(p) {
     box.classList.toggle('on', v);
     send();
   };
-  grid.append(h('span'));
-  for (let b = 0; b < 32; b++)
-    grid.append(h('span', {className: 'bt' + (b == 16 ? ' b16' : b % 4 == 0 && b ? ' b4' : ''), textContent: b % 4 == 0 ? (b / 4) % 4 + 1 : ''}));
+  // Every step the same width; the gaps between beats and between the bars are columns of their own
+  const cols = ['3.6em'];
+  for (let b = 0; b < 32; b++) { if (b && b % 4 == 0) cols.push(b == 16 ? '6px' : '2px'); cols.push('1fr'); }
+  grid.style.gridTemplateColumns = cols.join(' ');
+  const at = (el, row, b) => { el.style.gridRow = row; el.style.gridColumn = b < 0 ? 1 : 2 + b + (b >> 2); return el; };
+  for (let b = 0; b < 32; b += 4)
+    grid.append(at(h('span', {className: 'bt', textContent: (b / 4) % 4 + 1}), 1, b));
   LANES.forEach((name, k) => {
-    grid.append(h('span', {className: 'ln', textContent: name}));
+    grid.append(at(h('span', {className: 'ln', textContent: name}), k + 2, -1));
     for (let b = 0; b < 32; b++) {
-      const box = h('span', {className: 'st' + (b % 4 == 0 ? ' q' : '') + (b == 16 ? ' b16' : b % 4 == 0 && b ? ' b4' : '') +
-        ((p.steps[k] >>> b) & 1 ? ' on' : '')});
+      const box = at(h('span', {className: 'st' + (b % 4 == 0 ? ' q' : '') + ((p.steps[k] >>> b) & 1 ? ' on' : '')}), k + 2, b);
       box.onpointerdown = e => {
         e.preventDefault();
         seqPaint = !box.classList.contains('on');

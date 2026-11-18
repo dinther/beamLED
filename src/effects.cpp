@@ -956,7 +956,7 @@ static void strobe(Ctx& c) {
         pos = c.beat / c.cycleBeats * STEPS;
         if (c.reverse) pos = -pos;
     } else {
-        c.s[0] = fmodf(c.s[0] + c.p[kSpeed] * c.dt, STEPS * 4096.f);
+        c.s[0] = fmodf(c.s[0] + c.p[kSpeed] * 4.f * c.dt, STEPS * 4096.f);  // Hz = beats a second, 4 steps each
         pos = c.s[0];
     }
     const double fl = floor(pos);
@@ -1184,7 +1184,7 @@ const EffectDef EFFECTS[] = {
      shapesFx, false, "shape", 0,
      "Squares, circles and triangles appearing one after another at random places, sizes and angles, each in a random palette colour, as outlines, solid or both. Each stays a while and fades out."},
     {"Strobe", 7,
-     {{"Speed (Hz)", 0.5f, 16, 8, 0.1f, "Steps per second, in Time timing (the 32 steps then take 32 / this seconds). In Beats timing this slider gives way to beats per pattern: 8 beats = every step a 1/16 note, two bars for the pattern."},
+     {{"Speed (Hz)", 0.1f, 4, 2, 0.05f, "Beats per second in Time timing: each beat is 4 steps (the lighter boxes are the beats), so 1 Hz = a beat a second and 2 Hz = 120 BPM. In Beats timing this slider gives way to beats per pattern: 8 beats = every step a 1/16 note, two bars for the pattern."},
       {"Size (%)", 10, 100, 30, 1, "How big a band, block or shape is, as a share of the ceiling's shorter side. The Whole lane always lights everything.", 1},
       {"Flash length", 0.05f, 1, 0.5f, 0.01f, "How much of its step a flash stays on: short = a crisp strobe, 1 = lit for the whole step (steps in a row then join up). A flash always shows for at least one frame."},
       {"Angle (deg)", -180, 180, 90, 1, "Which way the bands run: 90 = along the rows (a band lights a few rows), 0 = across them."},
