@@ -1096,17 +1096,13 @@ static void fibres(Ctx& c) {
 }
 
 // ---------------------------------------------------------------- Strobe
-// In Beats timing a drum machine of flashes: 32 steps (two bars of 1/16 notes), four lanes, each
-// flashing its own kind of thing on the steps set in the preset's pattern: the whole layout, a
-// band, a block of a coarse grid, a circle or square. Bands, blocks and shapes land somewhere new
-// on every step (a hash of the step's count). In Time (the page's Frequency) a plain strobe, Speed
-// flashes a second, the pattern unused: the middle Size share of every row (strips are often not
-// powered for full white on every LED, and fewer lit LEDs flash brighter).
+// Flashes on all bars. Beats timing: a drum machine of 32 steps (two bars of 1/16 notes) in three
+// lanes, Top, Center and Bottom: on a set step that third of every bar flashes (the middle Size
+// share of it). Frequency (Time) timing: a plain strobe of all three thirds, Speed flashes a second.
 
 static void strobe(Ctx& c) {
-    enum { kSpeed, kSize, kFlash, kAngle, kSoft, kColour, kBackground };
+    enum { kSpeed, kSize, kFlash, kColour, kBackground };
     const int STEPS = 32;
-    // Where in the pattern: in beats straight from the beat (exactly on the grid), else counted
     const bool pattern = c.cycleBeats > 0;
     double pos;
     if (pattern) {
@@ -1126,89 +1122,34 @@ static void strobe(Ctx& c) {
     c.s[2] = 1;
     // A flash lasts Flash length of its step, but always shows for at least one frame
     const bool lit = (f < c.p[kFlash] || fresh) && (pattern || c.p[kSpeed] > 0);
-    bool any = false, on[4] = {};
-    for (int k = 0; k < 4; k++) {
-        on[k] = lit && (pattern ? c.steps && (c.steps[k] >> step & 1) : k == 0);  // Frequency: the whole layout
-        any |= on[k];
-    }
-    const float bg = c.p[kBackground] * c.level;  // Effect brightness dims the background, not the flashes
-    const float iw = W > 0 ? 1.f / W : 0;
-    if (!any) {  // between flashes: the background (or black)
-        for (int b = 0; b < NY; b++)
-            for (int i = 0; i < NX; i++)
-                c.out[b * NX + i] = bg > 0 ? scaleF(lutL(c.lutLin, X[i] * iw), bg) : CRGB(0, 0, 0);
-        return;
-    }
-    // Each lane's colour: white, or Colour along the palette per step (lanes a quarter apart)
-    CRGB col[4];
+    bool on[3];
+    for (int k = 0; k < 3; k++) on[k] = lit && (pattern ? c.steps && (c.steps[k] >> step & 1) : true);
+    // Each lane's colour: white, or Colour along the palette per step (lanes a third apart)
+    CRGB col[3];
     const float cs = c.p[kColour];
-    for (int k = 0; k < 4; k++) {
+    for (int k = 0; k < 3; k++) {
         if (cs <= 0) col[k] = CRGB(255, 255, 255);
         else {
-            float u = (float)(n % 4096) * cs + k * 0.25f;
+            const float u = (float)(n % 4096) * cs + k * (1.f / 3.f);
             col[k] = lutW(c.lutWrap, u - floorI(u));
         }
     }
-    if (!pattern) {  // Frequency: the middle Size share of each row, hard edged (an exact LED count)
-        const float half = c.p[kSize] * W * 0.5f;  // Size is a share (0.1..1) of the row here
-        for (int b = 0; b < NY; b++)
-            for (int i = 0; i < NX; i++) {
-                const CRGB base = bg > 0 ? scaleF(lutL(c.lutLin, X[i] * iw), bg) : CRGB(0, 0, 0);
-                c.out[b * NX + i] = fabsf(X[i] - CX) <= half + 1e-6f ? col[0] : base;
-            }
-        return;
+    const float bg = c.p[kBackground] * c.level;  // Effect brightness dims the background, not the flashes
+    const float iw = W > 0 ? 1.f / W : 0, half = c.p[kSize] * 0.005f;  // Size: % of a third
+    // Which third of the bar each LED is in, and whether it is in that third's middle Size share
+    // (the same for every row)
+    static int8_t laneOf[MAX_X];
+    for (int i = 0; i < NX; i++) {
+        const float v = X[i] * iw * 3.f;  // 0..3 along the bar, the top third first
+        const int k = v < 1 ? 0 : (v < 2 ? 1 : 2);
+        laneOf[i] = fabsf(v - k - 0.5f) <= half + 1e-6f ? (int8_t)k : (int8_t)-1;
     }
-    const uint32_t seed = (uint32_t)(n & 0xFFFFFFFF);
-    const float size = c.p[kSize], hw = size * 0.5f, soft = c.p[kSoft];
-    const float e = fmaxf(soft * hw, 0.02f * M);  // the edge's width
-    // Band: across the layout at Angle, at a random place
-    const float ang = c.p[kAngle] * DEG, ca = cosf(ang), sa = sinf(ang);
-    const float span = fabsf(W * ca) + fabsf(H * sa);
-    const float bandAt = (hrand(seed, 11) - 0.5f) * fmaxf(span - size, 0.f);
-    // Block: one cell of a grid of about Size
-    const int ncx = clampi((int)(W / fmaxf(size, 1e-3f) + 0.5f), 1, 64);
-    const int ncy = clampi((int)(H / fmaxf(size, 1e-3f) + 0.5f), 1, 64);
-    const float cw = W / ncx, ch = H / ncy;
-    const float bx0 = (int)(hrand(seed, 12) * ncx) * cw, by0 = Y[0] + (int)(hrand(seed, 13) * ncy) * ch;
-    // Shape: a circle or a square (at a random angle) somewhere on the layout
-    const float mx = fminf(hw, W * 0.5f), my = fminf(hw, H * 0.5f);  // kept on the layout
-    const float sx = mx + hrand(seed, 14) * (W - 2 * mx), sy = Y[0] + my + hrand(seed, 15) * (H - 2 * my);
-    const bool circle = hrand(seed, 16) < 0.5f;
-    const float sang = hrand(seed, 17) * 1.5708f, sca = cosf(sang), ssa = sinf(sang);
-    const float ie = 1.f / e;
     for (int b = 0; b < NY; b++) {
-        const float y = Y[b];
-        // Across the rows an edge is at least a row's footprint wide, so it doesn't flicker
-        const float ieBand = 1.f / fmaxf(e, FY[b] * fabsf(sa)), ieY = 1.f / fmaxf(e, FY[b] * 0.5f);
-        const float iy = on[2] ? sm(fminf(y - by0, by0 + ch - y) * ieY + 0.5f) : 0.f;
+        CRGB* o = c.out + b * NX;
         for (int i = 0; i < NX; i++) {
-            const float x = X[i];
-            float best = 0;
-            int lane = 0;
-            if (on[0]) { best = 1; lane = 0; }
-            if (on[1] && best < 1) {
-                const float d = (x - CX) * ca + (y - CY) * sa - bandAt;
-                const float I = sm((hw - fabsf(d)) * ieBand + 0.5f);
-                if (I > best) { best = I; lane = 1; }
-            }
-            if (on[2] && best < 1 && iy > 0) {
-                const float I = iy * sm(fminf(x - bx0, bx0 + cw - x) * ie + 0.5f);
-                if (I > best) { best = I; lane = 2; }
-            }
-            if (on[3] && best < 1) {
-                const float dx = x - sx, dy = y - sy;
-                float r;
-                if (circle) {
-                    const float d2 = dx * dx + dy * dy;
-                    r = d2 > 1e-12f ? d2 * rsqrtFast(d2) : 0.f;
-                } else {
-                    r = fmaxf(fabsf(dx * sca + dy * ssa), fabsf(-dx * ssa + dy * sca));
-                }
-                const float I = sm((hw - r) * ieY + 0.5f);
-                if (I > best) { best = I; lane = 3; }
-            }
-            const CRGB base = bg > 0 ? scaleF(lutL(c.lutLin, x * iw), bg) : CRGB(0, 0, 0);
-            c.out[b * NX + i] = best > 0 ? mixF(base, col[lane], best) : base;
+            const int k = laneOf[i];
+            if (k >= 0 && on[k]) o[i] = col[k];
+            else o[i] = bg > 0 ? scaleF(lutL(c.lutLin, X[i] * iw), bg) : CRGB(0, 0, 0);
         }
     }
 }
@@ -1338,16 +1279,14 @@ const EffectDef EFFECTS[] = {
       {"Fill", 0, 1, 0, 0.01f, "0 = outline, 1 = solid."}},
      shapesFx, false, "shape", 0,
      "Squares, circles and triangles appearing at random and fading."},
-    {"Strobe", 7,
+    {"Strobe", 5,
      {{"Speed (Hz)", 0, 20, 8, 0.1f, "Frequency: flashes per second. Beats: beats per pattern."},
-      {"Size (%)", 10, 100, 30, 1, "Beats: size of bands, blocks and shapes, % of the shorter side. Frequency: share of each row lit, from the middle.", 1},
+      {"Size (%)", 10, 100, 100, 1, "How much of each third flashes, from its middle. 100% = the whole third."},
       {"Flash length", 0.05f, 1, 0.5f, 0.01f, "Share of each step lit."},
-      {"Angle (deg)", -180, 180, 90, 1, "Band direction. 90 = along the bars."},
-      {"Softness", 0, 1, 0.2f, 0.01f, "Edge softness of bands, blocks and shapes."},
       {"Colour", 0, 1, 0, 0.01f, "0 = white; above 0: palette colours, stepping each flash."},
       {"Background", 0, 0.5f, 0, 0.01f, "Palette brightness between flashes. 0 = black."}},
      strobe, false, "pattern", 0,
-     "A plain strobe (Frequency) or a 4-lane, 32-step flash pattern (Beats). Flashes ignore Effect brightness.",
+     "Flashes on all bars: the top, middle and bottom third as the pattern sets (Beats), or all three (Frequency). Flashes ignore Effect brightness.",
      true, true},
     {"Fibres", 8,
      {{"Speed (deg/s)", -90, 90, -8.6f, 0.1f, "Rotation, degrees per second. Beats: beats per turn."},

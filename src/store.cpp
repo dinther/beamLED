@@ -506,7 +506,8 @@ bool presetChanged(int i) {
 
 void stepsDefault(Steps& s) {
     s = Steps{};
-    for (int b = 0; b < SEQ_STEPS; b += 4) s.lane[0] |= 1u << b;  // Whole on every beat
+    for (int b = 0; b < SEQ_STEPS; b += 4)  // every third of the bars on every beat
+        for (int k = 0; k < 3; k++) s.lane[k] |= 1u << b;
 }
 
 // Save. With a new name, the edits become a new preset of that name (added at the end), and

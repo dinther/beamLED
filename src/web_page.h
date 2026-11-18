@@ -245,7 +245,7 @@ const H = {
   preview: 'Live view of the LEDs, up to 15 frames/s, bars at their real spacing, first row on the left. No gamma. Sent only while open and on screen.',
   previewPin: 'Pin (📌): keeps the preview at the top while you scroll. Kept in this browser.',
   previewLook: 'On: bars as diffused strips. Off: bare LEDs with glare. Kept in this browser.',
-  steps: '32 steps, 4 lanes. In Beats timing (8 beats per pattern) a step is a 1/16 note. Click or drag to set steps. Whole: all LEDs. Band: a band at Angle. Block: one grid cell. Shape: a circle or square. Lighter boxes are beats.',
+  steps: '32 steps per lane; in Beats timing (8 beats per pattern) a step is a 1/16 note. A set step flashes that third of every bar: Top, Center, Bottom. Click or drag to set. Lighter boxes are beats.',
   stepsClear: 'Clear all steps (Revert brings them back).',
   effectBrightness: 'Dims the effect, not the Sparkle overlay. On Strobe: only the Background. Saved.',
   sparkleBrightness: 'How strongly the twinkles cover the effect: 0 = not at all, 100% = fully. Saved.',
@@ -599,8 +599,6 @@ function draw() {
         (by >= 0 ? ' Animation ' + (by + 1) + ' moves it.' : ''), 'p' + j);
     if (by >= 0) { row.classList.add('moving'); off(row, 'Animation ' + (by + 1) + ' moves it.'); }
     else if (inBeats && j == ef.speedParam) off(row, 'Timing is Beats: Beats per ' + ef.cycle + ' sets the speed.');
-    else if (ef.steps && !inBeats && /^(Angle|Softness)/.test(d.name))
-      off(row, 'Timing is ' + modes[timing] + ': only for the pattern (Beats).');
     rows[j] = row;
     card.append(row);
   });
@@ -1245,7 +1243,7 @@ function oscMessages(buf, out = []) {
 
 // The step pattern of a preset whose effect has steps (Strobe): 4 lanes x 32 steps, each lane a
 // number with bit s for step s. Click to toggle a box; dragging paints the same way across boxes.
-const LANES = ['Whole', 'Band', 'Block', 'Shape'];
+const LANES = ['Top', 'Center', 'Bottom'];
 let seqPaint = null;  // while dragging over a step grid: true = setting boxes, false = clearing
 addEventListener('pointerup', () => { seqPaint = null; });
 addEventListener('pointercancel', () => { seqPaint = null; });
