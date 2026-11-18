@@ -553,7 +553,7 @@ static void rings(Ctx& c) {
 // Big rings expanding from random points (or from the point Centre X, Y sets) and fading out, like
 // raindrops on a pond.
 
-struct Drop { float x, y, r, fade; uint8_t col; bool live; };
+struct Drop { float x, y, r, fade; uint8_t col; bool live; float draw; };  // r: age (radius grown); draw: radius drawn
 static Drop drops[10];
 
 static void dropsFx(Ctx& c) {
@@ -606,7 +606,9 @@ static void dropsFx(Ctx& c) {
         if (!d.live) continue;
         d.r += speed * c.dt;
         if (d.r > maxR) d.live = false;
-        d.fade = (1.f - d.r / maxR) * fminf(1.f, d.r / width);  // once per drop, not per LED
+        // Reverse (Beats timing): rings come in from Max radius and shrink into the landing point
+        d.draw = c.reverse ? maxR - d.r : d.r;
+        d.fade = (1.f - d.draw / maxR) * fminf(1.f, d.draw / width);  // once per drop, not per LED
     }
     const CRGB back = c.lutLin[0];
     const float sig = width * 0.5f;
@@ -646,7 +648,7 @@ static void dropsFx(Ctx& c) {
             const Drop& d = drops[n];
             if (!d.live || dk[n][3] == 0) continue;
             const float dy = Y[b] - d.y;
-            const float outer = d.r + lim + 0.01f * M, inner = d.r - lim - 0.01f * M;
+            const float outer = d.draw + lim + 0.01f * M, inner = d.draw - lim - 0.01f * M;
             const float reach2 = outer * outer - dy * dy;
             if (reach2 < 0) continue;  // the ring's band misses this row
             // LEDs within the band's reach along the row, one extra each side for rounding
@@ -665,7 +667,7 @@ static void dropsFx(Ctx& c) {
                     if (!(d2 > outer * outer || (inner > 0 && d2 < inner * inner))) {
                         // No square root, divide or expf per LED: 1/sqrt, a series, the exp table
                         const float rd = d2 > 1e-12f * M * M ? rsqrtFast(d2) : 0.f;
-                        const float off = d2 * rd - d.r;
+                        const float off = d2 * rd - d.draw;
                         if (fabsf(off) <= lim) {
                             const float u = fminf(a * rd * rd, umax);
                             const float rse = invSig * (1.f - 0.5f * u + 0.375f * u * u);  // 1/se
