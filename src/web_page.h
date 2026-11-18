@@ -88,8 +88,7 @@ select,input[type=text],input[type=password],input[type=number]{flex:1;min-width
 #elsewhere{position:fixed;inset:0;z-index:20;display:none;align-items:center;justify-content:center;background:#121212e8;padding:16px}
 #elsewhere .card{max-width:360px;text-align:center}
 #elsewhere p{margin:6px 0 14px}
-#tip{position:fixed;z-index:9;display:none;max-width:min(380px,calc(100vw - 24px));background:#2b2b2b;color:#eee;
-  border:1px solid #555;border-radius:8px;padding:8px 10px;font-size:13px;line-height:1.45;box-shadow:0 4px 16px #000a;pointer-events:none}
+#tip{position:fixed;z-index:9;display:none;bottom:0;box-sizing:border-box;max-height:40vh;overflow:auto;background:#2b2b2b;color:#eee;border-top:2px solid var(--acc);border-radius:10px 10px 0 0;box-shadow:0 -4px 18px #000a;padding:10px 16px calc(10px + env(safe-area-inset-bottom));font-size:14px;line-height:1.45;pointer-events:none}
 </style></head><body><main id="app">Loading...</main><div id="tip"></div>
 <div id="elsewhere"><div class="card"><p id="elsewhere-text"></p><button class="on" id="elsewhere-go">Continue here</button></div></div>
 <script>
@@ -171,13 +170,13 @@ document.addEventListener('click', e => {
   e.preventDefault(); e.stopImmediatePropagation();
   if (touch) showTip(o);
 }, true);
+// The hint shows at the bottom of the screen, as wide as the page's column, so it never covers
+// the control being used
 function showTip(el) {
   tipFor = el; tipBox.textContent = el.dataset.tip; tipBox.style.display = 'block';
-  const r = el.getBoundingClientRect(), b = tipBox.getBoundingClientRect();
-  let top = r.bottom + 6;
-  if (top + b.height > innerHeight - 8) top = r.top - b.height - 6;
-  tipBox.style.top = Math.max(8, top) + 'px';
-  tipBox.style.left = Math.max(8, Math.min(r.left, innerWidth - b.width - 8)) + 'px';
+  const m = document.getElementById('app').getBoundingClientRect();
+  tipBox.style.left = Math.max(0, m.left) + 'px';
+  tipBox.style.width = Math.min(m.width, innerWidth) + 'px';
 }
 function hideTip() { tipFor = null; tipBox.style.display = 'none'; }
 addEventListener('pointerdown', e => { touch = e.pointerType != 'mouse'; }, true);
