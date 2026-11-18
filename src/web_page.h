@@ -99,7 +99,7 @@ select,input[type=text],input[type=password],input[type=number]{flex:1;min-width
 .seq .st{height:22px;border-radius:3px;background:#2f2f2f;cursor:pointer}
 .seq .st.q{background:#3a3a3a}
 .seq .st.on{background:var(--acc)}
-.na .st{pointer-events:none}
+.na .st,.seq .st.na{pointer-events:none}
 
 #elsewhere{position:fixed;inset:0;z-index:20;display:none;align-items:center;justify-content:center;background:#121212e8;padding:16px}
 #elsewhere .card{max-width:360px;text-align:center}
@@ -245,7 +245,7 @@ const H = {
   preview: 'Live view of the LEDs, up to 15 frames/s, bars at their real spacing, first row on the left. No gamma. Sent only while open and on screen.',
   previewPin: 'Pin (📌): keeps the preview at the top while you scroll. Kept in this browser.',
   previewLook: 'On: bars as diffused strips. Off: bare LEDs with glare. Kept in this browser.',
-  steps: '32 steps per lane; in Beats timing (8 beats per pattern) a step is a 1/16 note. A set step flashes that third of every bar: Top, Center, Bottom. Click or drag to set. Lighter boxes are beats.',
+  steps: 'A set step flashes that third of every bar: Top, Center, Bottom. Beats: 32 steps, a 1/16 note each (8 beats per pattern). Frequency: only the first column, which thirds flash. Click or drag to set. Lighter boxes are beats.',
   stepsClear: 'Clear all steps (Revert brings them back).',
   effectBrightness: 'Dims the effect, not the Sparkle overlay. On Strobe: only the Background. Saved.',
   sparkleBrightness: 'How strongly the twinkles cover the effect: 0 = not at all, 100% = fully. Saved.',
@@ -584,10 +584,7 @@ function draw() {
   const rRow = field('Reverse', rev, H.reverse);
   if (!inBeats) for (const r of [bRow, rRow]) off(r, ef.cycle ? 'Timing is not Beats.' : noCycle);
   card.append(bRow, rRow);
-  if (ef.steps) {
-    const g = card.appendChild(stepGrid(p));
-    if (!inBeats) for (const el of g.children) off(el, 'Timing is ' + modes[timing] + ': plain strobe. Beats plays the pattern.');
-  }
+  if (ef.steps) card.appendChild(stepGrid(p, !inBeats));
   const motions = p.motions || [];
   const rows = [], moved = j => motions.some(mo => mo.target == j + 1);
   ef.params.forEach((d, j) => {
@@ -1247,7 +1244,8 @@ const LANES = ['Top', 'Center', 'Bottom'];
 let seqPaint = null;  // while dragging over a step grid: true = setting boxes, false = clearing
 addEventListener('pointerup', () => { seqPaint = null; });
 addEventListener('pointercancel', () => { seqPaint = null; });
-function stepGrid(p) {
+// firstOnly (Frequency timing): only the first column counts, the rest is greyed
+function stepGrid(p, firstOnly) {
   if (!Array.isArray(p.steps)) p.steps = [0, 0, 0, 0];
   const send = () => throttle('steps', () => post('/api/preset', {index: S.current, steps: p.steps}));
   const grid = h('div', {className: 'seq'});
@@ -1267,7 +1265,8 @@ function stepGrid(p) {
   LANES.forEach((name, k) => {
     grid.append(at(h('span', {className: 'ln', textContent: name}), k + 2, -1));
     for (let b = 0; b < 32; b++) {
-      const box = at(h('span', {className: 'st' + (b % 4 == 0 ? ' q' : '') + ((p.steps[k] >>> b) & 1 ? ' on' : '')}), k + 2, b);
+      const box = at(h('span', {className: 'st' + (b % 4 == 0 ? ' q' : '') + ((p.steps[k] >>> b) & 1 ? ' on' : '') + (firstOnly && b ? ' na' : '')}), k + 2, b);
+      if (firstOnly && b) box.dataset.tip = 'Unavailable: Timing is Frequency: only the first column (which thirds flash) counts.';
       box.onpointerdown = e => {
         e.preventDefault();
         seqPaint = !box.classList.contains('on');

@@ -1097,8 +1097,9 @@ static void fibres(Ctx& c) {
 
 // ---------------------------------------------------------------- Strobe
 // Flashes on all bars. Beats timing: a drum machine of 32 steps (two bars of 1/16 notes) in three
-// lanes, Top, Center and Bottom: on a set step that third of every bar flashes (the middle Size
-// share of it). Frequency (Time) timing: a plain strobe of all three thirds, Speed flashes a second.
+// lanes, Top, Center and Bottom: on a set step that third of every bar flashes (Size of it: Top from
+// the top end, Bottom from the bottom end, Center from its middle). Frequency (Time) timing: Speed
+// flashes a second, of the thirds set in the pattern's first column.
 
 static void strobe(Ctx& c) {
     enum { kSpeed, kSize, kFlash, kColour, kBackground };
@@ -1123,7 +1124,8 @@ static void strobe(Ctx& c) {
     // A flash lasts Flash length of its step, but always shows for at least one frame
     const bool lit = (f < c.p[kFlash] || fresh) && (pattern || c.p[kSpeed] > 0);
     bool on[3];
-    for (int k = 0; k < 3; k++) on[k] = lit && (pattern ? c.steps && (c.steps[k] >> step & 1) : true);
+    // Beats: the step's column of the pattern; Frequency: its first column
+    for (int k = 0; k < 3; k++) on[k] = lit && c.steps && (c.steps[k] >> (pattern ? step : 0) & 1);
     // Each lane's colour: white, or Colour along the palette per step (lanes a third apart)
     CRGB col[3];
     const float cs = c.p[kColour];
@@ -1135,14 +1137,16 @@ static void strobe(Ctx& c) {
         }
     }
     const float bg = c.p[kBackground] * c.level;  // Effect brightness dims the background, not the flashes
-    const float iw = W > 0 ? 1.f / W : 0, half = c.p[kSize] * 0.005f;  // Size: % of a third
-    // Which third of the bar each LED is in, and whether it is in that third's middle Size share
-    // (the same for every row)
+    const float iw = W > 0 ? 1.f / W : 0, sz = c.p[kSize] * 0.01f;  // Size: share of a third
+    // Which third of the bar each LED is in, and whether it is in that third's Size share: from the
+    // top end in Top, the bottom end in Bottom, the middle in Center (the same for every row)
     static int8_t laneOf[MAX_X];
     for (int i = 0; i < NX; i++) {
         const float v = X[i] * iw * 3.f;  // 0..3 along the bar, the top third first
         const int k = v < 1 ? 0 : (v < 2 ? 1 : 2);
-        laneOf[i] = fabsf(v - k - 0.5f) <= half + 1e-6f ? (int8_t)k : (int8_t)-1;
+        const float u = v - k;           // 0..1 within the third
+        const bool in = k == 0 ? u <= sz + 1e-6f : (k == 2 ? u >= 1.f - sz - 1e-6f : fabsf(u - 0.5f) <= sz * 0.5f + 1e-6f);
+        laneOf[i] = in ? (int8_t)k : (int8_t)-1;
     }
     for (int b = 0; b < NY; b++) {
         CRGB* o = c.out + b * NX;
@@ -1280,13 +1284,13 @@ const EffectDef EFFECTS[] = {
      shapesFx, false, "shape", 0,
      "Squares, circles and triangles appearing at random and fading."},
     {"Strobe", 5,
-     {{"Speed (Hz)", 0, 20, 8, 0.1f, "Frequency: flashes per second. Beats: beats per pattern."},
-      {"Size (%)", 10, 100, 100, 1, "How much of each third flashes, from its middle. 100% = the whole third."},
+     {{"Speed (Hz)", 0, 20, 8, 0.1f, "Frequency: flashes per second, of the thirds set in the pattern's first column. Beats: beats per pattern."},
+      {"Size (%)", 10, 100, 100, 1, "How much of each third flashes: Top from the top end, Bottom from the bottom end, Center from its middle."},
       {"Flash length", 0.05f, 1, 0.5f, 0.01f, "Share of each step lit."},
       {"Colour", 0, 1, 0, 0.01f, "0 = white; above 0: palette colours, stepping each flash."},
       {"Background", 0, 0.5f, 0, 0.01f, "Palette brightness between flashes. 0 = black."}},
      strobe, false, "pattern", 0,
-     "Flashes on all bars: the top, middle and bottom third as the pattern sets (Beats), or all three (Frequency). Flashes ignore Effect brightness.",
+     "Flashes on all bars: the top, middle and bottom third as the pattern sets (Beats), or the first column's thirds at Speed (Frequency). Flashes ignore Effect brightness.",
      true, true},
     {"Fibres", 8,
      {{"Speed (deg/s)", -90, 90, -8.6f, 0.1f, "Rotation, degrees per second. Beats: beats per turn."},
