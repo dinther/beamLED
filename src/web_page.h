@@ -182,9 +182,11 @@ document.addEventListener('click', e => {
 // the control being used
 function showTip(el) {
   tipFor = el; tipBox.textContent = el.dataset.tip; tipBox.style.display = 'block';
-  const m = document.getElementById('app').getBoundingClientRect();
-  tipBox.style.left = Math.max(0, m.left) + 'px';
-  tipBox.style.width = Math.min(m.width, innerWidth) + 'px';
+  // as wide as the panels: the page column without its side padding
+  const app = document.getElementById('app'), m = app.getBoundingClientRect(), cs = getComputedStyle(app);
+  const left = Math.max(0, m.left + parseFloat(cs.paddingLeft)), right = Math.min(innerWidth, m.right - parseFloat(cs.paddingRight));
+  tipBox.style.left = left + 'px';
+  tipBox.style.width = Math.max(0, right - left) + 'px';
 }
 function hideTip() { tipFor = null; tipBox.style.display = 'none'; }
 addEventListener('pointerdown', e => { touch = e.pointerType != 'mouse'; }, true);
@@ -1332,18 +1334,22 @@ function drawBare(u8, nx, ny, cv, ry, y0, M, scale, W, H, dpr, per) {
   }
   const d = pvDotImg.data, acc = pvAcc;
   d.fill(0); acc.fill(0);
-  const top = M, mid = per >> 1;
+  // Each LED a square dot that grows with the spacing: about a third of it, at least 2 pixels wide
+  const dot = Math.max(2, Math.round(per * 0.35)), dh = Math.max(1, Math.min(dot, per - 1));
+  const top = M, mid = (per - dh + 1) >> 1;
   for (let b = 0; b < ny; b++) {
-    const x = M + Math.round((ry[b] - y0) * scale) - 1;  // two pixels side by side: x, x + 1
-    if (x < 0 || x + 1 >= w) continue;
+    const x = M + Math.round((ry[b] - y0) * scale) - (dot >> 1);  // the dot: x .. x + dot - 1
+    if (x < 0 || x + dot > w) continue;
     const gx = (x / G) | 0;
     for (let i = 0; i < nx; i++) {
       const y = top + i * per + mid;  // exactly per pixels apart
-      if (y < 0 || y >= h) continue;
-      const s = 8 + (b * nx + i) * 3, t = (y * w + x) * 4, g = (((y / G) | 0) * gw + gx) * 3;
+      if (y < 0 || y + dh > h) continue;
+      const s = 8 + (b * nx + i) * 3, g = (((y / G) | 0) * gw + gx) * 3;
       const r = u8[s], gr = u8[s + 1], bl = u8[s + 2];
-      d[t] = r; d[t + 1] = gr; d[t + 2] = bl; d[t + 3] = 255;
-      d[t + 4] = r; d[t + 5] = gr; d[t + 6] = bl; d[t + 7] = 255;
+      for (let yy = y; yy < y + dh; yy++)
+        for (let t = (yy * w + x) * 4, e = t + dot * 4; t < e; t += 4) {
+          d[t] = r; d[t + 1] = gr; d[t + 2] = bl; d[t + 3] = 255;
+        }
       acc[g] += r; acc[g + 1] += gr; acc[g + 2] += bl;
     }
   }
