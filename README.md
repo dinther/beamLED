@@ -20,8 +20,9 @@ are far apart compared with the LEDs along them, effects designed for a dense gr
 flicker as fine detail crosses a bar, and are distorted by the uneven spacing. beamLED was written
 for this kind of installation (see [docs/background.md](docs/background.md)):
 
-- Every effect is evaluated at the real position of each LED, in metres. Nothing is drawn in the
-  empty space between the bars.
+- Every effect is evaluated at the real position of each LED. Nothing is drawn in the empty space
+  between the bars. Sizes and speeds are set as a share of the ceiling's shorter side, so a preset
+  keeps its look on a bigger or smaller ceiling, or on a small test rig.
 - Detail across the bars is kept soft (features of 0.8 m and more), and where an edge crosses a bar
   it is widened by the bar's share of the gap, so it moves across the ceiling smoothly.
 - Effects are made of big shapes (wide bands, beams, clouds, rings, gradients), not pixel detail.
@@ -120,7 +121,7 @@ or disabled, it keeps its own tempo.
 
 Per preset, **Timing**:
 
-- **Time**: speeds in their own units (m/s, rpm, degrees per second).
+- **Time**: speeds in their own units (% of the ceiling's shorter side per second, rpm, degrees per second).
 - **Time, follow tempo**: the set speed is the speed at 120 BPM and scales with the tempo.
 - **Beats** (effects with a cycle): one band, revolution, sweep, stripe, ring, drop or wave takes 1,
   2, 4 ... 64 beats and lands on the bar. A change eases onto the new grid instead of jumping.

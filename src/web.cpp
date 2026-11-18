@@ -660,7 +660,7 @@ static void handleNetSet() {
 static void handleBackup() {
     JsonDocument d;
     d["beamled"] = 1;  // file format
-    d["paramOrder"] = 2;  // sliders in the one order of 2026-11-19 (missing: the order before)
+    d["paramOrder"] = 3;  // 3: one slider order, lengths and speeds in %; 2: in metres; missing: old order
     d["build"] = BUILD;
     d["current"] = settings.current;
     JsonArray pr = d["presets"].to<JsonArray>();
@@ -744,6 +744,7 @@ static void handleRestore() {
     // Presets, then each one saved as it is
     presetCount = pr.size();
     const bool oldOrder = (d["paramOrder"] | 1) < 2;  // saved before the sliders' one order
+    const bool metres = (d["paramOrder"] | 1) < 3;    // lengths and speeds in metres
     autoSettings.skip = 0;
     for (int i = 0; i < presetCount; i++) {
         JsonObject q = pr[i];
@@ -755,10 +756,13 @@ static void handleRestore() {
         // (a backup from before the overlay was global has sparkle settings per preset: ignored)
         p.mirror = (q["mirror"] | false) ? 1 : 0;
         JsonArray ps = q["params"].as<JsonArray>();
-        if (oldOrder) {  // a backup from before 2026-11-19: its sliders in their old order
-            effectsParamsToOldOrder(p.effect, p.p);
+        if (oldOrder || metres) {  // a backup from before 2026-11-19: old order and/or metres
+            for (int j = 0; j < e.n; j++)
+                if (e.params[j].rel) p.p[j] /= 20.f;  // the defaults for anything missing, in metres too
+            if (oldOrder) effectsParamsToOldOrder(p.effect, p.p);
             for (int j = 0; j < e.n && j < (int)ps.size(); j++) p.p[j] = ps[j].as<float>();
-            effectsParamsFromOldOrder(p.effect, p.p);
+            if (oldOrder) effectsParamsFromOldOrder(p.effect, p.p);
+            effectsMetresToPercent(p.effect, p.p);
             for (int j = 0; j < e.n; j++) p.p[j] = constrain(p.p[j], e.params[j].min, e.params[j].max);
         } else {
             for (int j = 0; j < e.n && j < (int)ps.size(); j++)
@@ -785,6 +789,10 @@ static void handleRestore() {
             mo.beatsExp = constrain(j["beatsExp"] | 3, 0, 6);
             mo.from = j["from"] | 0.f;
             mo.to = j["to"] | 1.f;
+            if (metres && mo.target) {
+                mo.from = effectsMetresToPercent(p.effect, mo.target - 1, mo.from);
+                mo.to = effectsMetresToPercent(p.effect, mo.target - 1, mo.to);
+            }
             mo.seconds = constrain(j["seconds"] | 8.f, 0.1f, 3600.f);
             mo.phase = constrain(j["phase"] | 0.f, 0.f, 1.f);
         }

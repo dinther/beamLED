@@ -12,6 +12,9 @@ struct ParamDef {
     const char* name;
     float min, max, def, step;
     const char* help;  // what it does, for the page's tooltip and OSCQuery's description
+    // 1: a length (%) or speed (%/s) as a share of the ceiling's shorter side; turned into the
+    // effects' units (effectsToUnits: 1 = that side) before the effect gets it. 0: as it is.
+    uint8_t rel;
 };
 
 struct Ctx {
@@ -48,6 +51,12 @@ extern const int NUM_EFFECTS;
 void effectsParamsFromOldOrder(int e, float* p);
 void effectsParamsToOldOrder(int e, float* p);
 int effectsParamFromOldOrder(int e, int old);
+// The relative sliders' % (of the shorter side) to the effects' units (1 = the shorter side), in place
+void effectsToUnits(const EffectDef& e, float* p);
+// Presets saved before 2026-11-19 hold lengths and speeds in metres: to % of a 5 m shorter side
+// (the ceiling they were made for), in place; and one value of slider j
+void effectsMetresToPercent(int e, float* p);
+float effectsMetresToPercent(int e, int j, float v);
 
 // (Re)compute LED positions from the layout; call after a layout change
 void effectsInit();

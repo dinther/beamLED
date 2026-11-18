@@ -59,12 +59,16 @@ static void setPreset(int i, const char* name, uint8_t effect, uint8_t palette, 
     presetSetEffect(p, effect);
     p.palette = palette;
     (void)sparkle;
-    // The values are listed in the sliders' order before 2026-11-19
+    // The values are listed as they were before 2026-11-19: in the sliders' old order, lengths and
+    // speeds in metres. The defaults (now in %) go back to metres first, so all convert alike.
+    for (int k = 0; k < EFFECTS[effect].n; k++)
+        if (EFFECTS[effect].params[k].rel) p.p[k] /= 20.f;
     effectsParamsToOldOrder(effect, p.p);
     int j = 0;
     for (float v : params)
         if (j < MAXP) p.p[j++] = v;
     effectsParamsFromOldOrder(effect, p.p);
+    effectsMetresToPercent(effect, p.p);
 }
 
 static void defaults() {
@@ -183,8 +187,9 @@ static void rememberSaved() {
     verWritten = true;
 }
 
-// The sliders' order: 2 = since 2026-11-19 (one order for every effect). Missing: the order before.
-static const uint8_t PARAM_ORDER = 2;
+// The sliders' version: 2 = one order for every effect (2026-11-19), 3 = lengths and speeds in %
+// of the ceiling's shorter side (2026-11-19). Missing: the order before, in metres.
+static const uint8_t PARAM_ORDER = 3;
 static bool orderWritten = false;
 
 static void save() {
@@ -384,8 +389,10 @@ void storeLoad() {
             }
         }
     }
-    // Presets saved in the sliders' old order: moved to the order now, once (and saved so)
-    const bool reorder = ok && prefs.getUChar("pord", 1) < PARAM_ORDER;
+    // Presets saved in the sliders' old order and in metres: moved to the order now, then to %,
+    // once (and saved so)
+    const uint8_t pord = ok ? prefs.getUChar("pord", 1) : PARAM_ORDER;
+    const bool reorder = ok && pord < 2, percent = ok && pord < 3;
     prefs.end();
     if (reorder) {
         for (int i = 0; i < presetCount; i++) {
@@ -395,7 +402,19 @@ void storeLoad() {
         }
         Serial.println("Presets moved to the new slider order");
     }
-    orderWritten = ok && !reorder;
+    if (percent) {
+        for (int i = 0; i < presetCount; i++) {
+            const int e = presets[i].effect;
+            effectsMetresToPercent(e, presets[i].p);
+            for (Motion& mo : presetMotion[i])
+                if (mo.target) {
+                    mo.from = effectsMetresToPercent(e, mo.target - 1, mo.from);
+                    mo.to = effectsMetresToPercent(e, mo.target - 1, mo.to);
+                }
+        }
+        Serial.println("Presets' lengths and speeds moved to %");
+    }
+    orderWritten = ok && !reorder && !percent;
     for (int i = 0; i < presetCount; i++)
         for (Motion& mo : presetMotion[i]) {
             if (mo.target > EFFECTS[presets[i].effect].n || mo.shape >= NUM_SHAPES) mo = MOTION_OFF;
@@ -416,7 +435,7 @@ void storeLoad() {
         partKnown[PART_MOTS] = false;
         storeMarkDirty();
     }
-    if (reorder && !old && !palOld) {  // presets and motions in the new slider order: write them once
+    if ((reorder || percent) && !old && !palOld) {  // presets and motions converted: write them once
         partKnown[PART_PRES] = false;
         partKnown[PART_MOTS] = false;
         storeMarkDirty();

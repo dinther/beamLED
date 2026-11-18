@@ -12,13 +12,17 @@
 static constexpr float DEG = 0.01745329f;
 static constexpr float TAU = 6.2831853f;
 
-static float X[MAX_X];   // m along a row
-static float Y[MAX_Y];   // m across the rows
-static float FY[MAX_Y];  // footprint of a row across the rows (m)
+// Everything is in units of the ceiling's shorter side (1 = that side): the effects only see the
+// layout's proportions, so a preset looks the same on any size of ceiling. Built-in sizes were
+// tuned in metres on a 5 m ceiling and are written as metres * M.
+static constexpr float M = 0.2f;  // one metre of that 5 m ceiling, in short-side units
+static float X[MAX_X];   // along a row
+static float Y[MAX_Y];   // across the rows
+static float FY[MAX_Y];  // footprint of a row across the rows
 // NX, NL: the LEDs per row and in all that an effect renders (in mirror, the left half only)
 static int NX = 1, NY = 1, NL = 1;
 static float CX, CY, W, H;
-static float PITCH = 1;  // m from one LED to the next along a row
+static float PITCH = 1;  // from one LED to the next along a row
 static int NXFULL = 1;   // LEDs per row in the layout
 static float noiseScale = 1.f / 15000.f;
 
@@ -181,7 +185,7 @@ static inline float footAtten(int b, float sinAbs, float period) {
 static float fbm(float x, float y, float z, float size) {
     float sum = 0, tw = 0, w = 1, lam = size;
     for (int o = 0; o < 4; o++) {
-        if (o > 0 && lam < 0.8f) break;
+        if (o > 0 && lam < 0.8f * M) break;
         const float u = wrap256(x / lam + o * 17.3f);
         const float v = wrap256(y / lam + o * 31.7f);
         const float t = wrap256(z * (1 + o * 0.7f) + o * 47.1f);
@@ -364,7 +368,7 @@ static void sweeps(Ctx& c) {
             sweepAt[k] = angle;
         }
     }
-    const float L = hypotf(W, H) + 2 * width + 2 * trail + 1.f;  // full travel
+    const float L = hypotf(W, H) + 2 * width + 2 * trail + 1.f * M;  // full travel
     advance(c, c.s[0], speed, L / n);  // in beats: a new bar per cycle
     float pos[4], ca[4], sa[4];
     CRGB col[4];
@@ -384,11 +388,11 @@ static void sweeps(Ctx& c) {
         col[k] = c.lutWrap[sweepCol[k]];
     }
     const CRGB back = c.lutLin[0];
-    const float hw = width * 0.5f, itrail = trail > 0.01f ? 1.f / trail : 0;
+    const float hw = width * 0.5f, itrail = trail > 0.01f * M ? 1.f / trail : 0;
     for (int b = 0; b < NY; b++) {
         CRGB* o = c.out + b * NX;
         float ie[4];  // 1 / edge width
-        for (int k = 0; k < n; k++) ie[k] = 1.f / fmaxf(fmaxf(soft * width, FY[b] * fabsf(sa[k])), 0.05f);
+        for (int k = 0; k < n; k++) ie[k] = 1.f / fmaxf(fmaxf(soft * width, FY[b] * fabsf(sa[k])), 0.05f * M);
         for (int i = 0; i < NX; i++) {
             float r = back.r * bg, g = back.g * bg, bl = back.b * bg;
             for (int k = 0; k < n; k++) {
@@ -399,7 +403,7 @@ static void sweeps(Ctx& c) {
                 else if (s >= -hw) I = 1.f;
                 else {
                     I = 1.f - sm((-hw - s) * ie[k]);
-                    if (trail > 0.01f) I = fmaxf(I, expNeg((s + hw) * itrail));
+                    if (trail > 0.01f * M) I = fmaxf(I, expNeg((s + hw) * itrail));
                 }
                 if (I <= 0.002f) continue;
                 r += col[k].r * I;
@@ -450,13 +454,13 @@ static void searchlights(Ctx& c) {
     const float t = c.s[0];
     float bx[5], by[5];
     CRGB col[5];
-    const float ax = W * 0.5f + 0.3f, ay = H * 0.5f + 0.3f;
+    const float ax = W * 0.5f + 0.3f * M, ay = H * 0.5f + 0.3f * M;
     for (int k = 0; k < n; k++) {
         bx[k] = CX + ax * sinf(t * (0.31f + 0.071f * k) + k * 1.7f);
         by[k] = CY + ay * sinf(t * (0.23f + 0.053f * k) + k * 2.9f + 0.5f);
         col[k] = lutW(c.lutWrap, (float)k / n);
     }
-    const float inner = fmaxf(0.f, fminf(size * (1.f - soft), size - 0.4f));  // edge >= 0.4 m
+    const float inner = fmaxf(0.f, fminf(size * (1.f - soft), size - 0.4f * M));  // edge >= 0.4 m
     const float size2 = size * size, iedge = 1.f / (size - inner);
     const CRGB back = c.lutWrap[0];
     for (int b = 0; b < NY; b++) {
@@ -494,6 +498,7 @@ static void lighthouse(Ctx& c) {
     const float sr = spread / maxR;
     // The beam's edge is half * 0.6 wide, but near the origin (where that is narrow in metres)
     // at least ~0.35 m: 0.35 / r. Where the first wins, its smoothstep is the same everywhere.
+    const float E = 0.35f * M;
     const float e0 = half * 0.6f, lo0 = fmaxf(half - e0, 0.f), r0 = 1.f / (half + e0 - lo0);
     for (int b = 0; b < NY; b++) {
         CRGB* o = c.out + b * NX;
@@ -503,12 +508,12 @@ static void lighthouse(Ctx& c) {
             const float r = sqrtf(dx * dx + dy * dy);
             float a = atan2Fast(dy, dx) - c.s[0] - angle;
             a -= P * roundFast(a * iP);
-            const float rc = fmaxf(r, 0.2f);
+            const float rc = fmaxf(r, 0.2f * M);
             float I;
-            if (0.35f <= e0 * rc) {
+            if (E <= e0 * rc) {
                 I = 1.f - sm((fabsf(a) - lo0) * r0);
             } else {
-                const float edge = 0.35f / rc, lo = fmaxf(half - edge, 0.f);
+                const float edge = E / rc, lo = fmaxf(half - edge, 0.f);
                 I = 1.f - sm((fabsf(a) - lo) / (half + edge - lo));
             }
             o[i] = mixF(back, lutL(c.lutLin, r * sr), I);
@@ -538,8 +543,8 @@ static void rings(Ctx& c) {
             const float dx = X[i] - cx;
             const float r = sqrtf(dx * dx + dy * dy);
             const float u = r * is - ph;
-            if (r > 1e-3f ? fy <= soft * r : FY[b] * is <= soft) o[i] = base.at(u, c.lutWrap);
-            else o[i] = Bands(r > 1e-3f ? fy / r : FY[b] * is, step, gap).at(u, c.lutWrap);
+            if (r > 1e-3f * M ? fy <= soft * r : FY[b] * is <= soft) o[i] = base.at(u, c.lutWrap);
+            else o[i] = Bands(r > 1e-3f * M ? fy / r : FY[b] * is, step, gap).at(u, c.lutWrap);
         }
     }
 }
@@ -635,7 +640,7 @@ static void dropsFx(Ctx& c) {
             const Drop& d = drops[n];
             if (!d.live || dk[n][3] == 0) continue;
             const float dy = Y[b] - d.y;
-            const float outer = d.r + lim + 0.01f, inner = d.r - lim - 0.01f;
+            const float outer = d.r + lim + 0.01f * M, inner = d.r - lim - 0.01f * M;
             const float reach2 = outer * outer - dy * dy;
             if (reach2 < 0) continue;  // the ring's band misses this row
             // LEDs within the band's reach along the row, one extra each side for rounding
@@ -653,7 +658,7 @@ static void dropsFx(Ctx& c) {
                     const float dx = X[i] - d.x, d2 = dx * dx + dy * dy;
                     if (!(d2 > outer * outer || (inner > 0 && d2 < inner * inner))) {
                         // No square root, divide or expf per LED: 1/sqrt, a series, the exp table
-                        const float rd = d2 > 1e-12f ? rsqrtFast(d2) : 0.f;
+                        const float rd = d2 > 1e-12f * M * M ? rsqrtFast(d2) : 0.f;
                         const float off = d2 * rd - d.r;
                         if (fabsf(off) <= lim) {
                             const float u = fminf(a * rd * rd, umax);
@@ -702,8 +707,8 @@ static void interference(Ctx& c) {
             const float dx1 = X[i] - x1, dx2 = X[i] - x2;
             const float s1 = dx1 * dx1 + q1, s2 = dx2 * dx2 + q2;
             const float r1 = sqrtf(s1), r2 = sqrtf(s2);
-            const float v1 = cosCyc(r1 * il - ph) * expNeg(kb * (s1 > 1e-6f ? q1 / s1 : 1.f));
-            const float v2 = cosCyc(r2 * il - ph) * expNeg(kb * (s2 > 1e-6f ? q2 / s2 : 1.f));
+            const float v1 = cosCyc(r1 * il - ph) * expNeg(kb * (s1 > 1e-6f * M * M ? q1 / s1 : 1.f));
+            const float v2 = cosCyc(r2 * il - ph) * expNeg(kb * (s2 > 1e-6f * M * M ? q2 / s2 : 1.f));
             const float v = (v1 + v2) * 0.25f + 0.5f;  // 0..1
             o[i] = scaleF(lutW(c.lutWrap, c.s[2] + v * 0.5f), 1.f - contrast * (1.f - v));
         }
@@ -738,7 +743,7 @@ static void clouds(Ctx& c) {
     int oct = 0;
     float lam[4], wt[4], tw = 0;
     uint32_t tz[4];
-    for (float l = size, w = 1; oct < 4 && (oct == 0 || l >= 0.8f); oct++, l *= 0.5f, w *= 0.5f) {
+    for (float l = size, w = 1; oct < 4 && (oct == 0 || l >= 0.8f * M); oct++, l *= 0.5f, w *= 0.5f) {
         lam[oct] = l;
         wt[oct] = w;
         tw += w;
@@ -746,7 +751,7 @@ static void clouds(Ctx& c) {
     }
     // Clouds are smooth along a row: sample every ~8 cm and interpolate
     const float span = NX == NXFULL ? W : NX * PITCH;  // the width rendered (in mirror, half)
-    const int ns = clampi((int)(span / 0.08f) + 2, 2, NX);
+    const int ns = clampi((int)(span / (0.08f * M)) + 2, 2, NX);
     static float v[MAX_X];
     const float istep = NX > 1 ? (float)(ns - 1) / (NX - 1) : 0;
     for (int b = 0; b < NY; b++) {
@@ -808,11 +813,11 @@ static void gradient(Ctx& c) {
         float maxR = 0;
         for (float x : {0.f, W})
             for (float y : {Y[0], Y[0] + H}) maxR = fmaxf(maxR, hypotf(x - cx, y - cy));
-        k = spread / fmaxf(maxR, 0.01f);
+        k = spread / fmaxf(maxR, 0.01f * M);
         k0 = base;
     } else {
         // The ceiling's extent in that direction: the gradient runs from one side to the other
-        const float span = fmaxf(fabsf(W * ca) + fabsf(H * sa), 0.01f);
+        const float span = fmaxf(fabsf(W * ca) + fabsf(H * sa), 0.01f * M);
         k = spread / span;
         k0 = base + 0.5f * spread;  // centred on the ceiling's middle
     }
@@ -882,7 +887,7 @@ static void shapesFx(Ctx& c) {
         const float mx = fminf(s.reach + half, W * 0.5f), my = fminf(s.reach + half, H * 0.5f);
         s.x = mx + hrand(u, 3) * (W - 2 * mx);
         s.y = Y[0] + my + hrand(u, 4) * (H - 2 * my);
-        s.reach += half + 0.6f;  // the line and the soft edge
+        s.reach += half + 0.6f * M;  // the line and the soft edge
         n++;
     }
     memset(c.out, 0, NL * sizeof(CRGB));
@@ -900,7 +905,7 @@ static void shapesFx(Ctx& c) {
             // them (a face's slant to the rows), so it doesn't pop from one row to the next.
             // Per face once a row: 1 / width
             float ie[4];
-            for (int q = 0; q < s.faces; q++) ie[q] = 1.f / (0.12f + FY[b] * fabsf(s.ny[q]));
+            for (int q = 0; q < s.faces; q++) ie[q] = 1.f / (0.12f * M + FY[b] * fabsf(s.ny[q]));
             for (int i = i0; i <= i1; i++) {
                 const float dx = X[i] - s.x;
                 float d, inv;
@@ -915,9 +920,9 @@ static void shapesFx(Ctx& c) {
                     inv = ie[best];
                 } else {
                     const float d2 = dx * dx + dy * dy;
-                    const float rd = d2 > 1e-8f ? rsqrtFast(d2) : 0.f;
+                    const float rd = d2 > 1e-8f * M * M ? rsqrtFast(d2) : 0.f;
                     d = d2 * rd - s.r;
-                    const float e = 0.12f + FY[b] * fabsf(dy) * rd;
+                    const float e = 0.12f * M + FY[b] * fabsf(dy) * rd;
                     inv = rsqrtFast(e * e);
                 }
                 // Coverage of the outline band and of the inside, over the edge's width: a line
@@ -951,19 +956,19 @@ static void shapesFx(Ctx& c) {
 // Background, Offset. Speed is the first slider and Size the second wherever an effect has them.
 const EffectDef EFFECTS[] = {
     {"Rolling bars", 8,
-     {{"Speed (m/s)", 0, 8, 0.15f, 0.01f, "How fast the bands roll, in metres per second. 0 stops them. Calm: 0.05 to 0.2. In Beats timing this slider is replaced by beats per band."},
-      {"Band width (m)", 0.8f, 5, 2, 0.1f, "The width of one band, in metres. Narrow bands flicker as they cross the rows: with rows half a metre apart, for example, about 0.8 m is the narrowest that stays smooth."},
+     {{"Speed (%/s)", 0, 160, 3, 0.2f, "How fast the bands roll, as a share of the ceiling's shorter side per second (100%/s crosses it in a second). 0 stops them. Calm: 1 to 4. In Beats timing this slider is replaced by beats per band.", 1},
+      {"Band width (%)", 16, 100, 40, 1, "The width of one band, as a share of the ceiling's shorter side (100% = the whole of it). Narrow bands flicker as they cross the rows: on a 5 m ceiling with rows half a metre apart, about 16% (0.8 m) is the narrowest that stays smooth.", 1},
       {"Angle (deg)", -180, 180, 0, 1, "The direction the bands roll, in degrees: 0 = along the rows, 90 = across them (from the first row to the last), 180 = along the rows the other way. A Motion on it swings the direction to and fro."},
       {"Softness", 0, 1, 0.6f, 0.01f, H_SOFT_BANDS},
       {"Dark gaps", 0, 1, 0.3f, 0.01f, H_GAPS},
       {"Gap width", 0, 0.9f, 0, 0.01f, "How wide the dark gaps between the bands are, as a share of a band: 0 = only where the colours meet, 0.5 = half dark, 0.9 = thin bars of colour with wide gaps. Dark gaps sets how dark they get (at Dark gaps 0 they don't show)."},
       {"Colour step", 0, 1, 0.2f, 0.01f, H_STEP},
-      {"Offset (m)", -10, 10, 0, 0.01f, "Shifts the pattern by this many metres, the way Speed moves the bands (in the rolling direction). With Speed at 0 it stays put, so a Motion on Offset moves it back and forth (with easing). 0 = no shift."}},
+      {"Offset (%)", -200, 200, 0, 0.2f, "Shifts the pattern by this share of the ceiling's shorter side, the way Speed moves the bands (in the rolling direction). With Speed at 0 it stays put, so a Motion on Offset moves it back and forth (with easing). 0 = no shift.", 1}},
      rolling, false, "band", 0,
      "Wide soft bands of palette colour rolling across the ceiling, in the direction Angle sets. In Beats timing, each band takes the chosen number of beats to pass."},
     {"Searchlights", 5,
      {{"Speed", 0, 1.5f, 0.3f, 0.01f, "How fast the beams wander along their looping paths. 0.3 is a slow drift, 1.5 a brisk sweep, 0 freezes them."},
-      {"Beam radius (m)", 0.5f, 3, 1.2f, 0.1f, "The radius of each beam in metres: 1.2 m makes a beam about 2.4 m across."},
+      {"Beam radius (%)", 10, 60, 24, 1, "The radius of each beam, as a share of the ceiling's shorter side: 24% makes a beam about half that side across.", 1},
       {"Beams", 1, 5, 3, 1, "How many round beams wander over the ceiling, each in its own palette colour. Where beams overlap their light adds up."},
       {"Softness", 0, 1, 0.6f, 0.01f, "How far in from the edge a beam fades. 0 = an evenly lit disc with a short soft edge (never under 0.4 m), 1 = brightest only at the centre."},
       {"Background", 0, 0.5f, 0.02f, 0.01f, H_BG}},
@@ -981,14 +986,14 @@ const EffectDef EFFECTS[] = {
      lighthouse, false, "revolution", 0,
      "A beam turning around a point, like a lighthouse. The point can sit inside the ceiling, at its edge or beyond it. In Beats timing, one revolution takes the chosen number of beats."},
     {"Clouds", 8,
-     {{"Speed (m/s)", 0, 1, 0.15f, 0.01f, "How fast the wind carries the clouds, in metres per second. 0 = they stay in place (they can still evolve)."},
-      {"Cloud size (m)", 1, 8, 3, 0.1f, "The typical size of a cloud in metres. Smaller clouds still keep their detail coarse enough for the bar spacing."},
+     {{"Speed (%/s)", 0, 20, 3, 0.2f, "How fast the wind carries the clouds, as a share of the ceiling's shorter side per second (100%/s crosses it in a second). 0 = they stay in place (they can still evolve).", 1},
+      {"Cloud size (%)", 20, 160, 60, 1, "The typical size of a cloud, as a share of the ceiling's shorter side. Smaller clouds still keep their detail coarse enough for the bar spacing.", 1},
       {"Coverage", 0, 1, 0.5f, 0.01f, "How much of the sky is cloud: 0 = clear, 0.5 = half cloudy, 1 = overcast."},
       {"Evolve", 0, 1, 0.2f, 0.01f, "How fast the cloud shapes change as they drift. 0 = rigid shapes sliding past, 1 = clouds forming and dissolving quickly."},
       {"Turn (deg/s)", -5, 5, 0.5f, 0.1f, "How fast the wind direction turns, in degrees per second; negative turns the other way. 0 = a steady wind."},
       {"Softness", 0, 1, 0.4f, 0.01f, "How gradually a cloud fades into the sky. 0 = crisp edges, 1 = hazy."},
-      {"Offset X (m)", -10, 10, 0, 0.01f, "Shifts the clouds along the bars by this many metres, on top of the wind. With Speed at 0 they stay put, so a Motion on Offset X moves them back and forth. 0 = no shift."},
-      {"Offset Y (m)", -10, 10, 0, 0.01f, "Shifts the clouds across the bars by this many metres, on top of the wind. With Speed at 0 they stay put, so a Motion on Offset Y moves them back and forth. 0 = no shift."}},
+      {"Offset X (%)", -200, 200, 0, 0.2f, "Shifts the clouds along the bars by this share of the ceiling's shorter side, on top of the wind. With Speed at 0 they stay put, so a Motion on Offset X moves them back and forth. 0 = no shift.", 1},
+      {"Offset Y (%)", -200, 200, 0, 0.2f, "Shifts the clouds across the bars by this share of the ceiling's shorter side, on top of the wind. With Speed at 0 they stay put, so a Motion on Offset Y moves them back and forth. 0 = no shift.", 1}},
      clouds, false, nullptr, -1,
      "Soft clouds drifting on a slowly turning wind. The palette is used as a ramp: its first colour is the sky, its last colour the clouds."},
     {"Sparkle", 4,
@@ -999,42 +1004,42 @@ const EffectDef EFFECTS[] = {
      sparkle, true, nullptr, -1,
      "Single LEDs twinkling in palette colours over a dim palette wash. For twinkles on top of another effect, use the Sparkle overlay (under Brightness) instead."},
     {"Sweeps", 8,
-     {{"Speed (m/s)", 0.05f, 2, 0.4f, 0.01f, "How fast a bar crosses the ceiling, in metres per second. In Beats timing this slider is replaced by beats per sweep."},
-      {"Bar width (m)", 0.3f, 4, 1, 0.1f, "The width of the solid part of each bar, in metres."},
+     {{"Speed (%/s)", 1, 40, 8, 0.2f, "How fast a bar crosses the ceiling, as a share of the ceiling's shorter side per second (100%/s crosses it in a second). In Beats timing this slider is replaced by beats per sweep.", 1},
+      {"Bar width (%)", 6, 80, 20, 1, "The width of the solid part of each bar, as a share of the ceiling's shorter side.", 1},
       {"Bars", 1, 4, 1, 1, "How many bars travel at once, evenly spaced. Each changes direction on its own."},
       {"Angle (deg)", -180, 180, 0, 1, "Turns the direction of every bar by this many degrees: with Angle change at 0 and one bar, the direction it sweeps (0 = along the rows, 90 = across them). Each bar takes it as its pass begins and keeps it to the end, so a controller or Motion on it (a Random jump, say) sets the direction of the next pass, never turns a bar halfway."},
       {"Angle change (deg)", 0, 180, 37, 1, "How much the direction turns after each pass. 180 = back and forth, 90 = crosswise in turn, 0 = always the same way. Odd angles such as 37 rarely repeat."},
-      {"Trail (m)", 0, 6, 1.5f, 0.1f, "How far behind the bar its glow fades out, in metres. 0 = no trail."},
+      {"Trail (%)", 0, 120, 30, 1, "How far behind the bar its glow fades out, as a share of the ceiling's shorter side. 0 = no trail.", 1},
       {"Softness", 0, 1, 0.2f, 0.01f, "How soft the bar's edges are, as a part of its width. 0 = crisp (still softened where they cross the bars)."},
       {"Background", 0, 0.5f, 0.02f, 0.01f, H_BG}},
      sweeps, false, "sweep", 0,
      "Bars sweeping across the ceiling one after another, each pass at a new angle, with a fading trail. Each new pass takes the next palette colour."},
     {"Plaid", 7,
-     {{"Speed (m/s)", 0, 1, 0.1f, 0.01f, "How fast the stripes move, in metres per second; the two sets move opposite ways. In Beats timing this slider is replaced by beats per stripe."},
-      {"Stripe spacing (m)", 1, 6, 2.5f, 0.1f, "The distance from one stripe to the next, in metres."},
+     {{"Speed (%/s)", 0, 20, 2, 0.2f, "How fast the stripes move, as a share of the ceiling's shorter side per second (100%/s crosses it in a second); the two sets move opposite ways. In Beats timing this slider is replaced by beats per stripe.", 1},
+      {"Stripe spacing (%)", 20, 120, 50, 1, "The distance from one stripe to the next, as a share of the ceiling's shorter side.", 1},
       {"Cross angle (deg)", 0, 90, 60, 1, "The angle between the two stripe sets. 90 = square checks, smaller = stretched diamonds, 0 = both sets parallel."},
       {"Turn (deg/s)", -10, 10, 1, 0.1f, "How fast the whole pattern turns, in degrees per second; negative turns the other way."},
       {"Dark gaps", 0, 1, 0.6f, 0.01f, "How dark it gets between the stripes. 0 = even brightness, only the colours change, 1 = deep dark gaps."},
       {"Colour drift", 0, 1, 0.2f, 0.01f, H_DRIFT},
-      {"Offset (m)", -10, 10, 0, 0.01f, "Shifts the pattern by this many metres, the way Speed moves the stripes (the second set goes the other way). With Speed at 0 it stays put, so a Motion on Offset moves it back and forth (with easing). 0 = no shift."}},
+      {"Offset (%)", -200, 200, 0, 0.2f, "Shifts the pattern by this share of the ceiling's shorter side, the way Speed moves the stripes (the second set goes the other way). With Speed at 0 it stays put, so a Motion on Offset moves it back and forth (with easing). 0 = no shift.", 1}},
      plaid, false, "stripe", 0,
      "Two sets of broad stripes crossing at an angle, moving and slowly turning. The colour shows which of the two sets is stronger at each spot."},
     {"Rings", 8,
-     {{"Speed (m/s)", -1, 1, 0.2f, 0.01f, "How fast the rings flow, in metres per second: positive outward from the centre, negative inward. In Beats timing this slider is replaced by beats per ring."},
-      {"Ring spacing (m)", 0.8f, 4, 1.5f, 0.1f, "The distance from one ring to the next, in metres."},
+     {{"Speed (%/s)", -20, 20, 4, 0.2f, "How fast the rings flow, as a share of the ceiling's shorter side per second (100%/s crosses it in a second): positive outward from the centre, negative inward. In Beats timing this slider is replaced by beats per ring.", 1},
+      {"Ring spacing (%)", 16, 80, 30, 1, "The distance from one ring to the next, as a share of the ceiling's shorter side.", 1},
       {"Wander", 0, 1, 0.4f, 0.01f, "How far the centre roams. 0 = fixed in the middle of the ceiling, 1 = all the way to the edges."},
       {"Wander speed", 0, 1, 0.2f, 0.01f, "How fast the centre roams."},
       {"Softness", 0, 1, 0.6f, 0.01f, H_SOFT_BANDS},
       {"Dark gaps", 0, 1, 0.4f, 0.01f, H_GAPS},
       {"Colour step", 0, 1, 0.2f, 0.01f, H_STEP},
-      {"Offset (m)", -10, 10, 0, 0.01f, "Shifts the pattern by this many metres, the way Speed moves the rings (positive outward). With Speed at 0 it stays put, so a Motion on Offset moves it back and forth (with easing). 0 = no shift."}},
+      {"Offset (%)", -200, 200, 0, 0.2f, "Shifts the pattern by this share of the ceiling's shorter side, the way Speed moves the rings (positive outward). With Speed at 0 it stays put, so a Motion on Offset moves it back and forth (with easing). 0 = no shift.", 1}},
      rings, false, "ring", 0,
      "Concentric rings flowing out of (or into) a centre that slowly wanders over the ceiling."},
     {"Drops", 8,
-     {{"Speed (m/s)", 0.1f, 4, 0.5f, 0.01f, "How fast a ring spreads, in metres per second."},
-      {"Ring width (m)", 0.4f, 2.5f, 1, 0.1f, "The width of a ring's bright band, in metres."},
+     {{"Speed (%/s)", 2, 80, 10, 0.2f, "How fast a ring spreads, as a share of the ceiling's shorter side per second (100%/s crosses it in a second).", 1},
+      {"Ring width (%)", 8, 50, 20, 1, "The width of a ring's bright band, as a share of the ceiling's shorter side.", 1},
       {"Drops per minute", 1, 60, 10, 1, "How many new drops fall per minute. At most 10 rings show at once. In Beats timing this slider is replaced by beats per drop, and each drop lands on the beat."},
-      {"Max radius (m)", 1, 12, 6, 0.1f, "How far a ring spreads before it has faded out completely, in metres."},
+      {"Max radius (%)", 20, 240, 120, 1, "How far a ring spreads before it has faded out completely, as a share of the ceiling's shorter side.", 1},
       {"Centre X", -0.2f, 1.2f, 0.5f, 0.01f, "Where along the rows the drops land: 0 = the start of the rows, 1 = their end. Only used when Aim is above 0: at Aim 0 drops fall at random places and Centre X, Y do nothing. A Motion on it moves the landing point; each ring stays where its drop fell."},
       {"Centre Y", -0.2f, 1.2f, 0.5f, 0.01f, "Where across the rows the drops land: 0 = the first row, 1 = the last. Only used when Aim is above 0: at Aim 0 drops fall at random places and Centre X, Y do nothing. A Motion on it moves the landing point; each ring stays where its drop fell."},
       {"Aim (0 = random)", 0, 1, 1, 0.01f, "Where drops land. 0 = at random places anywhere on the ceiling (Centre X, Y do nothing). 1 = exactly at Centre X, Y. In between: scattered around Centre X, Y, the closer to 1 the tighter."},
@@ -1042,13 +1047,13 @@ const EffectDef EFFECTS[] = {
      dropsFx, false, "drop", 2,
      "Big rings spreading from where drops land and fading out, like raindrops on a pond: at the point Centre X, Y sets (which Motions can move), or at random places. Each drop takes a random palette colour."},
     {"Interference", 7,
-     {{"Speed (m/s)", -1, 1, 0.15f, 0.01f, "How fast the waves travel, in metres per second: positive outward, negative inward. In Beats timing this slider is replaced by beats per wave."},
-      {"Wave spacing (m)", 0.8f, 5, 1.8f, 0.1f, "The distance from one wave to the next, in metres."},
+     {{"Speed (%/s)", -20, 20, 3, 0.2f, "How fast the waves travel, as a share of the ceiling's shorter side per second (100%/s crosses it in a second): positive outward, negative inward. In Beats timing this slider is replaced by beats per wave.", 1},
+      {"Wave spacing (%)", 16, 100, 36, 1, "The distance from one wave to the next, as a share of the ceiling's shorter side.", 1},
       {"Centre distance", 0, 1, 0.5f, 0.01f, "How far apart the two wave centres are. 0 = the same point (plain rings), 1 = about the ceiling's size apart."},
       {"Turn (deg/s)", -10, 10, 2, 0.1f, "How fast the two centres circle each other, in degrees per second; negative the other way."},
       {"Dark gaps", 0, 1, 0.7f, 0.01f, "How dark the troughs get where the waves cancel. 0 = even brightness, 1 = black."},
       {"Colour drift", 0, 1, 0.2f, 0.01f, H_DRIFT},
-      {"Offset (m)", -10, 10, 0, 0.01f, "Shifts the pattern by this many metres, the way Speed moves the waves (positive outward). With Speed at 0 it stays put, so a Motion on Offset moves it back and forth (with easing). 0 = no shift."}},
+      {"Offset (%)", -200, 200, 0, 0.2f, "Shifts the pattern by this share of the ceiling's shorter side, the way Speed moves the waves (positive outward). With Speed at 0 it stays put, so a Motion on Offset moves it back and forth (with easing). 0 = no shift.", 1}},
      interference, false, "wave", 0,
      "Two sets of ring waves around centres that slowly circle each other. Where the waves meet they reinforce or cancel, forming large moving patterns."},
     {"Gradient", 7,
@@ -1063,12 +1068,12 @@ const EffectDef EFFECTS[] = {
      "A steady gradient through the palette: straight in any direction, or round from a centre. The palette is used as a ramp, first colour to last and back. Calm light that doesn't move unless Colour drift or a Motion moves it."},
     {"Shapes", 8,
      {{"New shape every (s)", 0.2f, 10, 1.5f, 0.1f, "How often a new shape appears, in seconds. Each lasts Count times this. In Beats timing this slider is replaced by beats per shape, and each lands on the beat."},
-      {"Size (m)", 0.8f, 8, 3, 0.1f, "How big the shapes are, in metres: a circle's diameter, a square's or a triangle's side. Below about 1.5 m they get hard to read across rows half a metre apart, for example."},
+      {"Size (%)", 16, 160, 60, 1, "How big the shapes are, as a share of the ceiling's shorter side: a circle's diameter, a square's or a triangle's side. Below about 30% they get hard to read across rows half a metre apart on a 5 m ceiling.", 1},
       {"Shape", 0, 3, 3, 1, "0 = squares, 1 = circles, 2 = triangles, 3 = a mix of all three, picked at random."},
       {"Count", 1, 6, 3, 1, "How many shapes show at once. Each stays for this many turns and fades out as a new one appears."},
       {"Size variety", 0, 1, 0.5f, 0.01f, "How much the sizes differ. 0 = all the same size, 1 = anything from Size down to tiny."},
       {"Turn (deg/s)", 0, 90, 10, 1, "How fast the shapes turn while they show, each its own way round. 0 = they keep their angle. Circles don't show it."},
-      {"Line width (m)", 0.2f, 2, 0.6f, 0.05f, "How thick the outlines are, in metres. Lines thinner than the row spacing come out dimmer where they run along the rows, so they don't flicker."},
+      {"Line width (%)", 4, 40, 12, 1, "How thick the outlines are, as a share of the ceiling's shorter side. Lines thinner than the row spacing come out dimmer where they run along the rows, so they don't flicker.", 1},
       {"Fill", 0, 1, 0, 0.01f, "0 = outlines only, 1 = solid shapes. In between: a dimmer inside within a bright outline."}},
      shapesFx, false, "shape", 0,
      "Squares, circles and triangles appearing one after another at random places, sizes and angles, each in a random palette colour, as outlines, solid or both. Each stays a while and fades out."},
@@ -1107,6 +1112,20 @@ void effectsParamsToOldOrder(int e, float* p) {
     for (int j = 0; j < EFFECTS[e].n; j++) p[OLD_POS[e][j]] = t[j];
 }
 
+void effectsToUnits(const EffectDef& e, float* p) {
+    for (int j = 0; j < e.n; j++)
+        if (e.params[j].rel) p[j] *= 0.01f;
+}
+
+float effectsMetresToPercent(int e, int j, float v) {
+    return e >= 0 && e < NUM_EFFECTS && j >= 0 && j < EFFECTS[e].n && EFFECTS[e].params[j].rel ? v * 20.f : v;
+}
+
+void effectsMetresToPercent(int e, float* p) {
+    if (e < 0 || e >= NUM_EFFECTS) return;
+    for (int j = 0; j < EFFECTS[e].n; j++) p[j] = effectsMetresToPercent(e, j, p[j]);
+}
+
 int effectsParamFromOldOrder(int e, int old) {
     if (e < 0 || e >= 12) return old;
     for (int j = 0; j < EFFECTS[e].n; j++)
@@ -1137,6 +1156,13 @@ void effectsInit() {
     H = fmaxf(Y[NY - 1] - Y[0], pitch);
     CX = W * 0.5f;
     CY = Y[0] + (Y[NY - 1] - Y[0]) * 0.5f;
+    // To units of the shorter side (one row: its length)
+    float shortSide = NY > 1 ? fminf(W, Y[NY - 1] - Y[0]) : W;
+    if (!(shortSide > 1e-6f)) shortSide = W;
+    const float u = 1.f / shortSide;
+    for (int i = 0; i < NX; i++) X[i] *= u;
+    for (int b = 0; b < NY; b++) { Y[b] *= u; FY[b] *= u; }
+    PITCH *= u; W *= u; H *= u; CX *= u; CY *= u;
     memset(spPhase, 0, sizeof(spPhase));
 
     // Scale the noise so a single octave has a standard deviation of ~0.45
@@ -1203,6 +1229,7 @@ float effectsBenchmark(int e, const CRGB* lutWrap, const CRGB* lutLin, int frame
     const EffectDef& d = EFFECTS[e];
     float p[MAXP] = {}, s[MAXP] = {};
     for (int j = 0; j < d.n; j++) p[j] = d.params[j].def;
+    effectsToUnits(d, p);
     Ctx c{p, 1.f / 40, s, lutWrap, lutLin, out, 0, 120, 0, false};
     effectsRender(d, c, mirror);  // first frame: state set up
     const uint32_t t0 = micros();
