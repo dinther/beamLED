@@ -945,8 +945,9 @@ static void shapesFx(Ctx& c) {
 // In Beats timing a drum machine of flashes: 32 steps (two bars of 1/16 notes), four lanes, each
 // flashing its own kind of thing on the steps set in the preset's pattern: the whole ceiling, a
 // band, a block of a coarse grid, a circle or square. Bands, blocks and shapes land somewhere new
-// on every step (a hash of the step's count). In Time (the page's Frequency) a plain strobe: the
-// whole ceiling, Speed flashes a second; the pattern isn't used.
+// on every step (a hash of the step's count). In Time (the page's Frequency) a plain strobe, Speed
+// flashes a second, the pattern unused: the middle Size share of every row (strips are often not
+// powered for full white on every LED, and fewer lit LEDs flash brighter).
 
 static void strobe(Ctx& c) {
     enum { kSpeed, kSize, kFlash, kAngle, kSoft, kColour, kBackground };
@@ -993,6 +994,15 @@ static void strobe(Ctx& c) {
             float u = (float)(n % 4096) * cs + k * 0.25f;
             col[k] = lutW(c.lutWrap, u - floorI(u));
         }
+    }
+    if (!pattern) {  // Frequency: the middle Size share of each row, hard edged (an exact LED count)
+        const float half = c.p[kSize] * W * 0.5f;  // Size is a share (0.1..1) of the row here
+        for (int b = 0; b < NY; b++)
+            for (int i = 0; i < NX; i++) {
+                const CRGB base = bg > 0 ? scaleF(lutL(c.lutLin, X[i] * iw), bg) : CRGB(0, 0, 0);
+                c.out[b * NX + i] = fabsf(X[i] - CX) <= half + 1e-6f ? col[0] : base;
+            }
+        return;
     }
     const uint32_t seed = (uint32_t)(n & 0xFFFFFFFF);
     const float size = c.p[kSize], hw = size * 0.5f, soft = c.p[kSoft];
@@ -1186,8 +1196,8 @@ const EffectDef EFFECTS[] = {
      shapesFx, false, "shape", 0,
      "Squares, circles and triangles appearing one after another at random places, sizes and angles, each in a random palette colour, as outlines, solid or both. Each stays a while and fades out."},
     {"Strobe", 7,
-     {{"Speed (Hz)", 0, 20, 8, 0.1f, "Flashes per second, with Timing set to Frequency: a plain strobe of the whole ceiling. 0 = no flashes. With Timing set to Beats the pattern plays instead, and this slider gives way to Beats per pattern."},
-      {"Size (%)", 10, 100, 30, 1, "How big a band, block or shape is, as a share of the ceiling's shorter side. The Whole lane always lights everything.", 1},
+     {{"Speed (Hz)", 0, 20, 8, 0.1f, "Flashes per second, with Timing set to Frequency: a plain strobe of every row (the middle Size share of it). 0 = no flashes. With Timing set to Beats the pattern plays instead, and this slider gives way to Beats per pattern."},
+      {"Size (%)", 10, 100, 30, 1, "Timing Beats: how big a band, block or shape is, as a share of the ceiling's shorter side (the Whole lane always lights everything). Timing Frequency: the share of each row's LEDs that flash, from the middle of the row outwards; fewer LEDs ask less of the power supply, so they flash brighter.", 1},
       {"Flash length", 0.05f, 1, 0.5f, 0.01f, "How much of its step a flash stays on: short = a crisp strobe, 1 = lit for the whole step (steps in a row then join up). A flash always shows for at least one frame."},
       {"Angle (deg)", -180, 180, 90, 1, "Which way the bands run: 90 = along the rows (a band lights a few rows), 0 = across them."},
       {"Softness", 0, 1, 0.2f, 0.01f, "How soft the edges of bands, blocks and shapes are. 0 = hard edges (still softened where they cross the rows, so they don't flicker)."},

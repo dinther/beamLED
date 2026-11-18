@@ -74,7 +74,8 @@ for this kind of installation (see [docs/background.md](docs/background.md)):
 **Strobe** is a drum machine of flashes: each preset holds a grid of four lanes and 32 steps (two
 bars of 1/16 notes on the beat), and on the steps set the lanes
 flash the whole ceiling, a band, a block or a circle or square, somewhere new each time. With
-Timing set to Frequency it is a plain strobe of the whole ceiling, 0 to 20 flashes a second.
+Timing set to Frequency it is a plain strobe, 0 to 20 flashes a second, of the middle Size share of
+every row (fewer lit LEDs ask less of the power supply, so they flash brighter).
 
 The scrolling effects have a position slider: **Offset** (Rolling bars, Plaid, Rings,
 Interference), **Offset X** and **Offset Y** (Clouds), and Lighthouse has **Angle**. With the speed

@@ -572,7 +572,7 @@ function draw() {
   card.append(bRow, rRow);
   if (ef.steps) {
     const g = card.appendChild(stepGrid(p));
-    if (!inBeats) for (const el of g.children) off(el, 'Timing is ' + modes[timing] + ': a plain strobe of the whole ceiling at Speed flashes a second. Set Timing to Beats to play the pattern.');
+    if (!inBeats) for (const el of g.children) off(el, 'Timing is ' + modes[timing] + ': a plain strobe of every row (the middle Size share of it) at Speed flashes a second. Set Timing to Beats to play the pattern.');
   }
   const motions = p.motions || [];
   const rows = [], moved = j => motions.some(mo => mo.target == j + 1);
@@ -585,8 +585,8 @@ function draw() {
         (by >= 0 ? ' Now moved by Motion ' + (by + 1) + ' (below): set its From and To there.' : ''), 'p' + j);
     if (by >= 0) { row.classList.add('moving'); off(row, 'Motion ' + (by + 1) + ' moves it: set its From and To there.'); }
     else if (inBeats && j == ef.speedParam) off(row, 'Timing is Beats: the speed comes from Beats per ' + ef.cycle + ' instead.');
-    else if (ef.steps && !inBeats && /^(Size|Angle|Softness)/.test(d.name))
-      off(row, 'Timing is ' + modes[timing] + ': the strobe lights the whole ceiling. It shapes the bands, blocks and shapes of the pattern (Timing: Beats).');
+    else if (ef.steps && !inBeats && /^(Angle|Softness)/.test(d.name))
+      off(row, 'Timing is ' + modes[timing] + ': the strobe lights the middle of every row, hard edged. It shapes the bands, blocks and shapes of the pattern (Timing: Beats).');
     rows[j] = row;
     card.append(row);
   });
