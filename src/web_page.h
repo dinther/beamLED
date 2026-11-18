@@ -51,7 +51,8 @@ select,input[type=text],input[type=password],input[type=number]{flex:1;min-width
 .pal .sw{cursor:copy}
 .pal .stop input{position:absolute;left:0;top:100%;width:1px;height:1px;opacity:0;pointer-events:none;border:0;padding:0}
 .pal .stop:hover,.pal .stop.drag{border-color:var(--acc)}
-#pv{display:block;margin:0 auto;border-radius:6px;background:#050505}
+#pv{display:block;margin:0 auto;border-radius:6px;background:#000}
+.card.pv-card{background:#000}
 .pal .mid{position:absolute;top:19px;width:10px;height:10px;margin-left:-5px;background:#bbb;border:1px solid #000;transform:rotate(45deg);cursor:ew-resize;touch-action:none}
 .pal .mid.set{background:var(--acc)}
 .pal .mid:hover,.pal .mid.drag{background:#fff}
@@ -462,7 +463,7 @@ function draw() {
     pvBare = v == 1;
     try { localStorage.setItem('beamled.pvlook', pvBare ? 'bare' : 'diffused'); } catch (e) {}
   }, H.previewLook);
-  app.append(h('div', {className: 'card'}, h('canvas', {id: 'pv'}), look));
+  app.append(h('div', {className: 'card pv-card'}, h('canvas', {id: 'pv'}), look));
 
   app.append(heading('Presets', H.presets));
   const g = h('div', {className: 'presets'});
@@ -1277,7 +1278,7 @@ function drawPreview(buf) {
   const c = cv.getContext('2d');
   c.setTransform(1, 0, 0, 1, 0, 0);
   c.imageSmoothingEnabled = true;
-  c.fillStyle = '#050505'; c.fillRect(0, 0, W, H);
+  c.fillStyle = '#000'; c.fillRect(0, 0, W, H);
   const top = Math.round(pad * scale), tall = per * nx;
   const glow = 'filter' in c;
   for (const pass of glow ? [0, 1] : [1]) {
@@ -1307,8 +1308,8 @@ function drawBare(u8, nx, ny, cv, ry, y0, pad, scale, W, H, dpr, per) {
   d.fill(0); acc.fill(0);
   const top = Math.round(pad * scale), mid = per >> 1;
   for (let b = 0; b < ny; b++) {
-    const x = Math.round((pad + ry[b] - y0) * scale);
-    if (x < 0 || x >= w) continue;
+    const x = Math.round((pad + ry[b] - y0) * scale) - 1;  // two pixels side by side: x, x + 1
+    if (x < 0 || x + 1 >= w) continue;
     const gx = (x / G) | 0;
     for (let i = 0; i < nx; i++) {
       const y = top + i * per + mid;  // exactly per pixels apart
@@ -1316,6 +1317,7 @@ function drawBare(u8, nx, ny, cv, ry, y0, pad, scale, W, H, dpr, per) {
       const s = 8 + (b * nx + i) * 3, t = (y * w + x) * 4, g = (((y / G) | 0) * gw + gx) * 3;
       const r = u8[s], gr = u8[s + 1], bl = u8[s + 2];
       d[t] = r; d[t + 1] = gr; d[t + 2] = bl; d[t + 3] = 255;
+      d[t + 4] = r; d[t + 5] = gr; d[t + 6] = bl; d[t + 7] = 255;
       acc[g] += r; acc[g + 1] += gr; acc[g + 2] += bl;
     }
   }
