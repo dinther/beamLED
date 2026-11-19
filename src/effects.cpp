@@ -331,10 +331,14 @@ void sparkleOverlay(CRGB* out, float density, float dt, const CRGB* lut, double 
 // ---------------------------------------------------------------- Rolling bars
 // Wide bands rolling across the grid in the direction Angle sets.
 
-// Each band takes Colour once, when it rolls into the layout, and keeps it: with an Animation on
-// Colour every new band arrives in the colour of that moment. Kept by band number, 64 at most.
+// Each band takes Colour once, the first time it is in the layout, and keeps it (also when it
+// slips out and back as the Angle turns): with an Animation on Colour every new band arrives in
+// the colour of that moment. Kept by band number, 64 at most. At a fresh start the bands already
+// in view get the colours they would have had: on the second frame, from how fast Colour and the
+// bands move, worked back band by band.
 static float rollCol[64];
-static int rollLo, rollHi;  // the band numbers in the layout last frame
+static int rollId[64];
+static float rollC0, rollPh0;  // Colour and band position on the first frame
 
 static void rolling(Ctx& c) {
     enum { kSpeed, kWidth, kAngle, kSoft, kGaps, kGapWidth, kColour, kOffset };
@@ -351,11 +355,28 @@ static void rolling(Ctx& c) {
         umax = fmaxf(umax, u);
     }
     const int lo = floorI(umin) - 1, hi = floorI(umax) + 1;
-    if (c.s[7] == 0) { c.s[7] = 1; rollLo = 1; rollHi = 0; }  // fresh start: every band asks
+    if (c.s[7] == 0) {  // fresh start: nothing seen yet
+        c.s[7] = 1;
+        for (int k = 0; k < 64; k++) rollId[k] = INT32_MIN;
+        rollC0 = colour;
+        rollPh0 = ph;
+    } else if (c.s[7] == 1) {  // second frame: back-fill the bands in view
+        c.s[7] = 2;
+        float dc = colour - rollC0;
+        dc -= floorf(dc + 0.5f);  // a sawtooth wrapping counts as a small step
+        const float db = ph - rollPh0;  // bands moved this frame; > 0: new bands enter at the low end
+        if (fabsf(db) > 1e-6f) {
+            const float perBand = dc / fabsf(db);  // Colour change in the time one band takes
+            for (int n = lo; n <= hi && n < lo + 64; n++) {
+                const float age = db > 0 ? (float)(n - lo) : (float)(hi - n);  // bands since it came in
+                float v = colour - age * perBand;
+                rollCol[n & 63] = v - floorf(v);
+                rollId[n & 63] = n;
+            }
+        }
+    }
     for (int n = lo; n <= hi && n < lo + 64; n++)
-        if (n < rollLo || n > rollHi) rollCol[n & 63] = colour;  // new in the layout: takes Colour now
-    rollLo = lo;
-    rollHi = hi;
+        if (rollId[n & 63] != n) { rollId[n & 63] = n; rollCol[n & 63] = colour; }  // first seen: takes Colour now
     for (int b = 0; b < NY; b++) {
         // Transition at least the row's footprint projected onto the roll direction
         const Bands bd(fmaxf(soft, FY[b] * fabsf(sa) * iw), 0.f, gap, gapW * 0.5f, 0.f);
