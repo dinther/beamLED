@@ -175,6 +175,54 @@ struct Bands {
     }
 };
 
+// Per-band colours for Rolling bars and Rings: each band (ring) takes Colour once, the first time
+// it is in the layout, and keeps it (also when it slips out and back): with an Animation on Colour
+// every new band arrives in the colour of that moment. Kept by band number, 64 at most. At a fresh
+// start the bands already in view get the colours they would have had: on the second frame, from
+// how fast Colour and the bands move, worked back band by band.
+struct BandColours {
+    float col[64];
+    int id[64];
+    float c0, ph0;  // Colour and band position on the first frame
+    // lo..hi: the band numbers in the layout; ph: the band position (bands move to higher u as it
+    // falls, so with ph rising new bands come in at lo); st: the effect's c.s[7], 0 at a fresh start
+    void update(float& st, int lo, int hi, float ph, float colour) {
+        if (st == 0) {
+            st = 1;
+            for (int k = 0; k < 64; k++) id[k] = INT32_MIN;
+            c0 = colour;
+            ph0 = ph;
+        } else if (st == 1) {  // second frame: back-fill the bands in view
+            st = 2;
+            float dc = colour - c0;
+            dc -= floorf(dc + 0.5f);  // a sawtooth wrapping counts as a small step
+            const float db = ph - ph0;
+            if (fabsf(db) > 1e-6f) {
+                const float perBand = dc / fabsf(db);  // Colour change in the time one band takes
+                for (int n = lo; n <= hi && n < lo + 64; n++) {
+                    const float age = db > 0 ? (float)(n - lo) : (float)(hi - n);  // bands since it came in
+                    const float v = colour - age * perBand;
+                    col[n & 63] = v - floorf(v);
+                    id[n & 63] = n;
+                }
+            }
+        }
+        for (int n = lo; n <= hi && n < lo + 64; n++)
+            if (id[n & 63] != n) { id[n & 63] = n; col[n & 63] = colour; }  // first seen: takes Colour now
+    }
+    // Bands::at with each band's own colour, blending into the next band's the short way round
+    CRGB at(const Bands& bd, float u, const CRGB* lut) const {
+        const int n = floorI(u);
+        const float f = u - n;
+        const float a = col[n & 63];
+        float d = col[(n + 1) & 63] - a;
+        d -= floorf(d + 0.5f);
+        const float cpos = a + sm((f - bd.lo) * bd.rk) * d;
+        const float w = 1.f - sm((fabsf(f - 0.5f) - bd.hg) * bd.re);
+        return scaleF(lutW(lut, cpos), 1.f - bd.gap * w);
+    }
+};
+
 // Contrast left of a cosine of the given period after averaging over a row's footprint, for
 // a pattern whose gradient makes sinAbs with the rows (box filter ~ Gaussian, sd = FY/sqrt(12))
 static inline float footAtten(int b, float sinAbs, float period) {
@@ -331,14 +379,7 @@ void sparkleOverlay(CRGB* out, float density, float dt, const CRGB* lut, double 
 // ---------------------------------------------------------------- Rolling bars
 // Wide bands rolling across the grid in the direction Angle sets.
 
-// Each band takes Colour once, the first time it is in the layout, and keeps it (also when it
-// slips out and back as the Angle turns): with an Animation on Colour every new band arrives in
-// the colour of that moment. Kept by band number, 64 at most. At a fresh start the bands already
-// in view get the colours they would have had: on the second frame, from how fast Colour and the
-// bands move, worked back band by band.
-static float rollCol[64];
-static int rollId[64];
-static float rollC0, rollPh0;  // Colour and band position on the first frame
+static BandColours rollCols;
 
 static void rolling(Ctx& c) {
     enum { kSpeed, kWidth, kAngle, kSoft, kGaps, kGapWidth, kColour, kOffset };
@@ -355,45 +396,13 @@ static void rolling(Ctx& c) {
         umax = fmaxf(umax, u);
     }
     const int lo = floorI(umin) - 1, hi = floorI(umax) + 1;
-    if (c.s[7] == 0) {  // fresh start: nothing seen yet
-        c.s[7] = 1;
-        for (int k = 0; k < 64; k++) rollId[k] = INT32_MIN;
-        rollC0 = colour;
-        rollPh0 = ph;
-    } else if (c.s[7] == 1) {  // second frame: back-fill the bands in view
-        c.s[7] = 2;
-        float dc = colour - rollC0;
-        dc -= floorf(dc + 0.5f);  // a sawtooth wrapping counts as a small step
-        const float db = ph - rollPh0;  // bands moved this frame; > 0: new bands enter at the low end
-        if (fabsf(db) > 1e-6f) {
-            const float perBand = dc / fabsf(db);  // Colour change in the time one band takes
-            for (int n = lo; n <= hi && n < lo + 64; n++) {
-                const float age = db > 0 ? (float)(n - lo) : (float)(hi - n);  // bands since it came in
-                float v = colour - age * perBand;
-                rollCol[n & 63] = v - floorf(v);
-                rollId[n & 63] = n;
-            }
-        }
-    }
-    for (int n = lo; n <= hi && n < lo + 64; n++)
-        if (rollId[n & 63] != n) { rollId[n & 63] = n; rollCol[n & 63] = colour; }  // first seen: takes Colour now
+    rollCols.update(c.s[7], lo, hi, ph, colour);
     for (int b = 0; b < NY; b++) {
         // Transition at least the row's footprint projected onto the roll direction
         const Bands bd(fmaxf(soft, FY[b] * fabsf(sa) * iw), 0.f, gap, gapW * 0.5f, 0.f);
         const float dy = (Y[b] - CY) * sa;
         CRGB* o = c.out + b * NX;
-        for (int i = 0; i < NX; i++) {
-            const float u = ((X[i] - CX) * ca + dy) * iw - ph;
-            const int n = floorI(u);
-            const float f = u - n;
-            // Blend into the next band's colour the short way round the palette
-            const float a = rollCol[n & 63];
-            float d = rollCol[(n + 1) & 63] - a;
-            d -= floorf(d + 0.5f);
-            const float cpos = a + sm((f - bd.lo) * bd.rk) * d;
-            const float w = 1.f - sm((fabsf(f - 0.5f) - bd.hg) * bd.re);
-            o[i] = scaleF(lutW(c.lutWrap, cpos), 1.f - gap * w);
-        }
+        for (int i = 0; i < NX; i++) o[i] = rollCols.at(bd, ((X[i] - CX) * ca + dy) * iw - ph, c.lutWrap);
     }
 }
 
@@ -575,6 +584,8 @@ static void lighthouse(Ctx& c) {
 // ---------------------------------------------------------------- Rings
 // Concentric rings flowing out of (or into) a slowly wandering centre.
 
+static BandColours ringCols;
+
 static void rings(Ctx& c) {
     enum { kSpeed, kSpacing, kWander, kWanderSpeed, kSoft, kGaps, kColour, kOffset };
     const float spacing = c.p[kSpacing], speed = c.p[kSpeed], soft = c.p[kSoft], gap = c.p[kGaps],
@@ -584,7 +595,18 @@ static void rings(Ctx& c) {
     const float cx = CX + wander * W * 0.5f * sinf(c.s[1] * 0.37f);
     const float cy = CY + wander * H * 0.5f * sinf(c.s[1] * 0.29f + 1.3f);
     const float is = 1.f / spacing, ph = c.s[0] + c.p[kOffset] * is;  // their motion plus Offset
-    const Bands base(soft, 0.f, gap, 0.f, colour);  // where the softness is wider than the row's footprint
+    // The ring numbers in the layout: from the centre (or the nearest point) to the farthest corner
+    float rmax = 0, rmin2 = 0;
+    for (int k = 0; k < 4; k++) {
+        const float dx = X[(k & 1) ? NX - 1 : 0] - cx, dy = Y[(k & 2) ? NY - 1 : 0] - cy;
+        rmax = fmaxf(rmax, sqrtf(dx * dx + dy * dy));
+    }
+    {
+        const float ex = fmaxf(fmaxf(X[0] - cx, cx - X[NX - 1]), 0.f), ey = fmaxf(fmaxf(Y[0] - cy, cy - Y[NY - 1]), 0.f);
+        rmin2 = sqrtf(ex * ex + ey * ey);
+    }
+    ringCols.update(c.s[7], floorI(rmin2 * is - ph) - 1, floorI(rmax * is - ph) + 1, ph, colour);
+    const Bands base(soft, 0.f, gap, 0.f, 0.f);  // where the softness is wider than the row's footprint
     for (int b = 0; b < NY; b++) {
         const float dy = Y[b] - cy;
         // The ring crosses the rows at a slant |dy| / r: its edge spans FY * |dy| / r across
@@ -594,8 +616,8 @@ static void rings(Ctx& c) {
             const float dx = X[i] - cx;
             const float r = sqrtf(dx * dx + dy * dy);
             const float u = r * is - ph;
-            if (r > 1e-3f * M ? fy <= soft * r : FY[b] * is <= soft) o[i] = base.at(u, c.lutWrap);
-            else o[i] = Bands(r > 1e-3f * M ? fy / r : FY[b] * is, 0.f, gap, 0.f, colour).at(u, c.lutWrap);
+            if (r > 1e-3f * M ? fy <= soft * r : FY[b] * is <= soft) o[i] = ringCols.at(base, u, c.lutWrap);
+            else o[i] = ringCols.at(Bands(r > 1e-3f * M ? fy / r : FY[b] * is, 0.f, gap, 0.f, 0.f), u, c.lutWrap);
         }
     }
 }
