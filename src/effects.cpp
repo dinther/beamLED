@@ -331,6 +331,11 @@ void sparkleOverlay(CRGB* out, float density, float dt, const CRGB* lut, double 
 // ---------------------------------------------------------------- Rolling bars
 // Wide bands rolling across the grid in the direction Angle sets.
 
+// Each band takes Colour once, when it rolls into the layout, and keeps it: with an Animation on
+// Colour every new band arrives in the colour of that moment. Kept by band number, 64 at most.
+static float rollCol[64];
+static int rollLo, rollHi;  // the band numbers in the layout last frame
+
 static void rolling(Ctx& c) {
     enum { kSpeed, kWidth, kAngle, kSoft, kGaps, kGapWidth, kColour, kOffset };
     const float speed = c.p[kSpeed], width = c.p[kWidth], soft = c.p[kSoft], gap = c.p[kGaps],
@@ -338,12 +343,36 @@ static void rolling(Ctx& c) {
     advance(c, c.s[1], speed / width, 1.f);  // in beats: one band per cycle
     const float ca = cosf(angle), sa = sinf(angle), iw = 1.f / width;
     const float ph = c.s[1] + c.p[kOffset] * iw;  // where the bands are: their motion plus Offset
+    // The band numbers over the layout (its corners), one extra each side for the blend
+    float umin = 1e30f, umax = -1e30f;
+    for (int k = 0; k < 4; k++) {
+        const float u = ((X[(k & 1) ? NX - 1 : 0] - CX) * ca + (Y[(k & 2) ? NY - 1 : 0] - CY) * sa) * iw - ph;
+        umin = fminf(umin, u);
+        umax = fmaxf(umax, u);
+    }
+    const int lo = floorI(umin) - 1, hi = floorI(umax) + 1;
+    if (c.s[7] == 0) { c.s[7] = 1; rollLo = 1; rollHi = 0; }  // fresh start: every band asks
+    for (int n = lo; n <= hi && n < lo + 64; n++)
+        if (n < rollLo || n > rollHi) rollCol[n & 63] = colour;  // new in the layout: takes Colour now
+    rollLo = lo;
+    rollHi = hi;
     for (int b = 0; b < NY; b++) {
         // Transition at least the row's footprint projected onto the roll direction
-        const Bands bd(fmaxf(soft, FY[b] * fabsf(sa) * iw), 0.f, gap, gapW * 0.5f, colour);
+        const Bands bd(fmaxf(soft, FY[b] * fabsf(sa) * iw), 0.f, gap, gapW * 0.5f, 0.f);
         const float dy = (Y[b] - CY) * sa;
         CRGB* o = c.out + b * NX;
-        for (int i = 0; i < NX; i++) o[i] = bd.at(((X[i] - CX) * ca + dy) * iw - ph, c.lutWrap);
+        for (int i = 0; i < NX; i++) {
+            const float u = ((X[i] - CX) * ca + dy) * iw - ph;
+            const int n = floorI(u);
+            const float f = u - n;
+            // Blend into the next band's colour the short way round the palette
+            const float a = rollCol[n & 63];
+            float d = rollCol[(n + 1) & 63] - a;
+            d -= floorf(d + 0.5f);
+            const float cpos = a + sm((f - bd.lo) * bd.rk) * d;
+            const float w = 1.f - sm((fabsf(f - 0.5f) - bd.hg) * bd.re);
+            o[i] = scaleF(lutW(c.lutWrap, cpos), 1.f - gap * w);
+        }
     }
 }
 
